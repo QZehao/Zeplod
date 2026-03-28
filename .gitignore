@@ -1,0 +1,44 @@
+# Zephyr build directory
+build/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.elf
+
+# Zephyr
+zephyr/
+include/
+modules/
+deps/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation
+docs/_build/

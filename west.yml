@@ -1,0 +1,18 @@
+# West manifest file for zephyr_template
+# This file is optional - use if you want to manage the project with West
+
+manifest:
+  version: 0.13
+
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject
+      revision: main
+      import: true
+
+  self:
+    path: .
