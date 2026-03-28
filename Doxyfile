@@ -1,0 +1,374 @@
+# Doxygen 配置文件
+# 用于生成 API 文档
+# 使用方法：doxygen Doxyfile
+
+# ===========================================================================
+# 项目设置
+# ===========================================================================
+
+PROJECT_NAME           = "Zephyr 事件驱动项目模板"
+PROJECT_NUMBER         = "1.0.0"
+PROJECT_BRIEF          = "基于 Zephyr RTOS 的高性能事件驱动应用模板"
+PROJECT_LOGO         = ""
+
+OUTPUT_DIRECTORY       = docs/api
+
+# ===========================================================================
+# 输入设置
+# ===========================================================================
+
+INPUT                  = src \
+                         README.md \
+                         docs
+
+INPUT_ENCODING         = UTF-8
+
+# 递归扫描子目录
+RECURSIVE              = YES
+
+# 排除的目录和文件
+EXCLUDE                = build \
+                         .git \
+                         docs/api
+
+EXCLUDE_SYMLINKS       = NO
+
+# 排除的模式
+EXCLUDE_PATTERNS       = *.c \
+                         */example_*.c \
+                         */example_*.h
+
+# 排除符号
+EXCLUDE_SYMBOLS        = 
+
+# 示例文件目录
+EXAMPLE_PATH           = src/modules
+
+# 示例模式
+EXAMPLE_PATTERNS       = *.c \
+                         *.h
+
+# 递归扫描示例
+EXAMPLE_RECURSIVE      = NO
+
+# ===========================================================================
+# 输出设置
+# ===========================================================================
+
+# 生成 HTML 文档
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+HTML_COLORSTYLE        = LIGHT
+
+# 生成 LaTeX 文档（PDF 需要 LaTeX 环境）
+GENERATE_LATEX         = NO
+
+# 生成 RTF 文档
+GENERATE_RTF           = NO
+
+# 生成 XML 文档
+GENERATE_XML           = NO
+
+# 生成 man 页面
+GENERATE_MAN           = NO
+
+# 生成 DocBook 文档
+GENERATE_DOCBOOK       = NO
+
+# 生成 Eclipse 帮助文档
+GENERATE_HTMLHELP      = NO
+
+# 生成 CHM 文件
+GENERATE_CHI           = NO
+
+# 生成 SQL 数据库文档
+GENERATE_SQLITE3       = NO
+
+# ===========================================================================
+# HTML 选项
+# ===========================================================================
+
+HTML_HEADER            = 
+HTML_FOOTER            = 
+HTML_STYLESHEET        = 
+HTML_EXTRA_STYLESHEET  = 
+HTML_EXTRA_FILES       = 
+HTML_COLORSTYLE_HUE    = 220
+HTML_COLORSTYLE_SAT    = 100
+HTML_COLORSTYLE_GAMMA  = 80
+HTML_TIMESTAMP         = YES
+HTML_DYNAMIC_MENUS     = YES
+HTML_DYNAMIC_SECTIONS  = NO
+HTML_CODE_FOLDING      = YES
+
+# ===========================================================================
+# 文档内容设置
+# ===========================================================================
+
+# 提取所有文档（即使没有注释）
+EXTRACT_ALL            = YES
+
+# 提取私有成员
+EXTRACT_PRIVATE        = NO
+
+# 提取静态成员
+EXTRACT_STATIC         = YES
+
+# 提取局部类
+EXTRACT_LOCAL_CLASSES  = YES
+
+# 提取局部方法
+EXTRACT_LOCAL_METHODS  = NO
+
+# 提取匿名命名空间成员
+EXTRACT_ANON_NSPACES   = NO
+
+# 隐藏未文档化的成员
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_UNDOC_RELATIONS   = YES
+
+# 隐藏依赖关系
+HIDE_DEPENDENCIES      = NO
+
+# 隐藏包含关系
+HIDE_INCLUDE_GRAPH     = NO
+HIDE_DIRECT_DEP_GRAPH  = NO
+
+# 隐藏导航栏
+HIDE_SCOPE_NAMES       = NO
+
+# 显示包含文件
+SHOW_INCLUDE_FILES     = YES
+
+# 显示包含图
+HAVE_DOT               = NO
+
+# 生成调用图
+CALL_GRAPH             = NO
+
+# 生成调用者图
+CALLER_GRAPH           = NO
+
+# 生成包含图
+INCLUDE_GRAPH          = YES
+
+# 生成被包含图
+INCLUDED_BY_GRAPH      = YES
+
+# 生成类图
+CLASS_GRAPH            = YES
+
+# 生成协作图
+COLLABORATION_GRAPH    = NO
+
+# 生成组关系图
+GROUP_GRAPHS           = YES
+
+# 生成 UML 图
+UML_LOOK               = NO
+
+# 生成模板实例化图
+TEMPLATE_RELATIONS     = NO
+
+# 显示目录
+SHOW_FILES             = YES
+
+# 显示文件成员
+SHOW_FILE_MEMBER       = YES
+
+# 显示文件成员列表
+SHOW_FILES             = YES
+
+# 显示命名空间成员
+SHOW_NAMESPACES        = YES
+
+# ===========================================================================
+# 注释处理
+# ===========================================================================
+
+# Javadoc 风格
+JAVADOC_AUTOBRIEF      = YES
+
+# Qt 风格
+QT_AUTOBRIEF           = NO
+
+# 生成待办事项列表
+GENERATE_TODOLIST      = YES
+
+# 生成测试列表
+GENERATE_TESTLIST      = YES
+
+# 生成错误列表
+GENERATE_BUGLIST       = YES
+
+# 生成废弃列表
+GENERATE_DEPRECATEDLIST= YES
+
+# 启用所有文档
+ENABLED_SECTIONS       = 
+
+# 最大初始化行数
+MAX_INITIALIZER_LINES  = 30
+
+# 显示用作类成员的文件
+SHOW_USED_FILES        = YES
+
+# 显示文件引用
+SHOW_FILES             = YES
+
+# 显示文件成员
+SHOW_FILE_MEMBER       = YES
+
+# ===========================================================================
+# 预处理器设置
+# ===========================================================================
+
+# 启用宏展开
+MACRO_EXPANSION        = YES
+
+# 仅展开预定义宏
+EXPAND_ONLY_PREDEF     = YES
+
+# 搜索路径
+SEARCH_INCLUDES        = YES
+
+# 包含路径
+INCLUDE_PATH           = 
+
+# 包含文件模式
+INCLUDE_FILE_PATTERNS  = 
+
+# 预定义宏
+PREDEFINED             = __ZEPHYR__=1 \
+                         CONFIG_SYS_LOG_LEVEL=3 \
+                         CONFIG_EVENT_QUEUE_SIZE=64 \
+                         CONFIG_MAX_MODULES=16 \
+                         __packed= \
+                         __aligned(x)= \
+                         __maybe_unused= \
+                         __unused= \
+                         __printflike(x,y)= \
+                         ARG_UNUSED(x)=(void)x
+
+# 展开宏定义
+EXPAND_AS_DEFINED      = 
+
+# 跳过函数宏
+SKIP_FUNCTION_MACROS   = YES
+
+# ===========================================================================
+# 搜索设置
+# ===========================================================================
+
+# 启用搜索
+SEARCHENGINE           = YES
+
+# 服务器搜索
+SERVER_BASED_SEARCH    = NO
+
+# 外部搜索
+EXTERNAL_SEARCH        = NO
+
+# 搜索外部二进制文件
+SEARCHENGINE_URL       = 
+
+# 外部搜索索引文件
+EXTERNAL_SEARCH_ID     = 
+
+# 额外搜索索引
+EXTRA_SEARCH_MAPPINGS  = 
+
+# ===========================================================================
+# 运行警告
+# ===========================================================================
+
+# 警告模式
+WARN_IF_UNDOCUMENTED   = YES
+
+# 警告文档错误
+WARN_IF_DOC_ERROR      = YES
+
+# 警告未文档化的参数
+WARN_IF_INCOMPLETE_DOC = YES
+
+# 警告未使用的参数
+WARN_IF_UNDOCUMENTED_PARAM = YES
+
+# 警告 NoParam 命令
+WARN_IF_NO_PARAM_COMMENTS = YES
+
+# 警告格式错误
+WARN_FORMAT            = "$file:$line: $text"
+
+# 警告日志文件
+WARN_LOGFILE           = 
+
+# 警告错误限制
+WARN_AS_ERROR          = NO
+
+# 静默模式
+QUIET                  = NO
+
+# 警告模式
+WARNINGS               = YES
+
+# 警告错误模式
+WARN_IF_UNDOCUMENTED   = YES
+
+# ===========================================================================
+# 其他设置
+# ===========================================================================
+
+# 使用 tab 大小
+TAB_SIZE               = 4
+
+# 别名
+ALIASES                = 
+
+# 优化输出
+OPTIMIZE_OUTPUT_FOR_C  = YES
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+OPTIMIZE_OUTPUT_SLICE  = NO
+
+# 扩展支持
+EXTENSION_MAPPING      = 
+
+# Markdown 支持
+MARKDOWN_SUPPORT       = YES
+
+# 自动链接
+AUTOLINK_SUPPORT       = YES
+
+# 使用 Freetype
+USE_PDFLATEX           = NO
+
+# 使用 dot 工具
+HAVE_DOT               = NO
+
+# Dot 路径
+DOT_PATH               = 
+
+# Dot 文件依赖
+DOTFILE_DIRS           = 
+
+# MSC 文件依赖
+MSCFILE_DIRS           = 
+
+# Dia 文件依赖
+DIAFILE_DIRS           = 
+
+# PlantUML 路径
+PLANTUML_JAR_PATH      = 
+
+# PlantUML 配置文件
+PLANTUML_CFG_FILE      = 
+
+# PlantUML 包含文件
+PLANTUML_INCLUDE_PATH  = 
+
+# Dot 图清理
+DOT_CLEANUP            = YES

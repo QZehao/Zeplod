@@ -1,0 +1,85 @@
+{
+    // VSCode 设置 - Zephyr 项目
+    "version": "2.0.0",
+
+    // C/C++  IntelliSense 配置
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.includePath": [
+        "${env:ZEPHYR_BASE}/**",
+        "${env:ZEPHYR_SDK_INSTALL_DIR}/**",
+        "${workspaceFolder}/**"
+    ],
+    "C_Cpp.default.defines": [
+        "__ZEPHYR__=1",
+        "CONFIG_SYS_LOG_LEVEL=3"
+    ],
+    "C_Cpp.default.compilerPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.cppStandard": "c++17",
+
+    // 格式化
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.rulers": [100],
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+
+    // 文件关联
+    "files.associations": {
+        "*.h": "c",
+        "Kconfig": "kconfig",
+        "*.dts": "dts",
+        "*.dtsi": "dts"
+    },
+
+    // 排除的文件
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/build": true,
+        "**/build_*": true,
+        "**/zephyr": true,
+        "**/.west": true
+    },
+
+    // 搜索排除
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/build": true,
+        "**/build_*": true,
+        "**/.git": true,
+        "**/zephyr": true
+    },
+
+    // 终端设置
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.osx": "zsh",
+
+    // 代码片段
+    "C_Cpp.commentContinuationPatterns": ["/**"],
+
+    // 调试配置
+    "launch": {
+        "configurations": [
+            {
+                "name": "QEMU Debug",
+                "type": "cortex-debug",
+                "request": "launch",
+                "servertype": "qemu",
+                "configFiles": [
+                    "${workspaceFolder}/build/zephyr/zephyr.elf"
+                ],
+                "svdFile": "${env:ZEPHYR_BASE}/boards/arm/native_posix/native_posix.svd",
+                "preLaunchTask": "west build"
+            }
+        ]
+    },
+    "files.encoding": "utf8"
+}

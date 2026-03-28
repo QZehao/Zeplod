@@ -1,0 +1,30 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "Drivers/STM32F3xx_HAL_Driver/Inc",
+                "Core/Inc",
+                "Drivers/CMSIS/Include",
+                "Drivers/CMSIS/RTOS2/Include",
+                "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2",
+                "Drivers/ulog/src"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "STM32F373xC",
+                "USE_FULL_LL_DRIVER",
+                "USE_HAL_DRIVER",
+                "ULOG_ENABLED"
+            ],
+            "compilerPath": "C:/MyApp/mingw64//bin/gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "windows-gcc-x64"
+        }
+    ],
+    "version": 4
+}

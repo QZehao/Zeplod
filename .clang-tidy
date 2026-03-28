@@ -1,0 +1,65 @@
+# clang-tidy 配置
+# 用于静态代码分析和检查
+# 使用方法：clang-tidy <file> -- -I<include_path>
+
+---
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-identifier-length
+
+# 检查选项
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: snake_case
+  - key: readability-identifier-naming.FunctionCase
+    value: snake_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: ''
+  - key: readability-identifier-naming.FunctionSuffix
+    value: ''
+  
+  # 最小函数长度
+  - key: readability-function-size.LineThreshold
+    value: 100
+  - key: readability-function-size.StatementThreshold
+    value: 50
+  - key: readability-function-size.ParameterThreshold
+    value: 6
+
+  # 最小类大小
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 25
+
+# 格式化输出
+FormatStyle: file
+
+# 头文件过滤
+HeaderFilterRegex: '.*'
+
+# 分析选项
+AnalyzeTemporaryDtors: false
+
+# 统计选项
+Stats: false

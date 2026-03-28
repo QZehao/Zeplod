@@ -1,0 +1,11 @@
+{
+  "configs": {
+    "${workspaceFolder}\\Discharge_fsm\\Battery_charging_and_discharging.ewp": "Battery_charging_and_discharging"
+  },
+  "project": {
+    "path": "${workspaceFolder}\\Discharge_fsm\\Battery_charging_and_discharging.ewp"
+  },
+  "workbench": {
+    "path": "C:\\MyApp\\iar\\ewarm-9.70.1"
+  }
+}

@@ -1,0 +1,63 @@
+# EditorConfig 配置
+# 统一不同编辑器的代码风格
+# 更多信息：https://editorconfig.org
+
+root = true
+
+# 默认配置
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# C/C++ 源文件
+[*.{c,h,cpp,hpp}]
+indent_size = 4
+trim_trailing_whitespace = true
+
+# CMake 文件
+[CMakeLists.txt]
+indent_style = space
+indent_size = 2
+
+# Kconfig 文件
+[Kconfig]
+indent_style = space
+indent_size = 2
+
+# 设备树文件
+[*.{dts,dtsi}]
+indent_style = space
+indent_size = 4
+
+# Shell 脚本
+[*.{sh,bash}]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+
+# Python 脚本
+[*.py]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+
+# 配置文件
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+# 文档文件
+[*.{md,rst,txt}]
+trim_trailing_whitespace = false
+
+# 批处理文件
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# PowerShell 文件
+[*.ps1]
+end_of_line = lf
+indent_size = 4

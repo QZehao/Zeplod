@@ -1,0 +1,109 @@
+{
+    // VSCode 调试配置
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "QEMU Cortex-M3",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "qemu",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "svdFile": "${env:ZEPHYR_BASE}/boards/arm/native_posix/native_posix.svd",
+            "runToEntryPoint": "main",
+            "watchpointExpression": "",
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "qemuPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/qemu/bin/qemu-system-arm",
+            "preLaunchTask": "west build",
+            "postRestartTask": "",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "QEMU RISC-V 32",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "qemu",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "runToEntryPoint": "main",
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/riscv32-zephyr-elf/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/riscv32-zephyr-elf/bin/riscv32-zephyr-elf-gdb",
+            "qemuPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/qemu/bin/qemu-system-riscv32",
+            "preLaunchTask": "west build",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "OpenOCD Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "svdFile": "${env:ZEPHYR_BASE}/boards/arm/nucleo_f429zi/nucleo_f429zi.svd",
+            "runToEntryPoint": "main",
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "openOCDPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/tools/bin/openocd",
+            "openOCDConfigFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f4x.cfg"
+            ],
+            "preLaunchTask": "west build",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "J-Link Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "jlink",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "runToEntryPoint": "main",
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "jlinkPath": "JLinkGDBServerCLExe",
+            "jlinkDevice": "Cortex-M4",
+            "preLaunchTask": "west build",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "PyOCD Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "pyocd",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "runToEntryPoint": "main",
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "pyocdTarget": "stm32f429zi",
+            "preLaunchTask": "west build",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        },
+        {
+            "name": "Attach to GDB Server",
+            "type": "cortex-debug",
+            "request": "attach",
+            "servertype": "external",
+            "configFiles": [
+                "${workspaceFolder}/build/zephyr/zephyr.elf"
+            ],
+            "armToolchainPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "gdbTarget": "localhost:3333",
+            "cwd": "${workspaceFolder}",
+            "terminal": "integrated"
+        }
+    ]
+}

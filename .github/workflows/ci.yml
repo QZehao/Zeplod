@@ -1,0 +1,196 @@
+# GitHub Actions CI/CD 工作流
+name: Zephyr Build CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # 每周日运行一次
+    - cron: '0 0 * * 0'
+
+env:
+  ZEPHYR_VERSION: 3.6.0
+  BUILD_TYPE: release
+
+jobs:
+  # ===========================================================================
+  # 代码质量检查
+  # ===========================================================================
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-14
+
+      - name: 检查代码格式
+        run: |
+          if [ -f .clang-format ]; then
+            find src -name "*.c" -o -name "*.h" | xargs clang-format-14 --style=file --dry-run --Werror
+          else
+            echo "未找到 .clang-format 文件，跳过格式检查"
+          fi
+
+      - name: 检查 Shell 脚本
+        run: |
+          if command -v shellcheck &> /dev/null; then
+            find scripts -name "*.sh" | xargs shellcheck || true
+          fi
+
+  # ===========================================================================
+  # 构建任务
+  # ===========================================================================
+  build-native:
+    name: Build (Native POSIX)
+    runs-on: ubuntu-22.04
+    needs: code-quality
+    container:
+      image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
+      options: --user root
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          apt-get update
+          apt-get install -y cmake ninja-build python3-pip
+
+      - name: 安装 West
+        run: pip3 install west
+
+      - name: 初始化 West
+        run: west init -l .
+
+      - name: 更新模块
+        run: west update
+
+      - name: 导出 Zephyr CMake 包
+        run: west zephyr-export
+
+      - name: 构建 (Native POSIX)
+        run: |
+          west build -b native_posix --build-dir build_native
+          echo "构建成功！"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-native-${{ github.sha }}
+          path: build_native/zephyr/zephyr.elf
+          retention-days: 7
+
+  build-arm:
+    name: Build (ARM Cortex-M)
+    runs-on: ubuntu-22.04
+    needs: code-quality
+    container:
+      image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
+      options: --user root
+
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - nucleo_f429zi
+          - nucleo_f767zi
+          - disco_l475_iot1
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          apt-get update
+          apt-get install -y cmake ninja-build python3-pip
+
+      - name: 安装 West
+        run: pip3 install west
+
+      - name: 初始化 West
+        run: west init -l .
+
+      - name: 更新模块
+        run: west update
+
+      - name: 导出 Zephyr CMake 包
+        run: west zephyr-export
+
+      - name: 构建 (${{ matrix.board }})
+        run: |
+          west build -b ${{ matrix.board }} --build-dir build_${{ matrix.board }}
+          echo "构建成功：${{ matrix.board }}"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-${{ matrix.board }}-${{ github.sha }}
+          path: build_${{ matrix.board }}/zephyr/zephyr.bin
+          retention-days: 7
+
+  # ===========================================================================
+  # 文档生成
+  # ===========================================================================
+  docs:
+    name: Generate Documentation
+    runs-on: ubuntu-22.04
+    needs: code-quality
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: 生成文档
+        run: |
+          if [ -f Doxyfile ]; then
+            doxygen Doxyfile
+            echo "文档生成成功！"
+          else
+            echo "未找到 Doxyfile，跳过文档生成"
+          fi
+
+      - name: 上传文档
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/api/
+          retention-days: 7
+
+  # ===========================================================================
+  # 发布（仅标签）
+  # ===========================================================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-22.04
+    needs: [build-native, build-arm]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zephyr-*
+          merge-multiple: true
+          path: ./release/
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./release/**
+          generate_release_notes: true
+          draft: false

@@ -1,0 +1,107 @@
+{
+    // VSCode 构建任务配置
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "west build",
+            "type": "shell",
+            "command": "west build -b native_posix",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "使用 west 构建项目（native_posix）"
+        },
+        {
+            "label": "west build (clean)",
+            "type": "shell",
+            "command": "west build -b native_posix --clean",
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "detail": "清理并构建项目"
+        },
+        {
+            "label": "west flash",
+            "type": "shell",
+            "command": "west flash",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "烧录固件到开发板"
+        },
+        {
+            "label": "west debug",
+            "type": "shell",
+            "command": "west debug",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "启动调试会话"
+        },
+        {
+            "label": "west debugserver",
+            "type": "shell",
+            "command": "west debugserver",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "启动调试服务器（GDB）"
+        },
+        {
+            "label": "west build (custom board)",
+            "type": "shell",
+            "command": "west build -b ${input:boardName}",
+            "group": "build",
+            "problemMatcher": ["$gcc"],
+            "detail": "构建指定开发板"
+        },
+        {
+            "label": "format code",
+            "type": "shell",
+            "command": "find src -name '*.c' -o -name '*.h' | xargs clang-format -i",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "格式化代码"
+        },
+        {
+            "label": "generate docs",
+            "type": "shell",
+            "command": "doxygen Doxyfile",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "生成 API 文档"
+        },
+        {
+            "label": "west test",
+            "type": "shell",
+            "command": "west test",
+            "group": "test",
+            "problemMatcher": [],
+            "detail": "运行测试"
+        },
+        {
+            "label": "setup environment",
+            "type": "shell",
+            "command": "${input:setupScript}",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "设置 Zephyr 环境"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "boardName",
+            "type": "promptString",
+            "description": "输入开发板名称（如 nucleo_f429zi）"
+        },
+        {
+            "id": "setupScript",
+            "type": "pickString",
+            "description": "选择环境设置脚本",
+            "options": [
+                ".\\scripts\\setup_env.bat",
+                ".\\scripts\\setup_env.ps1",
+                "source ./scripts/setup_env.sh"
+            ],
+            "default": ".\\scripts\\setup_env.ps1"
+        }
+    ]
+}

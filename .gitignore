@@ -9,7 +9,7 @@ Makefile
 compile_commands.json
 
 # IDE
-.vscode/
+
 .idea/
 *.swp
 *.swo

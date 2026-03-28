@@ -1,0 +1,30 @@
+{
+    // VSCode 推荐扩展
+    "recommendations": [
+        // C/C++ 开发
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "marus25.cortex-debug",
+        
+        // Zephyr 支持
+        "zephyrproject-rtos.zephyr-ide",
+        
+        // 代码质量
+        "ms-vscode.cpptools-themes",
+        "xaver.clang-format",
+        "mitaki28.vscode-clang",
+        
+        // 文档
+        "cschlosser.doxdocgen",
+        "trond-snekvik.simple-rst",
+        
+        // 版本控制
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+        
+        // 其他工具
+        "ms-python.python",
+        "ms-iot.vscode-serial-monitor",
+        "actboy168.tasks"
+    ]
+}
