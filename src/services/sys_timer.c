@@ -35,10 +35,12 @@ LOG_MODULE_REGISTER(sys_timer, CONFIG_SYS_LOG_LEVEL);
 
 struct sys_timer {
     uint32_t magic;
+    uint32_t index;
+    bool thread_started;
     sys_timer_config_t config;
     sys_timer_status_t status;
     struct k_thread thread;
-    K_THREAD_STACK_MEMBER(stack, CONFIG_SYS_TIMER_STACK_SIZE);
+    K_KERNEL_STACK_MEMBER(stack, CONFIG_SYS_TIMER_STACK_SIZE);
     struct k_sem sem;
     uint32_t fire_count;
     uint32_t last_fire_time;
@@ -49,7 +51,7 @@ struct sys_timer {
 };
 
 typedef struct {
-    sys_timer_t timers[MAX_TIMERS];
+    struct sys_timer timers[MAX_TIMERS];
     uint32_t timer_count;
     struct k_mutex lock;
     bool initialized;
@@ -122,6 +124,7 @@ sys_timer_handle_t sys_timer_create(const sys_timer_config_t *config)
     timer->avg_latency_us = 0;
     timer->max_latency_us = 0;
     timer->is_allocated = true;
+    timer->thread_started = false;
 
     k_sem_init(&timer->sem, 0, 1);
 
@@ -171,6 +174,7 @@ int sys_timer_delete(sys_timer_handle_t timer)
 
     /* Clear timer */
     timer->is_allocated = false;
+    timer->thread_started = false;
     timer->config.callback = NULL;
     timer->config.user_data = NULL;
     g_sys_timer.timer_count--;
@@ -204,8 +208,9 @@ int sys_timer_start(sys_timer_handle_t timer)
 
     k_sem_give(&timer->sem);  /* Wake up thread */
 
-    if (k_thread_is_started(&timer->thread)) {
+    if (!timer->thread_started) {
         k_thread_start(&timer->thread);
+        timer->thread_started = true;
     }
 
     k_mutex_unlock(&g_sys_timer.lock);

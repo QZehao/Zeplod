@@ -33,7 +33,7 @@ typedef struct {
     example_module_uart_config_t config;
     module_status_t status;
     struct k_thread rx_thread;
-    K_THREAD_STACK_MEMBER(rx_stack, UART_THREAD_STACK_SIZE);
+    K_KERNEL_STACK_MEMBER(rx_stack, UART_THREAD_STACK_SIZE);
     const struct device *dev;
     uint8_t *rx_buffer;
     uint8_t *tx_buffer;

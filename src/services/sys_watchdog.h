@@ -11,6 +11,7 @@
 #ifndef SYS_WATCHDOG_H
 #define SYS_WATCHDOG_H
 
+#include <zephyr/kernel.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -43,9 +44,9 @@ typedef enum {
 } wdt_mode_t;
 
 /**
- * @brief Watchdog event callback
+ * @brief Watchdog user callback (before expiry); distinct from Zephyr wdt_callback_t
  */
-typedef void (*wdt_callback_t)(void *user_data);
+typedef void (*sys_wdt_user_cb_t)(void *user_data);
 
 /**
  * @brief Watchdog configuration
@@ -54,7 +55,7 @@ typedef struct {
     wdt_mode_t mode;
     uint32_t timeout_ms;
     uint32_t feed_margin_ms;    /* Feed before this time to avoid race */
-    wdt_callback_t pre_expire_callback;
+    sys_wdt_user_cb_t pre_expire_callback;
     void *callback_user_data;
     bool reset_on_expire;
     const char *name;

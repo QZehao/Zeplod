@@ -24,10 +24,6 @@ LOG_MODULE_REGISTER(example_module_a, CONFIG_SYS_LOG_LEVEL);
 #define EXAMPLE_MODULE_A_THREAD_PRIORITY  5
 #define EXAMPLE_MODULE_A_THREAD_STACK_SIZE  1024
 
-/* Event types for this module */
-#define EVENT_TYPE_SENSOR_DATA    10
-#define EVENT_TYPE_SENSOR_CONFIG  11
-
 /* Control commands */
 #define CMD_SET_RATE    1
 #define CMD_GET_RATE    2
@@ -47,8 +43,8 @@ typedef struct {
     example_module_a_config_t config;
     module_status_t status;
     struct k_thread thread;
-    K_THREAD_STACK_MEMBER(stack, EXAMPLE_MODULE_A_THREAD_STACK_SIZE);
-    struct k_sem data_sem;
+    K_KERNEL_STACK_MEMBER(stack, EXAMPLE_MODULE_A_THREAD_STACK_SIZE);
+    struct k_mutex buffer_lock;
     sensor_sample_t buffer[EXAMPLE_MODULE_A_BUFFER_SIZE];
     uint32_t write_idx;
     uint32_t read_idx;
@@ -94,7 +90,7 @@ int example_module_a_init(void *config)
     g_module_a.write_idx = 0;
     g_module_a.read_idx = 0;
 
-    k_sem_init(&g_module_a.data_sem, 0, 1);
+    k_mutex_init(&g_module_a.buffer_lock);
 
     /* Register event types */
     event_register_type(EVENT_TYPE_SENSOR_DATA, "sensor_data");
@@ -144,8 +140,7 @@ int example_module_a_stop(void)
     }
 
     g_module_a.status = MODULE_STATUS_STOPPED;
-    k_sem_give(&g_module_a.data_sem);  /* Wake up thread */
-    
+
     k_thread_abort(&g_module_a.thread);
 
     /* Unsubscribe from events */
@@ -211,10 +206,12 @@ int example_module_a_control(int cmd, void *arg)
             return 0;
 
         case CMD_RESET:
+            k_mutex_lock(&g_module_a.buffer_lock, K_FOREVER);
             g_module_a.write_idx = 0;
             g_module_a.read_idx = 0;
             g_module_a.sample_count = 0;
             g_module_a.error_count = 0;
+            k_mutex_unlock(&g_module_a.buffer_lock);
             return 0;
 
         default:
@@ -235,7 +232,7 @@ int example_module_a_get_data(void *data, size_t len)
     size_t samples_to_read = len / sizeof(sensor_sample_t);
     size_t samples_read = 0;
 
-    k_mutex_lock(&g_module_a.data_sem, K_FOREVER);
+    k_mutex_lock(&g_module_a.buffer_lock, K_FOREVER);
 
     while (samples_read < samples_to_read &&
            g_module_a.read_idx != g_module_a.write_idx) {
@@ -246,7 +243,7 @@ int example_module_a_get_data(void *data, size_t len)
         samples_read++;
     }
 
-    k_mutex_unlock(&g_module_a.data_sem);
+    k_mutex_unlock(&g_module_a.buffer_lock);
     return (int)(samples_read * sizeof(sensor_sample_t));
 }
 
@@ -291,16 +288,17 @@ static void module_a_thread_func(void *p1, void *p2, void *p3)
             };
 
             /* Store in buffer */
+            k_mutex_lock(&g_module_a.buffer_lock, K_FOREVER);
             g_module_a.buffer[g_module_a.write_idx] = sample;
             g_module_a.write_idx = (g_module_a.write_idx + 1) % EXAMPLE_MODULE_A_BUFFER_SIZE;
             g_module_a.sample_count++;
+            k_mutex_unlock(&g_module_a.buffer_lock);
 
             /* Publish event */
             publish_sensor_data(simulated_value, now);
 
             last_sample_time = now;
             g_module_a.data_ready = true;
-            k_sem_give(&g_module_a.data_sem);
 
             LOG_DBG("Sample acquired: value=%d, count=%d", 
                     simulated_value, g_module_a.sample_count);
@@ -332,7 +330,18 @@ static void publish_sensor_data(int32_t value, uint32_t timestamp)
  * Module Interface Declaration
  * ============================================================================= */
 
-DECLARE_MODULE_INTERFACE(example_module_a);
+const module_interface_t example_module_a_interface = {
+    .name = "example_module_a",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .init = example_module_a_init,
+    .start = example_module_a_start,
+    .stop = example_module_a_stop,
+    .shutdown = example_module_a_shutdown,
+    .on_event = example_module_a_on_event,
+    .get_status = example_module_a_get_status,
+    .control = example_module_a_control
+};
 
 const module_interface_t *example_module_a_get_interface(void)
 {

@@ -40,7 +40,7 @@ typedef struct {
     example_module_gpio_config_t config;
     module_status_t status;
     struct k_thread thread;
-    K_THREAD_STACK_MEMBER(stack, GPIO_THREAD_STACK_SIZE);
+    K_KERNEL_STACK_MEMBER(stack, GPIO_THREAD_STACK_SIZE);
     const struct gpio_dt_spec *led;
     const struct gpio_dt_spec *button;
     struct gpio_callback button_cb;

@@ -48,7 +48,7 @@ typedef struct {
     wdt_config_t config;
     wdt_stats_t stats;
     struct k_thread monitor_thread;
-    K_THREAD_STACK_MEMBER(monitor_stack, 2048);
+    K_KERNEL_STACK_MEMBER(monitor_stack, 2048);
     struct k_mutex lock;
     struct k_sem feed_sem;
     thread_monitor_t threads[MAX_MONITORED_THREADS];

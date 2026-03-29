@@ -11,7 +11,6 @@
 #include "sys_memory.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/heap.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
@@ -26,7 +25,7 @@ LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
 
 #define DEFAULT_POOL_SIZE  CONFIG_SYS_MEMORY_POOL_SIZE
 #define MAX_ALLOCATIONS    256
-#define MEMORY_MAGIC       0xMEM0
+#define MEMORY_MAGIC       0x4D454D30U /* "MEM0" */
 
 /* =============================================================================
  * Internal Data Structures

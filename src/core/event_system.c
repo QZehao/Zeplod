@@ -33,7 +33,7 @@ typedef struct {
     bool                    initialized;
     bool                    running;
     struct k_thread         dispatcher_thread;
-    K_THREAD_STACK_MEMBER(dispatcher_stack, CONFIG_EVENT_DISPATCHER_STACK_SIZE);
+    K_KERNEL_STACK_MEMBER(dispatcher_stack, CONFIG_EVENT_DISPATCHER_STACK_SIZE);
     struct k_msgq          *event_queue;
     event_type_entry_t      event_types[MAX_EVENT_TYPES];
     uint32_t                total_events;

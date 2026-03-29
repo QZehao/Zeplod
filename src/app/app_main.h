@@ -11,6 +11,9 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

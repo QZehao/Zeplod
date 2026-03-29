@@ -50,6 +50,11 @@ extern "C" {
  */
 typedef uint8_t event_type_t;
 
+/** Well-known event type IDs (register names in modules as needed) */
+#define EVENT_TYPE_GENERIC        1U
+#define EVENT_TYPE_SENSOR_DATA    10U
+#define EVENT_TYPE_SENSOR_CONFIG  11U
+
 /**
  * @brief Event priority levels
  */

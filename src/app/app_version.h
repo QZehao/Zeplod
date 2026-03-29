@@ -11,6 +11,7 @@
 #ifndef APP_VERSION_H
 #define APP_VERSION_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 

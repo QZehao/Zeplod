@@ -9,6 +9,7 @@
  */
 
 #include "event_dispatcher.h"
+#include <zephyr/sys/time_units.h>
 #include "event_queue.h"
 #include <zephyr/logging/log.h>
 
@@ -31,7 +32,7 @@ typedef struct {
     dispatcher_config_t config;
     dispatcher_stats_t stats;
     struct k_thread thread;
-    K_THREAD_STACK_MEMBER(stack, DEFAULT_STACK_SIZE);
+    K_KERNEL_STACK_MEMBER(stack, DEFAULT_STACK_SIZE);
     event_filter_t filter;
     void *filter_user_data;
     struct k_mutex lock;
@@ -320,7 +321,8 @@ static void process_event(const event_t *event)
     event_status_t status = event_dispatch_internal(event);
 
     uint64_t end_time = k_cycle_get_64();
-    uint32_t latency_us = (uint32_t)((end_time - start_time) * 1000000 / sys_clock_hw_cycles_per_sec);
+    uint32_t latency_us = (uint32_t)((end_time - start_time) * 1000000ULL /
+                                     sys_clock_hw_cycles_per_sec());
 
     /* Update statistics */
     if (g_dispatcher.config.enable_stats) {

@@ -29,6 +29,7 @@ extern "C" {
 typedef enum {
     MODULE_STATUS_UNINITIALIZED = 0,
     MODULE_STATUS_INITIALIZING,
+    MODULE_STATUS_INITIALIZED,
     MODULE_STATUS_RUNNING,
     MODULE_STATUS_STOPPED,
     MODULE_STATUS_ERROR,
@@ -111,7 +112,8 @@ typedef struct {
 #define MODULE_VERSION_PATCH(v)  ((v) & 0xFF)
 
 #define DECLARE_MODULE_INTERFACE(name) \
-    static const module_interface_t name##_interface = { \
+    extern const module_interface_t name##_interface; \
+    const module_interface_t name##_interface = { \
         .name = #name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
