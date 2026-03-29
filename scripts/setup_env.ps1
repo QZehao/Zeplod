@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # =============================================================================
 # Zephyr 环境设置脚本 (Windows PowerShell)
 # =============================================================================
@@ -6,6 +6,13 @@
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
+
+# Optional: Zephyr west 通常安装在 zephyrproject 的 venv 中
+$ZephyrVenvActivate = "D:\Code\1-github-code\zephyrproject\.venv\Scripts\Activate.ps1"
+if (Test-Path $ZephyrVenvActivate) {
+    . $ZephyrVenvActivate
+    Write-Host "已激活 west 虚拟环境: $ZephyrVenvActivate"
+}
 
 Write-Host "============================================"
 Write-Host "Zephyr 环境设置"

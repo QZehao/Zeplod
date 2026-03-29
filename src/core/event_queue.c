@@ -30,6 +30,11 @@ typedef struct {
 /* Static queue control blocks for tracking stats */
 static event_queue_cb_t g_queue_cb[CONFIG_EVENT_QUEUE_SIZE > 256 ? 2 : 1];
 
+static void msgq_get_attrs_const(const struct k_msgq *queue, struct k_msgq_attrs *attrs)
+{
+    k_msgq_get_attrs((struct k_msgq *)queue, attrs);
+}
+
 /* =============================================================================
  * Queue API Implementation
  * ============================================================================= */
@@ -135,22 +140,34 @@ event_status_t event_queue_dequeue(struct k_msgq *queue,
 
 bool event_queue_is_empty(const struct k_msgq *queue)
 {
-    return k_msgq_num_used_get(queue) == 0;
+    struct k_msgq_attrs attrs;
+
+    msgq_get_attrs_const(queue, &attrs);
+    return attrs.used_msgs == 0U;
 }
 
 bool event_queue_is_full(const struct k_msgq *queue)
 {
-    return k_msgq_num_used_get(queue) == k_msgq_max_msgs_get(queue);
+    struct k_msgq_attrs attrs;
+
+    msgq_get_attrs_const(queue, &attrs);
+    return attrs.used_msgs >= attrs.max_msgs;
 }
 
 uint32_t event_queue_depth(const struct k_msgq *queue)
 {
-    return k_msgq_num_used_get(queue);
+    struct k_msgq_attrs attrs;
+
+    msgq_get_attrs_const(queue, &attrs);
+    return attrs.used_msgs;
 }
 
 uint32_t event_queue_capacity(const struct k_msgq *queue)
 {
-    return k_msgq_max_msgs_get(queue);
+    struct k_msgq_attrs attrs;
+
+    msgq_get_attrs_const(queue, &attrs);
+    return attrs.max_msgs;
 }
 
 void event_queue_purge(struct k_msgq *queue)
