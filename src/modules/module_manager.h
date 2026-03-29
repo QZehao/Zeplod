@@ -103,6 +103,11 @@ int module_manager_shutdown(void);
  * @param config Module configuration
  * @param module_id Output: assigned module ID
  * @return 0 on success, negative error code on failure
+ *
+ * @note init() is invoked while the module manager mutex is held. Do not call
+ *       any module_manager_* API from init (deadlock). If init exceeds
+ *       CONFIG_MODULE_INIT_TIMEOUT_MS (when > 0), registration fails and
+ *       shutdown() is invoked if non-NULL.
  */
 int module_manager_register(const module_interface_t *interface,
                             void *config,
