@@ -108,6 +108,79 @@ ZTEST(test_event_queue, test_queue_full)
 }
 
 /**
+ * @brief 测试 DROP_LOWEST：丢弃队列中优先级最低的一条（同优先级 FIFO 最旧）
+ */
+ZTEST(test_event_queue, test_queue_overflow_drop_lowest)
+{
+    struct k_msgq test_queue;
+    char buffer[3 * sizeof(event_t)];
+    event_status_t status;
+    event_t out;
+
+    event_queue_init(&test_queue, buffer, 3);
+
+    event_t e1 = { .type = 1, .priority = EVENT_PRIORITY_NORMAL };
+    event_t e2 = { .type = 2, .priority = EVENT_PRIORITY_NORMAL };
+    event_t e3 = { .type = 3, .priority = EVENT_PRIORITY_NORMAL };
+    event_t hi = { .type = 99, .priority = EVENT_PRIORITY_HIGH };
+
+    status = event_queue_enqueue(&test_queue, &e1, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, "入队 e1");
+    status = event_queue_enqueue(&test_queue, &e2, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, "入队 e2");
+    status = event_queue_enqueue(&test_queue, &e3, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, "入队 e3");
+
+    status = event_queue_enqueue(&test_queue, &hi, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, "高优先级应挤掉队列中最低/最旧的一条");
+
+    zassert_equal(event_queue_depth(&test_queue), 3, "深度仍为 3");
+
+    status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, "出队 1");
+    zassert_equal(out.type, 2, "应丢弃最旧 NORMAL，保留 e2");
+
+    status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
+    zassert_equal(out.type, 3, "e3");
+
+    status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
+    zassert_equal(out.type, 99, "高优先级事件应在队尾入队");
+}
+
+/**
+ * @brief 测试 DROP_LOWEST：新事件比队列中最差事件还低时丢弃新事件
+ */
+ZTEST(test_event_queue, test_queue_overflow_drop_lowest_reject_worse)
+{
+    struct k_msgq test_queue;
+    char buffer[3 * sizeof(event_t)];
+    event_status_t status;
+    event_t out;
+
+    event_queue_init(&test_queue, buffer, 3);
+
+    for (int i = 0; i < 3; i++) {
+        event_t hi = { .type = (uint32_t)(10 + i), .priority = EVENT_PRIORITY_HIGH };
+
+        status = event_queue_enqueue(&test_queue, &hi, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+        zassert_equal(status, EVENT_OK, "填满 HIGH");
+    }
+
+    event_t lo = { .type = 20, .priority = EVENT_PRIORITY_LOW };
+
+    status = event_queue_enqueue(&test_queue, &lo, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_ERR_QUEUE_FULL, "新事件更差时应拒绝入队");
+
+    zassert_equal(event_queue_depth(&test_queue), 3, "队列内容不变");
+
+    for (int t = 10; t <= 12; t++) {
+        status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
+        zassert_equal(status, EVENT_OK, "出队");
+        zassert_equal((int)out.type, t, "仍为原 HIGH 事件");
+    }
+}
+
+/**
  * @brief 测试队列清空
  */
 ZTEST(test_event_queue, test_queue_purge)

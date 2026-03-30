@@ -84,6 +84,10 @@ event_status_t event_queue_init(struct k_msgq *queue, void *buffer, size_t capac
  * @param policy 溢出处理策略
  * @param timeout 等待超时时间
  * @return EVENT_OK 成功，其他错误码见 event_status_t
+ *
+ * @note QUEUE_OVERFLOW_DROP_LOWEST：在队列满时排空并丢弃 priority 数值最大的一条（同值则丢弃 FIFO 最旧）；
+ *       若新事件比队列中最差事件还低，则丢弃新事件。需线程上下文，不可在 ISR 中使用。
+ *       实现会短暂排空队列再回灌，请避免对同一 k_msgq 并发使用裸 k_msgq_* 与 DROP_LOWEST 混用。
  */
 event_status_t event_queue_enqueue(struct k_msgq *queue,
                                     const event_t *event,

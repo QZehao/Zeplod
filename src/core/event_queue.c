@@ -15,6 +15,7 @@
 
 #include "event_queue.h"
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(event_queue, CONFIG_SYS_LOG_LEVEL);
 
@@ -32,10 +33,143 @@ typedef struct {
     queue_stats_t stats;        /**< 队列统计信息 */
     uint32_t capacity;          /**< 队列容量 */
     struct k_mutex stats_lock;  /**< 保护统计信息的互斥锁 */
+    struct k_mutex reorder_lock; /**< DROP_LOWEST 排空/回灌时与并发入队互斥 */
 } event_queue_cb_t;
 
 /* 静态队列控制块数组，用于跟踪统计信息 */
 static event_queue_cb_t g_queue_cb[CONFIG_EVENT_QUEUE_SIZE > 256 ? 2 : 1];
+
+/**
+ * DROP_LOWEST 使用的临时缓冲（与 CONFIG_EVENT_QUEUE_SIZE 上限一致）
+ */
+static event_t g_drop_lowest_scratch[CONFIG_EVENT_QUEUE_SIZE];
+
+static void event_free_queued_payload(event_t *ev)
+{
+    if (ev->is_dynamic && ev->data != NULL) {
+        k_free(ev->data);
+        ev->data = NULL;
+    }
+}
+
+/**
+ * 队列已满时：丢弃队列中优先级最低的一条（priority 数值最大；相等则 FIFO 最旧），再入队 event。
+ * 若 event 比队列中最差的一条还差，则丢弃 event（不入队）。
+ */
+static event_status_t enqueue_drop_lowest(struct k_msgq *queue,
+                                          const event_t *event,
+                                          k_timeout_t timeout,
+                                          event_queue_cb_t *cb)
+{
+    if (k_is_in_isr()) {
+        LOG_WRN("QUEUE_OVERFLOW_DROP_LOWEST is not supported from ISR");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    struct k_msgq_attrs attrs;
+
+    k_msgq_get_attrs(queue, &attrs);
+
+    if (attrs.max_msgs > ARRAY_SIZE(g_drop_lowest_scratch)) {
+        LOG_ERR("Queue capacity exceeds DROP_LOWEST scratch");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+
+    k_msgq_get_attrs(queue, &attrs);
+    uint32_t n = attrs.used_msgs;
+
+    if (n < attrs.max_msgs) {
+        int pret = k_msgq_put(queue, event, timeout);
+
+        k_mutex_unlock(&cb->reorder_lock);
+
+        if (pret != 0) {
+            if (pret == -ENOMSG) {
+                return EVENT_ERR_QUEUE_FULL;
+            }
+            return EVENT_ERR_TIMEOUT;
+        }
+
+        k_mutex_lock(&cb->stats_lock, K_FOREVER);
+        cb->stats.enqueue_count++;
+        {
+            uint32_t depth = k_msgq_num_used_get(queue);
+
+            if (depth > cb->stats.high_watermark) {
+                cb->stats.high_watermark = depth;
+            }
+        }
+        k_mutex_unlock(&cb->stats_lock);
+
+        return EVENT_OK;
+    }
+
+    for (uint32_t i = 0; i < n; i++) {
+        if (k_msgq_get(queue, &g_drop_lowest_scratch[i], K_NO_WAIT) != 0) {
+            LOG_ERR("DROP_LOWEST drain failed at %u", i);
+            k_mutex_unlock(&cb->reorder_lock);
+            return EVENT_ERR_QUEUE_FULL;
+        }
+    }
+
+    uint32_t worst = 0U;
+
+    for (uint32_t i = 1U; i < n; i++) {
+        if (g_drop_lowest_scratch[i].priority > g_drop_lowest_scratch[worst].priority) {
+            worst = i;
+        }
+    }
+
+    if (event->priority > g_drop_lowest_scratch[worst].priority) {
+        for (uint32_t i = 0; i < n; i++) {
+            (void)k_msgq_put(queue, &g_drop_lowest_scratch[i], K_NO_WAIT);
+        }
+        k_mutex_unlock(&cb->reorder_lock);
+        k_mutex_lock(&cb->stats_lock, K_FOREVER);
+        cb->stats.drop_count++;
+        k_mutex_unlock(&cb->stats_lock);
+        LOG_DBG("Queue full, incoming lower than worst queued; drop newest");
+        return EVENT_ERR_QUEUE_FULL;
+    }
+
+    event_free_queued_payload(&g_drop_lowest_scratch[worst]);
+
+    k_mutex_lock(&cb->stats_lock, K_FOREVER);
+    cb->stats.drop_count++;
+    k_mutex_unlock(&cb->stats_lock);
+
+    for (uint32_t i = 0; i < n; i++) {
+        if (i != worst) {
+            (void)k_msgq_put(queue, &g_drop_lowest_scratch[i], K_NO_WAIT);
+        }
+    }
+
+    int ret = k_msgq_put(queue, event, timeout);
+
+    k_mutex_unlock(&cb->reorder_lock);
+
+    if (ret != 0) {
+        if (ret == -ENOMSG) {
+            return EVENT_ERR_QUEUE_FULL;
+        }
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    k_mutex_lock(&cb->stats_lock, K_FOREVER);
+    cb->stats.enqueue_count++;
+    {
+        uint32_t depth = k_msgq_num_used_get(queue);
+
+        if (depth > cb->stats.high_watermark) {
+            cb->stats.high_watermark = depth;
+        }
+    }
+    k_mutex_unlock(&cb->stats_lock);
+
+    return EVENT_OK;
+}
 
 /**
  * @brief 获取消息队列属性（常量版本）
@@ -74,6 +208,7 @@ event_status_t event_queue_init(struct k_msgq *queue, void *buffer, size_t capac
     cb->capacity = capacity;
     cb->stats = (queue_stats_t){0};
     k_mutex_init(&cb->stats_lock);
+    k_mutex_init(&cb->reorder_lock);
 
     LOG_DBG("Event queue initialized: capacity=%d", capacity);
     return EVENT_OK;
@@ -98,9 +233,12 @@ event_status_t event_queue_enqueue(struct k_msgq *queue,
     }
 
     event_queue_cb_t *cb = &g_queue_cb[0];
+    struct k_msgq_attrs qattrs;
 
-    /* 检查队列是否已满 */
-    if (k_msgq_num_used_get(queue) >= cb->capacity) {
+    msgq_get_attrs_const(queue, &qattrs);
+
+    /* 检查队列是否已满（用 msgq 属性，避免未调用 event_queue_init 时 capacity 为 0） */
+    if (qattrs.used_msgs >= qattrs.max_msgs) {
         k_mutex_lock(&cb->stats_lock, K_FOREVER);
         cb->stats.overflow_count++;
         k_mutex_unlock(&cb->stats_lock);
@@ -111,10 +249,7 @@ event_status_t event_queue_enqueue(struct k_msgq *queue,
                 return EVENT_ERR_QUEUE_FULL;
 
             case QUEUE_OVERFLOW_DROP_LOWEST:
-                /* TODO: 实现基于优先级的丢弃策略 */
-                LOG_DBG("Queue full, would drop lowest priority");
-                /* 暂时 fall through 到阻塞模式 */
-                break;
+                return enqueue_drop_lowest(queue, event, timeout, cb);
 
             case QUEUE_OVERFLOW_BLOCK:
                 /* 阻塞等待 */
