@@ -1,78 +1,72 @@
-#!/usr/bin/env pwsh
-# =============================================================================
-# Zephyr 环境设置脚本 (Windows PowerShell)
-# =============================================================================
-# 用法：.\scripts\setup_env.ps1
-# =============================================================================
-
 $ErrorActionPreference = "Stop"
 
-# Optional: Zephyr west 通常安装在 zephyrproject 的 venv 中
-$ZephyrVenvActivate = "D:\Code\1-github-code\zephyrproject\.venv\Scripts\Activate.ps1"
-if (Test-Path $ZephyrVenvActivate) {
-    . $ZephyrVenvActivate
-    Write-Host "已激活 west 虚拟环境: $ZephyrVenvActivate"
-}
-
 Write-Host "============================================"
-Write-Host "Zephyr 环境设置"
+Write-Host "Zephyr environment setup"
 Write-Host "============================================"
 
-# 获取脚本目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $ConfigFile = Join-Path $ProjectRoot "zephyr_config.env"
 
-# 检查配置文件是否存在
 if (-not (Test-Path $ConfigFile)) {
-    Write-Host "错误：找不到 zephyr_config.env！" -ForegroundColor Red
-    Write-Host "请复制 zephyr_config.env.template 到 zephyr_config.env 并编辑路径。"
+    Write-Host "Error: zephyr_config.env not found." -ForegroundColor Red
+    Write-Host "Please copy zephyr_config.env.template to zephyr_config.env and edit paths."
     exit 1
 }
 
-# 加载配置
-Write-Host "正在从 zephyr_config.env 加载配置..."
-Get-Content $ConfigFile | ForEach-Object {
-    if ($_ -match '^\s*#' -or $_ -match '^\s*$') {
-        return
-    }
-    if ($_ -match '^(.*?)=(.*)$') {
-        $name = $matches[1]
-        $value = $matches[2]
-        Set-Variable -Name $name -Value $value -Scope Script
+Write-Host "Loading configuration from zephyr_config.env..."
+$lines = Get-Content $ConfigFile
+foreach ($line in $lines) {
+    if ($line -match '^\s*#') { continue }
+    if ($line -match '^\s*$') { continue }
+
+    $eqPos = $line.IndexOf('=')
+    if ($eqPos -gt 0) {
+        $name = $line.Substring(0, $eqPos).Trim()
+        $value = $line.Substring($eqPos + 1).Trim()
+        if ($name) {
+            Set-Variable -Name $name -Value $value -Scope Script
+        }
     }
 }
 
-# 验证路径
+if ($VIRTUAL_ENV_PATH) {
+    $VenvActivate = Join-Path $VIRTUAL_ENV_PATH "Scripts\Activate.ps1"
+    if (Test-Path $VenvActivate) {
+        . $VenvActivate
+        Write-Host "Activated virtual environment: $VenvActivate" -ForegroundColor Green
+    }
+    else {
+        Write-Host "Warning: virtual env activation script not found: $VenvActivate" -ForegroundColor Yellow
+    }
+}
+
 if (-not $ZEPHYR_BASE) {
-    Write-Host "错误：配置中未设置 ZEPHYR_BASE！" -ForegroundColor Red
+    Write-Host "Error: ZEPHYR_BASE is not set in config." -ForegroundColor Red
     exit 1
 }
 
 if (-not $ZEPHYR_SDK_INSTALL_DIR) {
-    Write-Host "错误：配置中未设置 ZEPHYR_SDK_INSTALL_DIR！" -ForegroundColor Red
+    Write-Host "Error: ZEPHYR_SDK_INSTALL_DIR is not set in config." -ForegroundColor Red
     exit 1
 }
 
 if (-not (Test-Path $ZEPHYR_BASE)) {
-    Write-Host "错误：ZEPHYR_BASE 路径不存在：$ZEPHYR_BASE" -ForegroundColor Red
+    Write-Host "Error: ZEPHYR_BASE path does not exist: $ZEPHYR_BASE" -ForegroundColor Red
     exit 1
 }
 
 if (-not (Test-Path $ZEPHYR_SDK_INSTALL_DIR)) {
-    Write-Host "错误：ZEPHYR_SDK_INSTALL_DIR 路径不存在：$ZEPHYR_SDK_INSTALL_DIR" -ForegroundColor Red
+    Write-Host "Error: ZEPHYR_SDK_INSTALL_DIR path does not exist: $ZEPHYR_SDK_INSTALL_DIR" -ForegroundColor Red
     exit 1
 }
 
-# 设置环境变量（当前会话）
 $env:ZEPHYR_BASE = $ZEPHYR_BASE
 $env:ZEPHYR_SDK_INSTALL_DIR = $ZEPHYR_SDK_INSTALL_DIR
 
-# 设置环境变量（用户级别）
 [Environment]::SetEnvironmentVariable("ZEPHYR_BASE", $ZEPHYR_BASE, "User")
 [Environment]::SetEnvironmentVariable("ZEPHYR_SDK_INSTALL_DIR", $ZEPHYR_SDK_INSTALL_DIR, "User")
 
-# 添加 Zephyr 工具到 PATH
 $SdkBinPath = Join-Path $ZEPHYR_SDK_INSTALL_DIR "arm-zephyr-eabi\bin"
 $SdkToolsPath = Join-Path $ZEPHYR_SDK_INSTALL_DIR "tools\bin"
 
@@ -84,20 +78,19 @@ if (Test-Path $SdkToolsPath) {
     $env:PATH = "$SdkToolsPath;$env:PATH"
 }
 
-# 运行 Zephyr 环境设置脚本（如果存在）
 $ZephyrEnvScript = Join-Path $ZEPHYR_BASE "scripts\env.bat"
 if (Test-Path $ZephyrEnvScript) {
-    Write-Host "正在运行 Zephyr 环境脚本..."
+    Write-Host "Running Zephyr environment script..."
     & $ZephyrEnvScript
 }
 
 Write-Host "============================================"
-Write-Host "环境配置成功！" -ForegroundColor Green
+Write-Host "Environment configured successfully." -ForegroundColor Green
 Write-Host "============================================"
 Write-Host "ZEPHYR_BASE=$ZEPHYR_BASE"
 Write-Host "ZEPHYR_SDK_INSTALL_DIR=$ZEPHYR_SDK_INSTALL_DIR"
 Write-Host "============================================"
 Write-Host ""
-Write-Host "现在可以构建项目：" -ForegroundColor Green
-Write-Host "  west build -b $DEFAULT_BOARD -d build ."
+Write-Host "You can now build:"
+Write-Host "  west build -b $DEFAULT_BOARD -d $BUILD_DIR ."
 Write-Host ""
