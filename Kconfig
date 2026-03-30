@@ -108,6 +108,20 @@ config MODULE_MANAGER_START_ALL_ABORT_ON_FAILURE
 	  module_manager_start_module() returns non-zero. Recommended when using
 	  runtime dependencies so dependents are not started after a failed dependency.
 
+config EXAMPLE_MODULE_MULTI_DEP
+	bool "Example: module with multiple runtime dependencies (A + B)"
+	depends on MODULE_MANAGER
+	default n
+	help
+	  English:
+	    Builds and registers example_module_multi_dep, which sets depends_on to
+	    example_module_a and example_module_b (see example_module_multi_dep.c).
+	    For meaningful ordering, enable CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES
+	    and register modules A and B (e.g. APP_CONFIG_ENABLE_MODULE_A/B in app_config.h).
+	  中文:
+	    编译并注册多依赖示例模块，depends_on 指向 example_module_a 与 example_module_b。
+	    若需拓扑排序生效，请开启 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES，并确保 A/B 已注册。
+
 endmenu
 
 menu "System Services Configuration"

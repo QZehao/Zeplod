@@ -177,43 +177,43 @@ typedef struct {
  * 此宏用于声明并定义一个完整的模块接口结构。
  * 要求模块实现所有接口函数：init, start, stop, shutdown, on_event, get_status, control
  * 
- * @param name 模块名称（也是函数前缀）
+ * @param mod_name 模块名称（也是函数前缀）；勿用 name，以免与结构体字段 .name 冲突被宏展开替换
  * 
  * @note 使用示例：在模块 .c 文件中使用 DECLARE_MODULE_INTERFACE(my_module);
  */
-#define DECLARE_MODULE_INTERFACE(name) \
-    extern const module_interface_t name##_interface; \
-    const module_interface_t name##_interface = { \
-        .name = #name, \
+#define DECLARE_MODULE_INTERFACE(mod_name) \
+    extern const module_interface_t mod_name##_interface; \
+    const module_interface_t mod_name##_interface = { \
+        .name = #mod_name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
         .depends_on = NULL, \
-        .init = name##_init, \
-        .start = name##_start, \
-        .stop = name##_stop, \
-        .shutdown = name##_shutdown, \
-        .on_event = name##_on_event, \
-        .get_status = name##_get_status, \
-        .control = name##_control \
+        .init = mod_name##_init, \
+        .start = mod_name##_start, \
+        .stop = mod_name##_stop, \
+        .shutdown = mod_name##_shutdown, \
+        .on_event = mod_name##_on_event, \
+        .get_status = mod_name##_get_status, \
+        .control = mod_name##_control \
     }
 
 /**
  * @brief 与 DECLARE_MODULE_INTERFACE 相同，但显式指定 depends_on 数组（NULL 结尾）
  */
-#define DECLARE_MODULE_INTERFACE_WITH_DEPS(name, deps_array) \
-    extern const module_interface_t name##_interface; \
-    const module_interface_t name##_interface = { \
-        .name = #name, \
+#define DECLARE_MODULE_INTERFACE_WITH_DEPS(mod_name, deps_array) \
+    extern const module_interface_t mod_name##_interface; \
+    const module_interface_t mod_name##_interface = { \
+        .name = #mod_name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
         .depends_on = (deps_array), \
-        .init = name##_init, \
-        .start = name##_start, \
-        .stop = name##_stop, \
-        .shutdown = name##_shutdown, \
-        .on_event = name##_on_event, \
-        .get_status = name##_get_status, \
-        .control = name##_control \
+        .init = mod_name##_init, \
+        .start = mod_name##_start, \
+        .stop = mod_name##_stop, \
+        .shutdown = mod_name##_shutdown, \
+        .on_event = mod_name##_on_event, \
+        .get_status = mod_name##_get_status, \
+        .control = mod_name##_control \
     }
 
 /**
@@ -223,38 +223,38 @@ typedef struct {
  * 只要求模块实现必需函数：init, start, stop, on_event
  * shutdown, get_status, control 将被设置为 NULL
  * 
- * @param name 模块名称（也是函数前缀）
+ * @param mod_name 模块名称（也是函数前缀）
  * 
  * @note 管理器在调用这些函数前会进行 NULL 检查
  */
-#define DECLARE_MODULE_INTERFACE_MINIMAL(name) \
-    extern const module_interface_t name##_interface; \
-    const module_interface_t name##_interface = { \
-        .name = #name, \
+#define DECLARE_MODULE_INTERFACE_MINIMAL(mod_name) \
+    extern const module_interface_t mod_name##_interface; \
+    const module_interface_t mod_name##_interface = { \
+        .name = #mod_name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
         .depends_on = NULL, \
-        .init = name##_init, \
-        .start = name##_start, \
-        .stop = name##_stop, \
+        .init = mod_name##_init, \
+        .start = mod_name##_start, \
+        .stop = mod_name##_stop, \
         .shutdown = NULL, \
-        .on_event = name##_on_event, \
+        .on_event = mod_name##_on_event, \
         .get_status = NULL, \
         .control = NULL \
     }
 
-#define DECLARE_MODULE_INTERFACE_MINIMAL_WITH_DEPS(name, deps_array) \
-    extern const module_interface_t name##_interface; \
-    const module_interface_t name##_interface = { \
-        .name = #name, \
+#define DECLARE_MODULE_INTERFACE_MINIMAL_WITH_DEPS(mod_name, deps_array) \
+    extern const module_interface_t mod_name##_interface; \
+    const module_interface_t mod_name##_interface = { \
+        .name = #mod_name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
         .depends_on = (deps_array), \
-        .init = name##_init, \
-        .start = name##_start, \
-        .stop = name##_stop, \
+        .init = mod_name##_init, \
+        .start = mod_name##_start, \
+        .stop = mod_name##_stop, \
         .shutdown = NULL, \
-        .on_event = name##_on_event, \
+        .on_event = mod_name##_on_event, \
         .get_status = NULL, \
         .control = NULL \
     }

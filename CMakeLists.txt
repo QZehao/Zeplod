@@ -254,6 +254,13 @@ if(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
     )
 endif()
 
+if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
+    target_sources(app PRIVATE
+        src/modules/example_module_multi_dep.c
+        src/modules/example_module_multi_dep.h
+    )
+endif()
+
 # =============================================================================
 # Compiler Definitions
 # =============================================================================

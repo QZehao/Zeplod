@@ -25,6 +25,10 @@
 #include "example_module_ipc.h"
 #endif
 
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
+#include "example_module_multi_dep.h"
+#endif
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
@@ -420,6 +424,14 @@ static int app_register_modules(void)
                                 &module_id) == 0) {
         registered++;
         LOG_INF("Registered Module B (id=%d)", module_id);
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
+    if (module_manager_register(example_module_multi_dep_get_interface(), NULL, &module_id) ==
+        0) {
+        registered++;
+        LOG_INF("Registered example_module_multi_dep (id=%d)", module_id);
     }
 #endif
 
