@@ -1,9 +1,15 @@
 /**
  * @file event_dispatcher.c
- * @brief Event Dispatcher Implementation
- * 
- * High-performance event dispatcher with priority scheduling and statistics.
- * 
+ * @brief 事件分发器实现 (Event Dispatcher Implementation)
+ *
+ * 高性能事件分发器，支持优先级调度和统计功能。
+ *
+ * 主要功能：
+ * - 事件分发线程管理
+ * - 事件过滤
+ * - 处理延迟统计
+ * - 批处理支持
+ *
  * @copyright Copyright (c) 2026
  * @license SPDX-License-Identifier: Apache-2.0
  */
@@ -16,56 +22,89 @@
 LOG_MODULE_REGISTER(event_dispatcher, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
- * Internal Definitions
+ * 内部定义 (Internal Definitions)
  * ============================================================================= */
 
+/** 默认栈大小（使用 Kconfig 配置） */
 #define DEFAULT_STACK_SIZE        CONFIG_EVENT_DISPATCHER_STACK_SIZE
+
+/** 默认优先级（使用 Kconfig 配置） */
 #define DEFAULT_PRIORITY          CONFIG_EVENT_DISPATCHER_PRIORITY
+
+/** 每个周期默认最大处理事件数 */
 #define DEFAULT_MAX_EVENTS_CYCLE  100
 
 /* =============================================================================
- * Internal Data Structures
+ * 内部数据结构 (Internal Data Structures)
  * ============================================================================= */
 
+/**
+ * @brief 分发器控制块
+ * 
+ * 包含分发器的所有状态和配置信息。
+ */
 typedef struct {
-    dispatcher_state_t state;
-    dispatcher_config_t config;
-    dispatcher_stats_t stats;
-    struct k_thread thread;
-    K_KERNEL_STACK_MEMBER(stack, DEFAULT_STACK_SIZE);
-    event_filter_t filter;
-    void *filter_user_data;
-    struct k_mutex lock;
-    uint32_t events_in_batch;
-    uint64_t last_event_time;
+    dispatcher_state_t state;           /**< 分发器当前状态 */
+    dispatcher_config_t config;         /**< 分发器配置 */
+    dispatcher_stats_t stats;           /**< 分发器统计信息 */
+    struct k_thread thread;             /**< 分发器线程控制块 */
+    K_KERNEL_STACK_MEMBER(stack, DEFAULT_STACK_SIZE);  /**< 分发器线程栈 */
+    event_filter_t filter;              /**< 事件过滤函数 */
+    void *filter_user_data;             /**< 过滤函数用户数据 */
+    struct k_mutex lock;                /**< 保护共享数据的互斥锁 */
+    uint32_t events_in_batch;           /**< 当前批次处理的事件数 */
+    uint64_t last_event_time;           /**< 上一个事件处理时间 */
 } dispatcher_cb_t;
 
 /* =============================================================================
- * Static Variables
+ * 静态变量 (Static Variables)
  * ============================================================================= */
 
+/** 全局分发器控制块实例 */
 static dispatcher_cb_t g_dispatcher;
+
+/** 全局事件队列指针（从事件系统获取） */
 static struct k_msgq *g_event_queue;
 
 /* =============================================================================
- * Forward Declarations
+ * 前置声明 (Forward Declarations)
  * ============================================================================= */
 
+/**
+ * @brief 分发器线程入口函数
+ */
 static void dispatcher_thread_func(void *p1, void *p2, void *p3);
+
+/**
+ * @brief 处理单个事件
+ * @param event 要处理的事件
+ */
 static void process_event(const event_t *event);
+
+/**
+ * @brief 计算事件处理延迟
+ * @param event_timestamp 事件时间戳
+ * @return 延迟时间（微秒）
+ */
 static uint32_t calculate_latency_us(uint64_t event_timestamp);
 
 /* =============================================================================
- * Dispatcher Control API
+ * 分发器控制 API (Dispatcher Control API)
  * ============================================================================= */
 
+/**
+ * @brief 初始化事件分发器
+ * 
+ * @param config 分发器配置，NULL 使用默认配置
+ * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 事件系统未初始化
+ */
 event_status_t event_dispatcher_init(const dispatcher_config_t *config)
 {
     LOG_INF("Initializing event dispatcher...");
 
     memset(&g_dispatcher, 0, sizeof(g_dispatcher));
 
-    /* Set default or provided config */
+    /* 设置默认配置或用户提供的配置 */
     if (config != NULL) {
         g_dispatcher.config = *config;
     } else {
@@ -76,7 +115,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t *config)
         g_dispatcher.config.max_events_per_cycle = DEFAULT_MAX_EVENTS_CYCLE;
     }
 
-    /* Initialize synchronization primitives */
+    /* 初始化同步原语 */
     k_mutex_init(&g_dispatcher.lock);
 
     g_dispatcher.state = DISPATCHER_STOPPED;
@@ -92,6 +131,11 @@ event_status_t event_dispatcher_init(const dispatcher_config_t *config)
     return EVENT_OK;
 }
 
+/**
+ * @brief 启动分发器
+ * 
+ * @return EVENT_OK 成功
+ */
 event_status_t event_dispatcher_start(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -103,7 +147,7 @@ event_status_t event_dispatcher_start(void)
 
     g_dispatcher.state = DISPATCHER_RUNNING;
 
-    /* Create dispatcher thread */
+    /* 创建分发器线程 */
     k_thread_create(&g_dispatcher.thread,
                     g_dispatcher.stack,
                     g_dispatcher.config.stack_size,
@@ -113,7 +157,7 @@ event_status_t event_dispatcher_start(void)
                     0,
                     K_FOREVER);
 
-    k_thread_name_set(&g_dispatcher.thread, 
+    k_thread_name_set(&g_dispatcher.thread,
                       g_dispatcher.config.thread_name);
     k_thread_start(&g_dispatcher.thread);
 
@@ -123,6 +167,11 @@ event_status_t event_dispatcher_start(void)
     return EVENT_OK;
 }
 
+/**
+ * @brief 停止分发器
+ * 
+ * @return EVENT_OK 成功
+ */
 event_status_t event_dispatcher_stop(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -141,6 +190,11 @@ event_status_t event_dispatcher_stop(void)
     return EVENT_OK;
 }
 
+/**
+ * @brief 暂停分发器
+ * 
+ * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确
+ */
 event_status_t event_dispatcher_pause(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -157,6 +211,11 @@ event_status_t event_dispatcher_pause(void)
     return EVENT_OK;
 }
 
+/**
+ * @brief 恢复分发器
+ * 
+ * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确
+ */
 event_status_t event_dispatcher_resume(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -173,15 +232,26 @@ event_status_t event_dispatcher_resume(void)
     return EVENT_OK;
 }
 
+/**
+ * @brief 获取分发器状态
+ * 
+ * @return 当前分发器状态
+ */
 dispatcher_state_t event_dispatcher_get_state(void)
 {
     return g_dispatcher.state;
 }
 
 /* =============================================================================
- * Event Processing API
+ * 事件处理 API (Event Processing API)
  * ============================================================================= */
 
+/**
+ * @brief 设置事件过滤器
+ * 
+ * @param filter 过滤函数指针
+ * @param user_data 用户数据
+ */
 void event_dispatcher_set_filter(event_filter_t filter, void *user_data)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -190,6 +260,9 @@ void event_dispatcher_set_filter(event_filter_t filter, void *user_data)
     k_mutex_unlock(&g_dispatcher.lock);
 }
 
+/**
+ * @brief 清除事件过滤器
+ */
 void event_dispatcher_clear_filter(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -198,6 +271,13 @@ void event_dispatcher_clear_filter(void)
     k_mutex_unlock(&g_dispatcher.lock);
 }
 
+/**
+ * @brief 处理单个事件
+ * 
+ * @param timeout 等待超时时间
+ * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确，
+ *         EVENT_ERR_QUEUE_EMPTY 队列为空
+ */
 event_status_t event_dispatcher_process_one(k_timeout_t timeout)
 {
     if (g_dispatcher.state != DISPATCHER_RUNNING &&
@@ -211,7 +291,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout)
         return EVENT_ERR_QUEUE_EMPTY;
     }
 
-    /* Apply filter if set */
+    /* 应用过滤器（如果已设置） */
     if (g_dispatcher.filter != NULL) {
         if (!g_dispatcher.filter(&event, g_dispatcher.filter_user_data)) {
             if (event.is_dynamic && event.data != NULL) {
@@ -223,7 +303,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout)
 
     process_event(&event);
 
-    /* Free dynamic data */
+    /* 释放动态数据 */
     if (event.is_dynamic && event.data != NULL) {
         k_free(event.data);
     }
@@ -231,6 +311,12 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout)
     return EVENT_OK;
 }
 
+/**
+ * @brief 处理所有待处理事件
+ * 
+ * @param max_events 最大处理事件数，0 使用配置默认值
+ * @return 已处理的事件数量
+ */
 uint32_t event_dispatcher_process_all(uint32_t max_events)
 {
     if (max_events == 0) {
@@ -240,7 +326,7 @@ uint32_t event_dispatcher_process_all(uint32_t max_events)
     uint32_t processed = 0;
     while (processed < max_events) {
         if (event_dispatcher_process_one(K_NO_WAIT) != EVENT_OK) {
-            break;  /* No more events */
+            break;  /* 无更多事件 */
         }
         processed++;
     }
@@ -249,9 +335,14 @@ uint32_t event_dispatcher_process_all(uint32_t max_events)
 }
 
 /* =============================================================================
- * Statistics API
+ * 统计 API (Statistics API)
  * ============================================================================= */
 
+/**
+ * @brief 获取分发器统计信息
+ * 
+ * @param stats 输出：统计信息结构指针
+ */
 void event_dispatcher_get_stats(dispatcher_stats_t *stats)
 {
     if (stats == NULL) {
@@ -263,6 +354,9 @@ void event_dispatcher_get_stats(dispatcher_stats_t *stats)
     k_mutex_unlock(&g_dispatcher.lock);
 }
 
+/**
+ * @brief 重置分发器统计信息
+ */
 void event_dispatcher_reset_stats(void)
 {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -272,15 +366,25 @@ void event_dispatcher_reset_stats(void)
     LOG_DBG("Dispatcher statistics reset");
 }
 
+/**
+ * @brief 获取当前事件延迟
+ * 
+ * @return 延迟时间（微秒）
+ */
 uint32_t event_dispatcher_get_current_latency(void)
 {
     return calculate_latency_us(g_dispatcher.last_event_time);
 }
 
 /* =============================================================================
- * Internal Functions
+ * 内部函数 (Internal Functions)
  * ============================================================================= */
 
+/**
+ * @brief 分发器线程入口函数
+ * 
+ * 主循环：持续从队列中获取并处理事件。
+ */
 static void dispatcher_thread_func(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1);
@@ -300,6 +404,13 @@ static void dispatcher_thread_func(void *p1, void *p2, void *p3)
     LOG_INF("Dispatcher thread exiting");
 }
 
+/**
+ * @brief 处理单个事件
+ * 
+ * 调用 event_notify_subscribers 分发事件，并更新统计信息。
+ * 
+ * @param event 要处理的事件
+ */
 static void process_event(const event_t *event)
 {
     if (event == NULL) {
@@ -314,12 +425,12 @@ static void process_event(const event_t *event)
     uint32_t latency_us = (uint32_t)((end_time - start_time) * 1000000ULL /
                                      sys_clock_hw_cycles_per_sec());
 
-    /* Update statistics */
+    /* 更新统计信息 */
     if (g_dispatcher.config.enable_stats) {
         k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-        
+
         g_dispatcher.stats.events_processed++;
-        
+
         if (status != EVENT_OK) {
             g_dispatcher.stats.processing_errors++;
         }
@@ -328,8 +439,8 @@ static void process_event(const event_t *event)
             g_dispatcher.stats.max_latency_us = latency_us;
         }
 
-        /* Running average */
-        uint64_t total = (uint64_t)g_dispatcher.stats.avg_latency_us * 
+        /* 运行平均延迟 */
+        uint64_t total = (uint64_t)g_dispatcher.stats.avg_latency_us *
                          (g_dispatcher.stats.events_processed - 1) + latency_us;
         g_dispatcher.stats.avg_latency_us = (uint32_t)(total / g_dispatcher.stats.events_processed);
 
@@ -341,10 +452,16 @@ static void process_event(const event_t *event)
     LOG_DBG("Processed event type=%d, latency=%dus", event->type, latency_us);
 }
 
+/**
+ * @brief 计算延迟（微秒）
+ * 
+ * @param event_timestamp 事件时间戳
+ * @return 延迟时间（微秒）
+ */
 static uint32_t calculate_latency_us(uint64_t event_timestamp)
 {
     uint64_t now = k_uptime_get();
     uint64_t delta_ms = now - event_timestamp;
-    return (uint32_t)(delta_ms * 1000);  /* ms to us */
+    return (uint32_t)(delta_ms * 1000);  /* 毫秒转微秒 */
 }
 

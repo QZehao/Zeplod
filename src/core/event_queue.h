@@ -1,9 +1,15 @@
 /**
  * @file event_queue.h
- * @brief Event Queue Management Header
- * 
- * Provides priority-based event queuing with overflow handling.
- * 
+ * @brief 事件队列管理头文件 (Event Queue Management Header)
+ *
+ * 提供基于优先级的队列管理和溢出处理功能。
+ *
+ * 主要特性：
+ * - 基于 Zephyr k_msgq 的高效队列实现
+ * - 多种溢出处理策略
+ * - 详细的队列统计信息
+ * - 水位线监控
+ *
  * @copyright Copyright (c) 2026
  * @license SPDX-License-Identifier: Apache-2.0
  */
@@ -21,118 +27,132 @@ extern "C" {
 #endif
 
 /* =============================================================================
- * Configuration
+ * 配置宏 (Configuration Macros)
  * ============================================================================= */
 
+/**
+ * @brief 队列高水位线阈值
+ * @note 当队列深度超过此值时，可触发告警或降级处理
+ */
 #ifndef CONFIG_EVENT_QUEUE_HIGH_WATERMARK
 #define CONFIG_EVENT_QUEUE_HIGH_WATERMARK  (CONFIG_EVENT_QUEUE_SIZE * 3 / 4)
 #endif
 
 /* =============================================================================
- * Type Definitions
+ * 类型定义 (Type Definitions)
  * ============================================================================= */
 
 /**
- * @brief Queue overflow policy
+ * @brief 队列溢出处理策略枚举
  */
 typedef enum {
-    QUEUE_OVERFLOW_DROP_LOWEST,   /* Drop lowest priority events */
-    QUEUE_OVERFLOW_DROP_NEWEST,   /* Drop new events */
-    QUEUE_OVERFLOW_BLOCK          /* Block on full (not recommended for RT) */
+    QUEUE_OVERFLOW_DROP_LOWEST,   /**< 丢弃最低优先级的事件 */
+    QUEUE_OVERFLOW_DROP_NEWEST,   /**< 丢弃新到达的事件 */
+    QUEUE_OVERFLOW_BLOCK          /**< 阻塞等待（不推荐用于实时系统） */
 } queue_overflow_policy_t;
 
 /**
- * @brief Queue statistics
+ * @brief 队列统计信息结构
  */
 typedef struct {
-    uint32_t enqueue_count;
-    uint32_t dequeue_count;
-    uint32_t overflow_count;
-    uint32_t drop_count;
-    uint32_t high_watermark;
+    uint32_t enqueue_count;     /**< 入队操作次数 */
+    uint32_t dequeue_count;     /**< 出队操作次数 */
+    uint32_t overflow_count;    /**< 溢出发生次数 */
+    uint32_t drop_count;        /**< 事件丢弃次数 */
+    uint32_t high_watermark;    /**< 队列深度历史最大值 */
 } queue_stats_t;
 
 /* =============================================================================
- * Queue API
+ * 队列 API (Queue API)
  * ============================================================================= */
 
 /**
- * @brief Initialize event queue
- * @param queue Pointer to queue structure
- * @param buffer Buffer for queue storage
- * @param capacity Maximum queue capacity
- * @return EVENT_OK on success, error code otherwise
+ * @brief 初始化事件队列
+ * 
+ * @param queue 指向队列结构的指针
+ * @param buffer 队列存储缓冲区
+ * @param capacity 队列最大容量
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
  */
 event_status_t event_queue_init(struct k_msgq *queue, void *buffer, size_t capacity);
 
 /**
- * @brief Enqueue an event
- * @param queue Queue instance
- * @param event Event to enqueue
- * @param policy Overflow policy
- * @param timeout Wait timeout
- * @return EVENT_OK on success, error code otherwise
+ * @brief 入队操作
+ * 
+ * @param queue 队列实例
+ * @param event 要入队的事件
+ * @param policy 溢出处理策略
+ * @param timeout 等待超时时间
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
  */
-event_status_t event_queue_enqueue(struct k_msgq *queue, 
+event_status_t event_queue_enqueue(struct k_msgq *queue,
                                     const event_t *event,
                                     queue_overflow_policy_t policy,
                                     k_timeout_t timeout);
 
 /**
- * @brief Dequeue an event
- * @param queue Queue instance
- * @param event Output: dequeued event
- * @param timeout Wait timeout
- * @return EVENT_OK on success, error code otherwise
+ * @brief 出队操作
+ * 
+ * @param queue 队列实例
+ * @param event 输出：出队的事件
+ * @param timeout 等待超时时间
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
  */
 event_status_t event_queue_dequeue(struct k_msgq *queue,
                                     event_t *event,
                                     k_timeout_t timeout);
 
 /**
- * @brief Check if queue is empty
- * @param queue Queue instance
- * @return true if empty, false otherwise
+ * @brief 检查队列是否为空
+ * 
+ * @param queue 队列实例
+ * @return true 队列为空，false 队列非空
  */
 bool event_queue_is_empty(const struct k_msgq *queue);
 
 /**
- * @brief Check if queue is full
- * @param queue Queue instance
- * @return true if full, false otherwise
+ * @brief 检查队列是否已满
+ * 
+ * @param queue 队列实例
+ * @return true 队列已满，false 队列未满
  */
 bool event_queue_is_full(const struct k_msgq *queue);
 
 /**
- * @brief Get queue depth
- * @param queue Queue instance
- * @return Number of events in queue
+ * @brief 获取队列深度（已用槽位数）
+ * 
+ * @param queue 队列实例
+ * @return 队列中的事件数量
  */
 uint32_t event_queue_depth(const struct k_msgq *queue);
 
 /**
- * @brief Get queue capacity
- * @param queue Queue instance
- * @return Maximum queue capacity
+ * @brief 获取队列容量
+ * 
+ * @param queue 队列实例
+ * @return 队列最大容量
  */
 uint32_t event_queue_capacity(const struct k_msgq *queue);
 
 /**
- * @brief Purge all events from queue
- * @param queue Queue instance
+ * @brief 清空队列中的所有事件
+ * 
+ * @param queue 队列实例
  */
 void event_queue_purge(struct k_msgq *queue);
 
 /**
- * @brief Get queue statistics
- * @param queue Queue instance
- * @param stats Output: statistics structure
+ * @brief 获取队列统计信息
+ * 
+ * @param queue 队列实例
+ * @param stats 输出：统计信息结构
  */
 void event_queue_get_stats(const struct k_msgq *queue, queue_stats_t *stats);
 
 /**
- * @brief Reset queue statistics
- * @param queue Queue instance
+ * @brief 重置队列统计信息
+ * 
+ * @param queue 队列实例
  */
 void event_queue_reset_stats(struct k_msgq *queue);
 
