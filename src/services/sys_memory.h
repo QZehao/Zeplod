@@ -100,7 +100,7 @@ void *sys_mem_calloc(sys_mem_pool_type_t type, size_t size);
 
 /**
  * @brief Free memory back to pool
- * @param type Pool type
+ * @param type Pool type（用于校验；实际归属以 ptr 的分配头为准）
  * @param ptr Pointer to free
  */
 void sys_mem_free(sys_mem_pool_type_t type, void *ptr);
@@ -146,7 +146,7 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type);
 
 /**
  * @brief Check for memory leaks
- * @param type Pool type
+ * @param type Pool type（传入无效值时返回所有池的潜在泄漏总数）
  * @return Number of potential leaks
  */
 uint32_t sys_mem_check_leaks(sys_mem_pool_type_t type);
