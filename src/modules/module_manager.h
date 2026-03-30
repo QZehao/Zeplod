@@ -198,7 +198,8 @@ uint32_t module_manager_get_id_by_name(const char *name);
  * @param callback 回调函数
  * @param user_data 用户数据
  * 
- * @note 不要在回调中调用 module_manager_* API（可能导致死锁）
+ * @note 回调在管理器锁外执行，可调用 module_manager_* API；
+ *       但若回调自行持有其它锁，请注意锁顺序避免与业务代码产生锁反转。
  */
 void module_manager_foreach(void (*callback)(module_info_t *, void *),
                             void *user_data);

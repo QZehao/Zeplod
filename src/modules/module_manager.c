@@ -100,7 +100,7 @@ static void module_event_clear_all_unlocked(module_info_t *info);
 static void module_event_handler(const event_t *event, void *user_data);
 
 /**
- * @brief 通知回调（内部使用，需持有锁）
+ * @brief 通知回调（内部使用，可在持锁/无锁上下文调用）
  */
 static void notify_callback_unlocked(uint32_t module_id, module_mgr_event_t evt);
 
@@ -204,7 +204,7 @@ static void module_event_clear_all_unlocked(module_info_t *info)
  * @param module_id 模块 ID
  * @param evt 事件类型
  * 
- * @note 必须持有 g_module_mgr.lock
+ * @note 函数内部自行加锁读取回调，不要求调用方预先持锁
  */
 static void notify_callback_unlocked(uint32_t module_id, module_mgr_event_t evt)
 {
@@ -804,15 +804,19 @@ int module_manager_register(const module_interface_t *interface, void *config,
 		/* 检查初始化超时 */
 		if (CONFIG_MODULE_INIT_TIMEOUT_MS > 0 &&
 		    elapsed > (uint32_t)CONFIG_MODULE_INIT_TIMEOUT_MS) {
+			int (*shutdown_fn)(void) = interface->shutdown;
+
 			LOG_ERR("Module '%s' init exceeded timeout (%u ms)", interface->name,
 				(unsigned int)elapsed);
-			if (interface->shutdown != NULL) {
-				interface->shutdown();
-			}
 			g_module_mgr.next_module_id--;
 			clear_module_slot_unlocked(info);
 			g_module_mgr.stats.error_modules++;
 			k_mutex_unlock(&g_module_mgr.lock);
+
+			/* 在锁外调用 shutdown，避免重入 module_manager_* 导致死锁 */
+			if (shutdown_fn != NULL) {
+				shutdown_fn();
+			}
 			return -1;
 		}
 	}
@@ -1239,6 +1243,9 @@ int module_manager_suspend_module(uint32_t module_id)
 		return -1;
 	}
 
+	if (g_module_mgr.stats.active_modules > 0U) {
+		g_module_mgr.stats.active_modules--;
+	}
 	info->status = MODULE_STATUS_SUSPENDED;
 	const char *name = info->interface->name;
 
@@ -1271,6 +1278,7 @@ int module_manager_resume_module(uint32_t module_id)
 	}
 
 	info->status = MODULE_STATUS_RUNNING;
+	g_module_mgr.stats.active_modules++;
 	const char *name = info->interface->name;
 
 	k_mutex_unlock(&g_module_mgr.lock);
