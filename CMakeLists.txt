@@ -206,6 +206,23 @@ target_sources(app PRIVATE
     src/modules/example_module_b.h
 )
 
+# IPC Service Framework (Kconfig: CONFIG_IPC_SERVICE)
+if(CONFIG_IPC_SERVICE)
+    target_sources(app PRIVATE
+        src/modules/ipc_service/ipc_service.c
+        src/modules/ipc_service/ipc_service.h
+    )
+    target_include_directories(app PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/modules/ipc_service
+    )
+endif()
+
+if(CONFIG_IPC_SERVICE_EXAMPLE)
+    target_sources(app PRIVATE
+        src/modules/ipc_service/ipc_service_example.c
+    )
+endif()
+
 # =============================================================================
 # Compiler Definitions
 # =============================================================================

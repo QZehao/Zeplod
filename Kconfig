@@ -97,3 +97,9 @@ config SYS_WATCHDOG_TIMEOUT_MS
 	  Watchdog timeout in milliseconds.
 
 endmenu
+
+menu "IPC Service Framework Configuration"
+
+rsource "src/modules/ipc_service/Kconfig"
+
+endmenu

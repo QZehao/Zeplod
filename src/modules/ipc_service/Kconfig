@@ -1,0 +1,75 @@
+#
+# Copyright (c) 2024 Your Name
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+menuconfig IPC_SERVICE
+    bool "IPC Service Framework"
+    default n
+    help
+      Enable the IPC Service Framework which provides three invocation modes:
+      - SYNC: Blocking call, waits for result
+      - ASYNC: Non-blocking call with callback
+      - FUTURE: Returns a future object that can be waited on
+
+if IPC_SERVICE
+
+config IPC_SERVICE_MAX_PENDING_REQUESTS
+    int "Maximum pending requests"
+    default 16
+    range 4 64
+    help
+      Maximum number of pending requests that can be tracked at any time.
+      Each pending request consumes memory for tracking state.
+
+config IPC_SERVICE_REQUEST_QUEUE_SIZE
+    int "Request queue size"
+    default 8
+    range 2 32
+    help
+      Number of requests that can be queued waiting for processing.
+
+config IPC_SERVICE_RESPONSE_QUEUE_SIZE
+    int "Response queue size"
+    default 8
+    range 2 32
+    help
+      Number of responses that can be queued waiting for dispatch.
+
+config IPC_SERVICE_STACK_SIZE
+    int "Service thread stack size"
+    default 2048
+    range 512 8192
+    help
+      Stack size for the IPC service thread.
+
+config IPC_SERVICE_PRIORITY
+    int "Service thread priority"
+    default 5
+    range -16 15
+    help
+      Priority of the IPC service thread. Lower values = higher priority.
+      0 is the highest priority for cooperative threads.
+      Positive values are for preemptible threads.
+
+config IPC_SERVICE_LOG_LEVEL
+    int "Log level"
+    default 3
+    range 0 4
+    help
+      Logging level for IPC service:
+      0 - OFF
+      1 - ERROR
+      2 - WARNING
+      3 - INFO
+      4 - DEBUG
+
+config IPC_SERVICE_EXAMPLE
+    bool "Build IPC service example"
+    default n
+    depends on IPC_SERVICE
+    help
+      Build the example code demonstrating all three invocation modes.
+
+endif # IPC_SERVICE
