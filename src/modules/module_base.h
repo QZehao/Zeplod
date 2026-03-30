@@ -79,6 +79,12 @@ typedef struct {
     const char *name;                   /**< 模块名称 */
     uint32_t version;                   /**< 模块版本号（MAJOR.MINOR.PATCH 编码） */
     module_priority_t priority;         /**< 模块优先级 */
+    /**
+     * 运行时依赖：指向以 NULL 结尾的字符串数组，每项为其它模块的 interface->name。
+     * 仅在 Kconfig CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES 启用时参与排序；
+     * 未启用或未使用时可置 NULL。
+     */
+    const char *const *depends_on;
     int (*init)(void *config);          /**< 初始化函数指针 */
     int (*start)(void);                 /**< 启动函数指针 */
     int (*stop)(void);                  /**< 停止函数指针 */
@@ -175,6 +181,26 @@ typedef struct {
         .name = #name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
+        .depends_on = NULL, \
+        .init = name##_init, \
+        .start = name##_start, \
+        .stop = name##_stop, \
+        .shutdown = name##_shutdown, \
+        .on_event = name##_on_event, \
+        .get_status = name##_get_status, \
+        .control = name##_control \
+    }
+
+/**
+ * @brief 与 DECLARE_MODULE_INTERFACE 相同，但显式指定 depends_on 数组（NULL 结尾）
+ */
+#define DECLARE_MODULE_INTERFACE_WITH_DEPS(name, deps_array) \
+    extern const module_interface_t name##_interface; \
+    const module_interface_t name##_interface = { \
+        .name = #name, \
+        .version = MODULE_VERSION(1, 0, 0), \
+        .priority = MODULE_PRIORITY_NORMAL, \
+        .depends_on = (deps_array), \
         .init = name##_init, \
         .start = name##_start, \
         .stop = name##_stop, \
@@ -201,6 +227,23 @@ typedef struct {
         .name = #name, \
         .version = MODULE_VERSION(1, 0, 0), \
         .priority = MODULE_PRIORITY_NORMAL, \
+        .depends_on = NULL, \
+        .init = name##_init, \
+        .start = name##_start, \
+        .stop = name##_stop, \
+        .shutdown = NULL, \
+        .on_event = name##_on_event, \
+        .get_status = NULL, \
+        .control = NULL \
+    }
+
+#define DECLARE_MODULE_INTERFACE_MINIMAL_WITH_DEPS(name, deps_array) \
+    extern const module_interface_t name##_interface; \
+    const module_interface_t name##_interface = { \
+        .name = #name, \
+        .version = MODULE_VERSION(1, 0, 0), \
+        .priority = MODULE_PRIORITY_NORMAL, \
+        .depends_on = (deps_array), \
         .init = name##_init, \
         .start = name##_start, \
         .stop = name##_stop, \

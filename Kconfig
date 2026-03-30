@@ -65,6 +65,19 @@ config MODULE_INIT_TIMEOUT_MS
 	help
 	  Timeout for module initialization.
 
+config MODULE_MANAGER_RUNTIME_DEPENDENCIES
+	bool "Runtime module dependency ordering"
+	depends on MODULE_MANAGER
+	default n
+	help
+	  When enabled, module_manager_start_all() orders startup by each module's
+	  depends_on list (module names, NULL-terminated). Dependencies must be
+	  running or included in the same start batch. module_manager_stop_all()
+	  stops in reverse dependency order. Modules with missing or cyclic
+	  dependencies fall back to priority-only ordering (start) or reverse
+	  priority (stop). When disabled, behavior matches the original
+	  priority-only start and slot-order stop.
+
 endmenu
 
 menu "System Services Configuration"

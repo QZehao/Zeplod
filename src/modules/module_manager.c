@@ -23,6 +23,7 @@
 #include "event_system.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -50,14 +51,22 @@ typedef struct {
 } module_manager_cb_t;
 
 /**
- * @brief 启动顺序条目
- * 
- * 用于按优先级排序模块启动顺序。
+ * @brief 启动/停止排序条目
+ *
+ * 用于按优先级或依赖关系排序。
  */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
 typedef struct {
-	uint32_t id;              /**< 模块 ID */
-	module_priority_t priority; /**< 模块优先级 */
+	uint32_t id;
+	module_priority_t priority;
+	const char *const *depends_on;
 } start_order_entry_t;
+#else
+typedef struct {
+	uint32_t id;
+	module_priority_t priority;
+} start_order_entry_t;
+#endif
 
 /* =============================================================================
  * 静态变量 (Static Variables)
@@ -121,6 +130,26 @@ static module_info_t *find_module_by_id_locked(uint32_t module_id)
 	}
 
 	return NULL;
+}
+
+/**
+ * @brief 按名称查找模块 ID（需已持有 g_module_mgr.lock）
+ */
+static uint32_t find_module_id_by_name_locked(const char *name)
+{
+	if (name == NULL) {
+		return 0U;
+	}
+
+	for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
+		if (g_module_mgr.modules[i].interface != NULL &&
+		    g_module_mgr.modules[i].interface->name != NULL &&
+		    strcmp(g_module_mgr.modules[i].interface->name, name) == 0) {
+			return g_module_mgr.modules[i].id;
+		}
+	}
+
+	return 0U;
 }
 
 /**
@@ -232,6 +261,279 @@ static void sort_start_entries(start_order_entry_t *entries, int n)
 		}
 	}
 }
+
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+
+/**
+ * @brief 按 priority 降序（停止时与启动优先级顺序相反）
+ */
+static void sort_stop_entries_reverse_priority(start_order_entry_t *entries, int n)
+{
+	for (int i = 0; i < n - 1; i++) {
+		for (int j = i + 1; j < n; j++) {
+			if ((int)entries[j].priority > (int)entries[i].priority) {
+				start_order_entry_t t = entries[i];
+
+				entries[i] = entries[j];
+				entries[j] = t;
+			}
+		}
+	}
+}
+
+/**
+ * @brief 按依赖拓扑排序启动批次；无效项剔除，成环时退回仅 priority
+ */
+static int dependency_order_start_batch(start_order_entry_t *entries, int n)
+{
+	bool valid[CONFIG_MAX_MODULES];
+	bool adj[CONFIG_MAX_MODULES][CONFIG_MAX_MODULES];
+	int indegree[CONFIG_MAX_MODULES];
+	uint32_t pick_order[CONFIG_MAX_MODULES];
+	int n2;
+
+	if (n <= 1) {
+		return n;
+	}
+
+	for (int i = 0; i < n; i++) {
+		valid[i] = true;
+	}
+
+	k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+
+	for (int i = 0; i < n; i++) {
+		if (entries[i].depends_on == NULL) {
+			continue;
+		}
+		for (const char *const *p = entries[i].depends_on; *p != NULL; p++) {
+			const uint32_t did = find_module_id_by_name_locked(*p);
+
+			if (did == 0U) {
+				LOG_ERR("Module id=%u: unknown dependency '%s'",
+					(unsigned int)entries[i].id, *p);
+				valid[i] = false;
+				break;
+			}
+			if (did == entries[i].id) {
+				LOG_ERR("Module id=%u: self dependency '%s'",
+					(unsigned int)entries[i].id, *p);
+				valid[i] = false;
+				break;
+			}
+			module_info_t *dep = find_module_by_id_locked(did);
+
+			if (dep == NULL) {
+				valid[i] = false;
+				break;
+			}
+			if (dep->status == MODULE_STATUS_RUNNING) {
+				continue;
+			}
+			int found = -1;
+
+			for (int k = 0; k < n; k++) {
+				if (entries[k].id == did) {
+					found = k;
+					break;
+				}
+			}
+			if (found < 0) {
+				LOG_ERR("Module id=%u: dependency '%s' not runnable in this batch",
+					(unsigned int)entries[i].id, *p);
+				valid[i] = false;
+				break;
+			}
+		}
+	}
+
+	k_mutex_unlock(&g_module_mgr.lock);
+
+	n2 = 0;
+	for (int i = 0; i < n; i++) {
+		if (valid[i]) {
+			if (n2 != i) {
+				entries[n2] = entries[i];
+			}
+			n2++;
+		}
+	}
+	if (n2 <= 1) {
+		return n2;
+	}
+
+	(void)memset(adj, 0, sizeof(adj));
+	(void)memset(indegree, 0, sizeof(indegree));
+
+	k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+
+	for (int i = 0; i < n2; i++) {
+		if (entries[i].depends_on == NULL) {
+			continue;
+		}
+		for (const char *const *p = entries[i].depends_on; *p != NULL; p++) {
+			const uint32_t did = find_module_id_by_name_locked(*p);
+			module_info_t *const dep = find_module_by_id_locked(did);
+
+			if (dep != NULL && dep->status == MODULE_STATUS_RUNNING) {
+				continue;
+			}
+			int j = -1;
+
+			for (int k = 0; k < n2; k++) {
+				if (entries[k].id == did) {
+					j = k;
+					break;
+				}
+			}
+			if (j < 0) {
+				continue;
+			}
+			if (!adj[j][i]) {
+				adj[j][i] = true;
+				indegree[i]++;
+			}
+		}
+	}
+
+	k_mutex_unlock(&g_module_mgr.lock);
+
+	bool remaining[CONFIG_MAX_MODULES];
+
+	for (int i = 0; i < n2; i++) {
+		remaining[i] = true;
+	}
+
+	for (int out = 0; out < n2; out++) {
+		int best = -1;
+
+		for (int i = 0; i < n2; i++) {
+			if (!remaining[i] || indegree[i] != 0) {
+				continue;
+			}
+			if (best < 0 || (int)entries[i].priority < (int)entries[best].priority) {
+				best = i;
+			}
+		}
+		if (best < 0) {
+			LOG_ERR("Dependency cycle; using priority order for start");
+			sort_start_entries(entries, n2);
+			return n2;
+		}
+		pick_order[out] = (uint32_t)best;
+		remaining[best] = false;
+		for (int i = 0; i < n2; i++) {
+			if (adj[best][i]) {
+				indegree[i]--;
+			}
+		}
+	}
+
+	start_order_entry_t tmp[CONFIG_MAX_MODULES];
+
+	for (int i = 0; i < n2; i++) {
+		tmp[i] = entries[(int)pick_order[i]];
+	}
+	(void)memcpy(entries, tmp, sizeof(entries[0]) * (size_t)n2);
+	return n2;
+}
+
+/**
+ * @brief 停止顺序：依赖拓扑的逆序；成环时退回 priority 降序
+ */
+static int dependency_order_stop_batch(start_order_entry_t *entries, int n)
+{
+	bool adj[CONFIG_MAX_MODULES][CONFIG_MAX_MODULES];
+	int indegree[CONFIG_MAX_MODULES];
+	uint32_t pick_order[CONFIG_MAX_MODULES];
+
+	if (n <= 1) {
+		return n;
+	}
+
+	(void)memset(adj, 0, sizeof(adj));
+	(void)memset(indegree, 0, sizeof(indegree));
+
+	k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+
+	for (int i = 0; i < n; i++) {
+		if (entries[i].depends_on == NULL) {
+			continue;
+		}
+		for (const char *const *p = entries[i].depends_on; *p != NULL; p++) {
+			const uint32_t did = find_module_id_by_name_locked(*p);
+			module_info_t *const dep = find_module_by_id_locked(did);
+
+			if (dep == NULL || dep->status != MODULE_STATUS_RUNNING) {
+				continue;
+			}
+			int j = -1;
+
+			for (int k = 0; k < n; k++) {
+				if (entries[k].id == did) {
+					j = k;
+					break;
+				}
+			}
+			if (j < 0) {
+				continue;
+			}
+			if (!adj[j][i]) {
+				adj[j][i] = true;
+				indegree[i]++;
+			}
+		}
+	}
+
+	k_mutex_unlock(&g_module_mgr.lock);
+
+	bool remaining[CONFIG_MAX_MODULES];
+
+	for (int i = 0; i < n; i++) {
+		remaining[i] = true;
+	}
+
+	for (int out = 0; out < n; out++) {
+		int best = -1;
+
+		for (int i = 0; i < n; i++) {
+			if (!remaining[i] || indegree[i] != 0) {
+				continue;
+			}
+			if (best < 0 || (int)entries[i].priority < (int)entries[best].priority) {
+				best = i;
+			}
+		}
+		if (best < 0) {
+			LOG_ERR("Dependency cycle; using reverse priority order for stop");
+			sort_stop_entries_reverse_priority(entries, n);
+			return n;
+		}
+		pick_order[out] = (uint32_t)best;
+		remaining[best] = false;
+		for (int i = 0; i < n; i++) {
+			if (adj[best][i]) {
+				indegree[i]--;
+			}
+		}
+	}
+
+	start_order_entry_t tmp[CONFIG_MAX_MODULES];
+
+	for (int i = 0; i < n; i++) {
+		tmp[i] = entries[(int)pick_order[i]];
+	}
+	for (int i = 0; i < n / 2; i++) {
+		const int j = n - 1 - i;
+		start_order_entry_t t = tmp[i];
+
+		tmp[i] = tmp[j];
+		tmp[j] = t;
+	}
+	(void)memcpy(entries, tmp, sizeof(entries[0]) * (size_t)n);
+	return n;
+}
+#endif /* CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES */
 
 /* =============================================================================
  * 核心 API 实现 (Core API Implementation)
@@ -577,19 +879,10 @@ uint32_t module_manager_get_id_by_name(const char *name)
 
 	k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
 
-	for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
-		if (g_module_mgr.modules[i].interface != NULL &&
-		    g_module_mgr.modules[i].interface->name != NULL &&
-		    strcmp(g_module_mgr.modules[i].interface->name, name) == 0) {
-			const uint32_t id = g_module_mgr.modules[i].id;
-
-			k_mutex_unlock(&g_module_mgr.lock);
-			return id;
-		}
-	}
+	const uint32_t id = find_module_id_by_name_locked(name);
 
 	k_mutex_unlock(&g_module_mgr.lock);
-	return 0U;
+	return id;
 }
 
 /**
@@ -745,7 +1038,7 @@ int module_manager_stop_module(uint32_t module_id)
 /**
  * @brief 启动所有模块
  * 
- * 按优先级顺序启动所有已注册的模块。
+ * 按优先级顺序启动所有已注册的模块；若启用运行时依赖则先满足拓扑序。
  * 
  * @return 成功启动的模块数量
  */
@@ -765,14 +1058,20 @@ int module_manager_start_all(void)
 		    m->interface != NULL) {
 			entries[n].id = m->id;
 			entries[n].priority = m->interface->priority;
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+			entries[n].depends_on = m->interface->depends_on;
+#endif
 			n++;
 		}
 	}
 
 	k_mutex_unlock(&g_module_mgr.lock);
 
-	/* 按优先级排序 */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+	n = dependency_order_start_batch(entries, n);
+#else
 	sort_start_entries(entries, n);
+#endif
 
 	int started = 0;
 
@@ -792,24 +1091,48 @@ int module_manager_start_all(void)
  */
 int module_manager_stop_all(void)
 {
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+	start_order_entry_t entries[CONFIG_MAX_MODULES];
+#else
 	uint32_t ids[CONFIG_MAX_MODULES];
+#endif
 	int n = 0;
 
 	k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
 
-	/* 收集所有运行中的模块 ID */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+	for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
+		module_info_t *const m = &g_module_mgr.modules[i];
+
+		if (m->status == MODULE_STATUS_RUNNING && m->interface != NULL) {
+			entries[n].id = m->id;
+			entries[n].priority = m->interface->priority;
+			entries[n].depends_on = m->interface->depends_on;
+			n++;
+		}
+	}
+#else
 	for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
 		if (g_module_mgr.modules[i].status == MODULE_STATUS_RUNNING) {
 			ids[n++] = g_module_mgr.modules[i].id;
 		}
 	}
+#endif
 
 	k_mutex_unlock(&g_module_mgr.lock);
+
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+	(void)dependency_order_stop_batch(entries, n);
+#endif
 
 	int stopped = 0;
 
 	for (int i = 0; i < n; i++) {
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+		if (module_manager_stop_module(entries[i].id) == 0) {
+#else
 		if (module_manager_stop_module(ids[i]) == 0) {
+#endif
 			stopped++;
 		}
 	}

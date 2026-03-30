@@ -257,6 +257,7 @@ const module_interface_t example_module_b_interface = {
     .name = "example_module_b",
     .version = MODULE_VERSION(1, 0, 0),
     .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
     .init = example_module_b_init,
     .start = example_module_b_start,
     .stop = example_module_b_stop,

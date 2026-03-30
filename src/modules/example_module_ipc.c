@@ -226,6 +226,7 @@ static const module_interface_t example_module_ipc_interface = {
 	.name = "example_module_ipc",
 	.version = MODULE_VERSION(1, 0, 0),
 	.priority = MODULE_PRIORITY_NORMAL,
+	.depends_on = NULL,
 	.init = example_module_ipc_init,
 	.start = example_module_ipc_start,
 	.stop = example_module_ipc_stop,

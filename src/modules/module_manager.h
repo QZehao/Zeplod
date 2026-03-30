@@ -216,6 +216,8 @@ int module_manager_stop_module(uint32_t module_id);
  * @brief 启动所有模块
  * 
  * 按优先级顺序启动所有已注册但未运行的模块。
+ * 若启用 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES，则先按 depends_on 拓扑排序，
+ * 同层内仍按 priority；缺失依赖或成环时回退为仅按 priority。
  * 
  * @return 成功启动的模块数量
  */
@@ -225,6 +227,8 @@ int module_manager_start_all(void);
  * @brief 停止所有模块
  * 
  * 停止所有正在运行的模块。
+ * 若启用 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES，则按依赖关系的逆序停止；
+ * 否则保持内部槽位遍历顺序。
  * 
  * @return 成功停止的模块数量
  */
