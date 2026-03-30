@@ -57,7 +57,8 @@ zephyr_template/
     │   ├── example_module_b.c/h
     │   ├── example_module_gpio.c/h
     │   ├── example_module_uart.c/h
-    │   └── example_module_ipc.c/h
+    │   ├── example_module_ipc.c/h
+    │   └── example_module_multi_dep.c/h  # 多依赖示例（Kconfig: EXAMPLE_MODULE_MULTI_DEP）
     └── app/
         ├── app_main.c/h
         ├── app_config.h
@@ -254,6 +255,11 @@ CONFIG_EVENT_DISPATCHER_PRIORITY=5
 # 模块管理器
 CONFIG_MODULE_MANAGER=y
 CONFIG_MAX_MODULES=16
+# 可选：运行时按 depends_on 拓扑启动/逆序停止（详见 docs/模块系统详细使用说明.md）
+# CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES=y
+# CONFIG_MODULE_MANAGER_DEPENDS_LIST_MAX=16
+# CONFIG_MODULE_MANAGER_START_ALL_ABORT_ON_FAILURE=y
+# CONFIG_EXAMPLE_MODULE_MULTI_DEP=y
 
 # 系统服务
 CONFIG_SYS_LOG_LEVEL=3          # 0=关闭，1=错误，2=警告，3=信息，4=调试
@@ -349,6 +355,8 @@ DECLARE_MODULE_INTERFACE(my_module);
 ```c
 module_manager_register(&my_module_interface, &config, &module_id);
 ```
+
+多模块依赖、`depends_on` 写法与 Kconfig 开关说明见 **[docs/模块系统详细使用说明.md](docs/模块系统详细使用说明.md)** 中的「运行时依赖」与「配置选项」；多依赖示例源码为 `src/modules/example_module_multi_dep.c`。
 
 ## 事件流程
 
@@ -449,7 +457,7 @@ west build -t run --build-dir build_tests
 | [TEMPLATE_PRODUCT_EXTENSIONS.md](docs/TEMPLATE_PRODUCT_EXTENSIONS.md) | OTA、NVS、低功耗（可选） |
 | [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | 发布前检查 |
 | [事件系统详细使用说明.md](docs/事件系统详细使用说明.md) | 事件 API 与用法 |
-| [模块系统详细使用说明.md](docs/模块系统详细使用说明.md) | 模块生命周期与注册 |
+| [模块系统详细使用说明.md](docs/模块系统详细使用说明.md) | 模块生命周期、注册与可选运行时依赖 |
 | [Thread_IPC_Service模块使用说明.md](docs/Thread_IPC_Service模块使用说明.md) | Thread IPC 服务 |
 | [模块开发集成Thread_IPC指南.md](docs/模块开发集成Thread_IPC指南.md) | 模块集成 IPC |
 | [tests/README.md](tests/README.md) | 单元测试说明 |
