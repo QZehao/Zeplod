@@ -1,0 +1,51 @@
+/**
+ * @file example_module_ipc.h
+ * @brief 示例：在业务模块中集成 Thread IPC Service（与 module_manager 配合）
+ *
+ * 由 Kconfig CONFIG_EXAMPLE_MODULE_THREAD_IPC 控制是否编译与注册。
+ *
+ * @copyright Copyright (c) 2026
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef EXAMPLE_MODULE_IPC_H
+#define EXAMPLE_MODULE_IPC_H
+
+#include "module_base.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/** 演示用：事件桥中的 source_id（与 thread_ipc_event_publish_result 一致） */
+#define EXAMPLE_MODULE_IPC_EVENT_SOURCE_ID  42U
+
+typedef struct {
+	uint32_t reserved; /**< 占位，可按业务扩展 */
+} example_module_ipc_config_t;
+
+int example_module_ipc_init(void *config);
+int example_module_ipc_start(void);
+int example_module_ipc_stop(void);
+int example_module_ipc_shutdown(void);
+void example_module_ipc_on_event(const event_t *event, void *user_data);
+module_status_t example_module_ipc_get_status(void);
+int example_module_ipc_control(int cmd, void *arg);
+
+const module_interface_t *example_module_ipc_get_interface(void);
+
+/* =============================================================================
+ * 可选：供调试或上层显式调用（演示 IPC 通路）
+ * ============================================================================= */
+
+/**
+ * @brief 向本模块 IPC 服务发起一次同步调用（演示 payload 为以 '\\0' 结尾的字符串）
+ * @return 与 ipc_call_sync 相同
+ */
+int example_module_ipc_demo_call_sync(const char *msg, size_t len);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* EXAMPLE_MODULE_IPC_H */

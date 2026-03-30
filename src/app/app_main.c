@@ -21,8 +21,13 @@
 #include "example_module_a.h"
 #include "example_module_b.h"
 
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
+#include "example_module_ipc.h"
+#endif
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/shell/shell.h>
 
 LOG_MODULE_REGISTER(app_main, CONFIG_SYS_LOG_LEVEL);
@@ -386,6 +391,17 @@ static int app_register_modules(void)
                                 &module_id) == 0) {
         registered++;
         LOG_INF("Registered Module B (id=%d)", module_id);
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
+    example_module_ipc_config_t config_ipc = { .reserved = 0 };
+
+    if (module_manager_register(example_module_ipc_get_interface(),
+                                &config_ipc,
+                                &module_id) == 0) {
+        registered++;
+        LOG_INF("Registered example_module_ipc (id=%d)", module_id);
     }
 #endif
 

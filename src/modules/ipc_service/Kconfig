@@ -75,4 +75,12 @@ config THREAD_IPC_SERVICE_EVENT_BRIDGE
       Provides ipc_service_event.h/c: register event type THREAD_IPC_EVENT_TYPE_RESPONSE
       and thread_ipc_event_publish_result() for use inside ipc_service_func_t.
 
+config EXAMPLE_MODULE_THREAD_IPC
+    bool "Example: business module integrating Thread IPC (module_manager)"
+    default n
+    depends on THREAD_IPC_SERVICE && MODULE_MANAGER
+    help
+      Builds example_module_ipc.c: registers with module_manager, ipc_service in
+      init/start/stop, optional demo thread calling ipc_call_sync.
+
 endif # THREAD_IPC_SERVICE

@@ -18,6 +18,8 @@
 - [故障排除](#故障排除)
 - [示例代码说明](#示例代码说明)
 
+**模块开发（module_manager）**：另见 [模块开发集成Thread_IPC指南.md](./模块开发集成Thread_IPC指南.md)。
+
 ---
 
 ## 概述
@@ -101,15 +103,17 @@ Zephyr 在 **Inter Processor Communication** 菜单下有 **`CONFIG_IPC_SERVICE`
 | `THREAD_IPC_SERVICE_EXAMPLE` | bool | n | 是否编译内置示例 |
 | `THREAD_IPC_SERVICE_EVENT_BRIDGE` | bool | n | 编译 `ipc_service_event.c`：向事件总线发布 IPC 结果（依赖 `EVENT_SYSTEM`） |
 
-`prj.conf` 示例（与仓库当前工程一致）：
+`prj.conf` 示例（与仓库当前工程一致；**事件桥 / 事件系统依赖 `k_malloc`，须保留非零堆**）：
 
 ```conf
+CONFIG_HEAP_MEM_POOL_SIZE=8192
 CONFIG_THREAD_IPC_SERVICE=y
 CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n
-CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS=16
-CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE=8
-CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE=8
-CONFIG_THREAD_IPC_SERVICE_STACK_SIZE=2048
+CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE=y
+CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS=8
+CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE=6
+CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE=6
+CONFIG_THREAD_IPC_SERVICE_STACK_SIZE=1280
 CONFIG_THREAD_IPC_SERVICE_PRIORITY=5
 CONFIG_THREAD_IPC_SERVICE_LOG_LEVEL=3
 ```
@@ -406,6 +410,8 @@ typedef void (*ipc_async_callback_t)(ipc_request_id_t request_id,
 | `ipc_call_async` 无回调 | Dispatcher 未运行或 pending 丢失 | 确认服务已启动；查看是否有 cancel / 超时释放 pending |
 | `ipc_future_release` 返回 `-EINVAL` | `future` 不是该 `service` 分配 | 检查指针来源与多实例混用 |
 | 链接或配置出现 Zephyr `IPC_SERVICE` 相关后端 | 误开 `CONFIG_IPC_SERVICE` | 本模块只用 `CONFIG_THREAD_IPC_SERVICE` |
+| 链接 `undefined reference to k_malloc` | `CONFIG_HEAP_MEM_POOL_SIZE=0` | 在 `prj.conf` 中设置 **`CONFIG_HEAP_MEM_POOL_SIZE`**（如 8192）；事件系统需要内核堆 |
+| `region RAM overflowed` | 静态栈/队列过大或多演示同时开 | 减小 `THREAD_IPC_SERVICE_*`、勿同时开 **`EXAMPLE`** 与 **`EXAMPLE_MODULE_THREAD_IPC`**，或换更大 SRAM 板卡 |
 
 ---
 
