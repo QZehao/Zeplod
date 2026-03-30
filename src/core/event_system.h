@@ -127,7 +127,7 @@ typedef enum {
 typedef struct {
     event_type_t    type;           /**< 事件类型标识符 */
     event_priority_t priority;      /**< 事件优先级 */
-    uint32_t        timestamp;      /**< 事件创建时间戳（ticks） */
+    uint32_t        timestamp;      /**< 事件创建时间戳（毫秒 uptime） */
     uint32_t        source_id;      /**< 源模块/组件 ID */
     uint32_t        data_len;       /**< 事件数据长度（字节） */
     void           *data;           /**< 事件数据指针 */
@@ -193,26 +193,26 @@ typedef struct {
 event_status_t event_system_init(void);
 
 /**
- * @brief 启动事件分发器
+ * @brief 启动事件系统投递
  * 
- * 创建并启动事件分发器线程，开始处理队列中的事件。
+ * 将事件系统置为 running 状态，允许 event_publish/event_publish_from_isr 投递事件。
  * 
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  * 
  * @note 必须先调用 event_system_init()
- * @note 分发器线程启动后，发布的事件才会被处理
+ * @note 事件消费由 event_dispatcher 模块负责，本函数不会创建分发线程
  */
 event_status_t event_system_start(void);
 
 /**
- * @brief 停止事件分发器
+ * @brief 停止事件系统投递
  * 
- * 停止事件分发器线程，不再处理新事件。
+ * 将事件系统置为非 running 状态，并清空队列中的未处理事件。
  * 
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  * 
- * @note 停止后发布的事件将被丢弃
- * @note 已排队但未处理的事件将丢失
+ * @note 停止后发布的事件将被拒绝
+ * @note 已排队但未处理的动态事件负载会被释放
  */
 event_status_t event_system_stop(void);
 
@@ -269,7 +269,7 @@ event_status_t event_unregister_type(event_type_t type);
  * @param callback 回调函数指针（不能为 NULL）
  * @param user_data 用户数据，将在回调时原样传入
  * @param subscriber_id 输出参数，接收分配的订阅者 ID
- * @return EVENT_OK 成功，其他错误码见 event_status_t
+ * @return EVENT_OK 成功，其他错误码见 event_status_t（未注册类型返回 EVENT_ERR_NOT_FOUND）
  * 
  * @note 订阅者 ID 用于后续取消订阅
  * @note 每个订阅者最多订阅 CONFIG_EVENT_MAX_SUBSCRIBERS 个事件类型

@@ -172,7 +172,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout);
 /**
  * @brief 处理所有待处理事件
  * 
- * @param max_events 最大处理事件数，0 表示无限制
+ * @param max_events 最大处理事件数，0 表示使用配置中的默认上限
  * @return 已处理的事件数量
  * 
  * @note 此函数会一直处理直到队列为空或达到 max_events 限制

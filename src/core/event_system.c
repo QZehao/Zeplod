@@ -83,6 +83,7 @@ static _Atomic uint32_t g_event_dropped_count;
  * @return 指向订阅者条目的指针，未找到返回 NULL
  */
 static subscriber_entry_t *find_subscriber(event_type_entry_t *entry, uint32_t subscriber_id);
+static void purge_event_queue_and_free_payload(struct k_msgq *queue);
 
 /* =============================================================================
  * 核心实现 (Core Implementation)
@@ -166,11 +167,17 @@ event_status_t event_system_start(void)
  */
 event_status_t event_system_stop(void)
 {
+    if (!g_event_system.initialized) {
+        return EVENT_OK;
+    }
+
     if (atomic_get(&g_event_system.running) == 0) {
         return EVENT_OK;
     }
 
     atomic_set(&g_event_system.running, 0);
+
+    purge_event_queue_and_free_payload(g_event_system.event_queue);
 
     LOG_INF("Event system stopped");
     return EVENT_OK;
@@ -299,6 +306,11 @@ event_status_t event_subscribe(event_type_t type,
     event_type_entry_t *entry = &g_event_system.event_types[type];
 
     k_mutex_lock(&entry->lock, K_FOREVER);
+
+    if (entry->name == NULL) {
+        k_mutex_unlock(&entry->lock);
+        return EVENT_ERR_NOT_FOUND;
+    }
 
     /* 查找空闲槽位 */
     for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
@@ -524,7 +536,7 @@ event_t *event_create(event_type_t type, event_priority_t priority)
     memset(event, 0, sizeof(event_t));
     event->type = type;
     event->priority = priority;
-    event->timestamp = k_uptime_get_32();
+    event->timestamp = k_uptime_get_32();  /* 毫秒时间戳 */
     event->is_dynamic = true;
 
     return event;
@@ -748,4 +760,20 @@ static subscriber_entry_t *find_subscriber(event_type_entry_t *entry, uint32_t s
         }
     }
     return NULL;
+}
+
+static void purge_event_queue_and_free_payload(struct k_msgq *queue)
+{
+    if (queue == NULL) {
+        return;
+    }
+
+    event_t ev;
+
+    while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
+        if (ev.is_dynamic && ev.data != NULL) {
+            k_free(ev.data);
+            ev.data = NULL;
+        }
+    }
 }

@@ -182,6 +182,32 @@ static void msgq_get_attrs_const(const struct k_msgq *queue, struct k_msgq_attrs
     k_msgq_get_attrs((struct k_msgq *)queue, attrs);
 }
 
+static event_queue_cb_t *event_queue_find_cb(const struct k_msgq *queue)
+{
+    for (size_t i = 0; i < ARRAY_SIZE(g_queue_cb); i++) {
+        if (g_queue_cb[i].msgq == queue) {
+            return &g_queue_cb[i];
+        }
+    }
+    return NULL;
+}
+
+static event_queue_cb_t *event_queue_alloc_cb(struct k_msgq *queue)
+{
+    event_queue_cb_t *free_cb = NULL;
+
+    for (size_t i = 0; i < ARRAY_SIZE(g_queue_cb); i++) {
+        if (g_queue_cb[i].msgq == queue) {
+            return &g_queue_cb[i];
+        }
+        if (g_queue_cb[i].msgq == NULL && free_cb == NULL) {
+            free_cb = &g_queue_cb[i];
+        }
+    }
+
+    return free_cb;
+}
+
 /* =============================================================================
  * 队列 API 实现 (Queue API Implementation)
  * ============================================================================= */
@@ -203,7 +229,12 @@ event_status_t event_queue_init(struct k_msgq *queue, void *buffer, size_t capac
     k_msgq_init(queue, buffer, sizeof(event_t), capacity);
 
     /* 初始化统计信息 */
-    event_queue_cb_t *cb = &g_queue_cb[0];
+    event_queue_cb_t *cb = event_queue_alloc_cb(queue);
+    if (cb == NULL) {
+        LOG_ERR("No available queue control block");
+        return EVENT_ERR_NO_MEM;
+    }
+
     cb->msgq = queue;
     cb->capacity = capacity;
     cb->stats = (queue_stats_t){0};
@@ -232,7 +263,11 @@ event_status_t event_queue_enqueue(struct k_msgq *queue,
         return EVENT_ERR_INVALID_ARG;
     }
 
-    event_queue_cb_t *cb = &g_queue_cb[0];
+    event_queue_cb_t *cb = event_queue_find_cb(queue);
+    if (cb == NULL) {
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     struct k_msgq_attrs qattrs;
 
     msgq_get_attrs_const(queue, &qattrs);
@@ -303,7 +338,11 @@ event_status_t event_queue_dequeue(struct k_msgq *queue,
     }
 
     /* 更新统计信息 */
-    event_queue_cb_t *cb = &g_queue_cb[0];
+    event_queue_cb_t *cb = event_queue_find_cb(queue);
+    if (cb == NULL) {
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     k_mutex_lock(&cb->stats_lock, K_FOREVER);
     cb->stats.dequeue_count++;
     k_mutex_unlock(&cb->stats_lock);
@@ -319,6 +358,10 @@ event_status_t event_queue_dequeue(struct k_msgq *queue,
  */
 bool event_queue_is_empty(const struct k_msgq *queue)
 {
+    if (queue == NULL) {
+        return true;
+    }
+
     struct k_msgq_attrs attrs;
 
     msgq_get_attrs_const(queue, &attrs);
@@ -333,6 +376,10 @@ bool event_queue_is_empty(const struct k_msgq *queue)
  */
 bool event_queue_is_full(const struct k_msgq *queue)
 {
+    if (queue == NULL) {
+        return false;
+    }
+
     struct k_msgq_attrs attrs;
 
     msgq_get_attrs_const(queue, &attrs);
@@ -347,6 +394,10 @@ bool event_queue_is_full(const struct k_msgq *queue)
  */
 uint32_t event_queue_depth(const struct k_msgq *queue)
 {
+    if (queue == NULL) {
+        return 0U;
+    }
+
     struct k_msgq_attrs attrs;
 
     msgq_get_attrs_const(queue, &attrs);
@@ -361,6 +412,10 @@ uint32_t event_queue_depth(const struct k_msgq *queue)
  */
 uint32_t event_queue_capacity(const struct k_msgq *queue)
 {
+    if (queue == NULL) {
+        return 0U;
+    }
+
     struct k_msgq_attrs attrs;
 
     msgq_get_attrs_const(queue, &attrs);
@@ -374,8 +429,28 @@ uint32_t event_queue_capacity(const struct k_msgq *queue)
  */
 void event_queue_purge(struct k_msgq *queue)
 {
+    if (queue == NULL) {
+        return;
+    }
+
+    event_queue_cb_t *cb = event_queue_find_cb(queue);
+    event_t ev;
+    uint32_t purged = 0U;
+
+    while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
+        event_free_queued_payload(&ev);
+        purged++;
+    }
+
     k_msgq_purge(queue);
-    LOG_DBG("Event queue purged");
+
+    if (cb != NULL && purged > 0U) {
+        k_mutex_lock(&cb->stats_lock, K_FOREVER);
+        cb->stats.drop_count += purged;
+        k_mutex_unlock(&cb->stats_lock);
+    }
+
+    LOG_DBG("Event queue purged, dropped=%u", purged);
 }
 
 /**
@@ -386,11 +461,16 @@ void event_queue_purge(struct k_msgq *queue)
  */
 void event_queue_get_stats(const struct k_msgq *queue, queue_stats_t *stats)
 {
-    if (stats == NULL) {
+    if (queue == NULL || stats == NULL) {
         return;
     }
 
-    event_queue_cb_t *cb = &g_queue_cb[0];
+    event_queue_cb_t *cb = event_queue_find_cb(queue);
+    if (cb == NULL) {
+        *stats = (queue_stats_t){0};
+        return;
+    }
+
     k_mutex_lock(&cb->stats_lock, K_FOREVER);
     *stats = cb->stats;
     k_mutex_unlock(&cb->stats_lock);
@@ -403,7 +483,15 @@ void event_queue_get_stats(const struct k_msgq *queue, queue_stats_t *stats)
  */
 void event_queue_reset_stats(struct k_msgq *queue)
 {
-    event_queue_cb_t *cb = &g_queue_cb[0];
+    if (queue == NULL) {
+        return;
+    }
+
+    event_queue_cb_t *cb = event_queue_find_cb(queue);
+    if (cb == NULL) {
+        return;
+    }
+
     k_mutex_lock(&cb->stats_lock, K_FOREVER);
     cb->stats = (queue_stats_t){0};
     k_mutex_unlock(&cb->stats_lock);

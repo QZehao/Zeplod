@@ -86,6 +86,7 @@ event_status_t event_queue_init(struct k_msgq *queue, void *buffer, size_t capac
  * @param timeout 等待超时时间
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
+ * @note 调用前需先对该 queue 执行 event_queue_init()，否则返回 EVENT_ERR_INVALID_ARG
  * @note QUEUE_OVERFLOW_DROP_LOWEST：在队列满时排空并丢弃 priority 数值最大的一条（同值则丢弃 FIFO 最旧）；
  *       若新事件比队列中最差事件还低，则丢弃新事件。需线程上下文，不可在 ISR 中使用。
  *       实现会短暂排空队列再回灌，请避免对同一 k_msgq 并发使用裸 k_msgq_* 与 DROP_LOWEST 混用。
@@ -143,6 +144,7 @@ uint32_t event_queue_capacity(const struct k_msgq *queue);
  * @brief 清空队列中的所有事件
  * 
  * @param queue 队列实例
+ * @note 若队列中事件包含动态负载（is_dynamic=true），会在清空时自动释放 data
  */
 void event_queue_purge(struct k_msgq *queue);
 
