@@ -253,7 +253,6 @@ void sys_log_hexdump(sys_log_level_t level, const char *module,
 
     const uint8_t *bytes = (const uint8_t *)data;
     char line[80];
-    int offset = 0;
 
     for (size_t i = 0; i < len; i += 16) {
         size_t chunk = MIN(16, len - i);
