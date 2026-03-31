@@ -96,13 +96,13 @@ if(GIT_FOUND)
         RESULT_VARIABLE GIT_RESULT
         ERROR_QUIET
     )
-    
+
     if(GIT_RESULT EQUAL 0)
         message(STATUS "Git Commit: ${GIT_COMMIT_HASH}")
     else()
         set(GIT_COMMIT_HASH "unknown")
     endif()
-    
+
     # Get git branch
     execute_process(
         COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
@@ -112,11 +112,11 @@ if(GIT_FOUND)
         RESULT_VARIABLE GIT_RESULT
         ERROR_QUIET
     )
-    
+
     if(NOT GIT_RESULT EQUAL 0)
         set(GIT_BRANCH "unknown")
     endif()
-    
+
     # Get git tag (ERROR_QUIET suppresses stderr; avoid shell redirects for portability)
     execute_process(
         COMMAND ${GIT_EXECUTABLE} describe --tags --exact-match
@@ -126,11 +126,11 @@ if(GIT_FOUND)
         RESULT_VARIABLE GIT_RESULT
         ERROR_QUIET
     )
-    
+
     if(NOT GIT_RESULT EQUAL 0)
         set(GIT_TAG "untagged")
     endif()
-    
+
     # Check for uncommitted changes
     execute_process(
         COMMAND ${GIT_EXECUTABLE} diff-index --quiet HEAD --
@@ -138,7 +138,7 @@ if(GIT_FOUND)
         RESULT_VARIABLE GIT_DIRTY
         ERROR_QUIET
     )
-    
+
     if(NOT GIT_DIRTY EQUAL 0)
         set(GIT_DIRTY 1)
         message(STATUS "Git Status: dirty (uncommitted changes)")

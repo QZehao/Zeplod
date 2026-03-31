@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * STM32L4R5ZI SRAM 配置 overlay
+ * 将 SRAM1 + SRAM2 + SRAM3 配置为连续 640KB 区域
+ *
+ * STM32L4R5ZI 内存布局:
+ *   - SRAM1: 192KB @ 0x20000000
+ *   - SRAM2: 64KB  @ 0x20030000 (映射后)
+ *   - SRAM3: 384KB @ 0x20040000
+ *   - 总计：640KB 连续地址空间 0x20000000 - 0x200A0000
+ */
+
+/ {
+    /* 配置 sram 节点定义总 RAM 区域 */
+    sram: sram@20000000 {
+        device_type = "memory";
+        reg = <0x20000000 0xA0000>;  /* 640KB = 0xA0000 */
+    };
+
+    /* 配置 zephyr,sram 属性让 Zephyr 使用整个 640KB */
+    zephyr,sram = &sram;
+};
+
+/* 启用 SRAM2 和 SRAM3 的访问 */
+&flash {
+    /* 确保 Flash 配置正确 */
+    status = "okay";
+};
+
+/* 确保 GPIO 和 UART 可用 */
+&gpio0 {
+    status = "okay";
+};
+
+&uart0 {
+    status = "okay";
+    current-speed = <115200>;
+};
