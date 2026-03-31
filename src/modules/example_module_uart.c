@@ -128,7 +128,15 @@ int example_module_uart_start(void) {
         return -1;
     }
 
-    /* 配置中断接收 */
+    /* 若绑定的是 Zephyr console UART，不要抢占其 IRQ 回调，否则会导致 Shell/LOG 无输出。 */
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART_USE_ZEPHYR_CONSOLE)
+    if (g_module_uart.config.enable_interrupt) {
+        LOG_WRN("UART module shares zephyr_console; disable IRQ hook to keep Shell/LOG output");
+        g_module_uart.config.enable_interrupt = false;
+    }
+#endif
+
+    /* 配置中断接收（仅非 console 共享场景） */
     if (g_module_uart.config.enable_interrupt &&
         uart_irq_callback_user_data_set(g_module_uart.dev, uart_irq_callback, &g_module_uart) == 0) {
         uart_irq_rx_enable(g_module_uart.dev);
