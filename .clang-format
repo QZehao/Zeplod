@@ -73,7 +73,6 @@ BreakInheritanceList: BeforeColon
 BreakStringLiterals: true
 
 # 其他
-ColumnLimit: 100
 CommentPragmas: '^ IWYU pragma:'
 Cpp11BracedListStyle: true
 IndentCaseLabels: true
@@ -82,15 +81,6 @@ IndentWrappedFunctionNames: false
 JavaScriptQuotes: Leave
 JavaScriptWrapImports: true
 KeepEmptyLinesAtTheStartOfBlocks: false
-MacroBlockBegin: ''
+MacroBlockBegin: '^(BUILD_ASSERT|BUILD_ASSERT_MSG|__ASSERT|__ASSERT_MSG)$'
 MacroBlockEnd: ''
 MaxEmptyLinesToKeep: 1
-ReflowComments: true
-SortUsingDeclarations: true
-Standard: c11
-TransformMetadata: true
-TransformNonTemplateGenericFunctions: true
-TransformPrototypesInForwardDeclarations: true
-
-# Zephyr 特定宏
-MacroBlockBegin: '^(BUILD_ASSERT|BUILD_ASSERT_MSG|__ASSERT|__ASSERT_MSG)$'
