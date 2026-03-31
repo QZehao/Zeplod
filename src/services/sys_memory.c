@@ -27,12 +27,12 @@ LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
 #define CONFIG_SYS_MEMORY_POOL_SIZE 8192
 #endif
 
-#define DEFAULT_POOL_SIZE CONFIG_SYS_MEMORY_POOL_SIZE ///< 默认池大小（字节）
-#define MAX_ALLOCATIONS 256                           ///< 最大跟踪分配数
-#define MEMORY_MAGIC 0x4D454D30U                      ///< 魔数 - 有效分配标识（"MEM0"）
-#define MEMORY_FREED_MAGIC 0x46524545U                ///< 魔数 - 已释放块标识（"FREE"）
-#define MEMORY_ALIGN_BYTES 8U                         ///< 内存对齐字节数（保证对齐到8字节）
-#define MIN_BLOCK_SIZE (sizeof(free_block_t) + MEMORY_ALIGN_BYTES) ///< 最小可分割块大小
+#define DEFAULT_POOL_SIZE  CONFIG_SYS_MEMORY_POOL_SIZE                 ///< 默认池大小（字节）
+#define MAX_ALLOCATIONS    256                                         ///< 最大跟踪分配数
+#define MEMORY_MAGIC       0x4D454D30U                                 ///< 魔数 - 有效分配标识（"MEM0"）
+#define MEMORY_FREED_MAGIC 0x46524545U                                 ///< 魔数 - 已释放块标识（"FREE"）
+#define MEMORY_ALIGN_BYTES 8U                                          ///< 内存对齐字节数（保证对齐到8字节）
+#define MIN_BLOCK_SIZE     (sizeof(free_block_t) + MEMORY_ALIGN_BYTES) ///< 最小可分割块大小
 
 /* =============================================================================
  * 内部数据结构
@@ -43,17 +43,17 @@ LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
  */
 typedef struct free_block {
     struct free_block* next; ///< 下一个空闲块
-    size_t size;             ///< 空闲块总大小（包括本头部）
+    size_t             size; ///< 空闲块总大小（包括本头部）
 } free_block_t;
 
 /**
  * @brief 分配块头部结构体（位于用户数据之前）
  */
 typedef struct alloc_header {
-    uint32_t magic;        ///< 魔数，用于验证
-    uint32_t pool_type;    ///< 所属内存池类型
-    size_t requested_size; ///< 用户请求大小（原始未对齐）
-    size_t aligned_size;   ///< 实际分配的用户数据大小（已对齐）
+    uint32_t magic;          ///< 魔数，用于验证
+    uint32_t pool_type;      ///< 所属内存池类型
+    size_t   requested_size; ///< 用户请求大小（原始未对齐）
+    size_t   aligned_size;   ///< 实际分配的用户数据大小（已对齐）
     /* 之后紧跟用户数据 */
 } alloc_header_t;
 
@@ -61,17 +61,17 @@ typedef struct alloc_header {
  * @brief 内存池控制结构
  */
 typedef struct mem_pool {
-    uint8_t* buffer;          ///< 池内存缓冲区起始地址
-    size_t total_size;        ///< 池总大小（字节）
-    free_block_t* free_list;  ///< 空闲块链表头
-    size_t used_size;         ///< 当前已使用大小（字节）
-    size_t max_used;          ///< 历史最大使用量（字节）
-    uint32_t alloc_count;     ///< 累计分配次数
-    uint32_t free_count;      ///< 累计释放次数
-    uint32_t fail_count;      ///< 分配失败次数
-    sys_mem_pool_type_t type; ///< 池类型
-    struct k_mutex lock;      ///< 池互斥锁
-    bool initialized;         ///< 池是否已初始化
+    uint8_t*            buffer;      ///< 池内存缓冲区起始地址
+    size_t              total_size;  ///< 池总大小（字节）
+    free_block_t*       free_list;   ///< 空闲块链表头
+    size_t              used_size;   ///< 当前已使用大小（字节）
+    size_t              max_used;    ///< 历史最大使用量（字节）
+    uint32_t            alloc_count; ///< 累计分配次数
+    uint32_t            free_count;  ///< 累计释放次数
+    uint32_t            fail_count;  ///< 分配失败次数
+    sys_mem_pool_type_t type;        ///< 池类型
+    struct k_mutex      lock;        ///< 池互斥锁
+    bool                initialized; ///< 池是否已初始化
 } mem_pool_t;
 
 /**
@@ -79,19 +79,19 @@ typedef struct mem_pool {
  */
 typedef struct mem_tracker {
     sys_mem_alloc_info_t records[MAX_ALLOCATIONS]; ///< 记录数组
-    uint32_t head;                                 ///< 写入位置（环形）
-    uint32_t count;                                ///< 当前记录数
-    uint32_t max_records;                          ///< 最大记录数
-    bool tracking_enabled;                         ///< 跟踪是否启用
-    struct k_mutex lock;                           ///< 跟踪器互斥锁
+    uint32_t             head;                     ///< 写入位置（环形）
+    uint32_t             count;                    ///< 当前记录数
+    uint32_t             max_records;              ///< 最大记录数
+    bool                 tracking_enabled;         ///< 跟踪是否启用
+    struct k_mutex       lock;                     ///< 跟踪器互斥锁
 } mem_tracker_t;
 
 /**
  * @brief 内存系统全局控制块
  */
 typedef struct sys_mem_cb {
-    mem_pool_t pools[SYS_MEM_POOL_COUNT];
-    mem_tracker_t tracker;
+    mem_pool_t       pools[SYS_MEM_POOL_COUNT];
+    mem_tracker_t    tracker;
     sys_mem_config_t config;
 } sys_mem_cb_t;
 
@@ -224,7 +224,7 @@ static void tracker_add(void* ptr, size_t size, const char* module, uint32_t lin
 
     k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
 
-    uint32_t idx = g_sys_mem.tracker.head;
+    uint32_t              idx = g_sys_mem.tracker.head;
     sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[idx];
     info->ptr = ptr;
     info->size = size;
@@ -320,8 +320,7 @@ static void coalesce_free_blocks(mem_pool_t* pool) {
  * 返回分配的用户指针（位于分配头部之后）。
  * 调用时需持有池锁。
  */
-static void* pool_alloc_locked(mem_pool_t* pool, size_t req_size, bool zero, const char* module,
-                               uint32_t line) {
+static void* pool_alloc_locked(mem_pool_t* pool, size_t req_size, bool zero, const char* module, uint32_t line) {
     if (!pool->initialized) {
         return NULL;
     }
@@ -358,7 +357,7 @@ static void* pool_alloc_locked(mem_pool_t* pool, size_t req_size, bool zero, con
 
     /* 分配内存块 */
     uint8_t* block_start = (uint8_t*) curr;
-    size_t remaining = curr->size - total_needed;
+    size_t   remaining = curr->size - total_needed;
 
     if (remaining >= MIN_BLOCK_SIZE) {
         /* 分割：分配尾部（或头部），我们选择从当前块尾部切出，保持剩余块在前 */
@@ -479,8 +478,7 @@ int sys_mem_init(const sys_mem_config_t* config) {
     }
 
     /* 验证配置参数 */
-    if (g_sys_mem.config.max_allocations == 0 ||
-        g_sys_mem.config.max_allocations > MAX_ALLOCATIONS) {
+    if (g_sys_mem.config.max_allocations == 0 || g_sys_mem.config.max_allocations > MAX_ALLOCATIONS) {
         LOG_ERR("Invalid max_allocations: %u", (uint32_t) g_sys_mem.config.max_allocations);
         return -EINVAL;
     }
@@ -488,7 +486,7 @@ int sys_mem_init(const sys_mem_config_t* config) {
     /* 初始化所有内存池 */
     for (int i = 0; i < SYS_MEM_POOL_COUNT; i++) {
         mem_pool_t* pool = &g_sys_mem.pools[i];
-        size_t configured_size = g_sys_mem.config.pool_sizes[i];
+        size_t      configured_size = g_sys_mem.config.pool_sizes[i];
 
         if (configured_size > DEFAULT_POOL_SIZE) {
             LOG_WRN("Pool %d size %u exceeds buffer %u, clamped", i, (uint32_t) configured_size,
@@ -586,7 +584,7 @@ void sys_mem_free(sys_mem_pool_type_t type, void* ptr) {
     }
 
     alloc_header_t* header;
-    mem_pool_t* pool = lock_pool_from_ptr(ptr, &header);
+    mem_pool_t*     pool = lock_pool_from_ptr(ptr, &header);
     if (pool == NULL) {
         LOG_WRN("Invalid free: ptr=%p", ptr);
         return;
@@ -614,7 +612,7 @@ void* sys_mem_realloc(sys_mem_pool_type_t type, void* ptr, size_t size) {
 
     /* 获取原分配大小 */
     alloc_header_t* header;
-    mem_pool_t* pool = lock_pool_from_ptr(ptr, &header);
+    mem_pool_t*     pool = lock_pool_from_ptr(ptr, &header);
     if (pool == NULL) {
         LOG_WRN("realloc on invalid pointer: %p", ptr);
         return NULL;
@@ -664,7 +662,7 @@ void sys_mem_get_stats(sys_mem_pool_type_t type, sys_mem_stats_t* stats) {
 
     /* 计算外部碎片率：1 - (最大连续空闲块 / 总空闲大小) */
     if (stats->free_size > 0) {
-        size_t max_free_block = 0;
+        size_t        max_free_block = 0;
         free_block_t* curr = pool->free_list;
         while (curr != NULL) {
             if (curr->size > max_free_block) {
@@ -672,8 +670,7 @@ void sys_mem_get_stats(sys_mem_pool_type_t type, sys_mem_stats_t* stats) {
             }
             curr = curr->next;
         }
-        stats->fragmentation =
-            (uint32_t) ((1.0f - (float) max_free_block / stats->free_size) * 100);
+        stats->fragmentation = (uint32_t) ((1.0f - (float) max_free_block / stats->free_size) * 100);
     } else {
         stats->fragmentation = 0;
     }
@@ -702,8 +699,7 @@ uint32_t sys_mem_get_active_allocations(sys_mem_pool_type_t type) {
     }
 
     k_mutex_lock(&pool->lock, K_FOREVER);
-    uint32_t active =
-        (pool->alloc_count >= pool->free_count) ? (pool->alloc_count - pool->free_count) : 0;
+    uint32_t active = (pool->alloc_count >= pool->free_count) ? (pool->alloc_count - pool->free_count) : 0;
     k_mutex_unlock(&pool->lock);
     return active;
 }
@@ -719,16 +715,15 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type) {
     sys_mem_get_stats(type, &stats);
 
     printk("\n=== Memory Pool %d Dump ===\n", type);
-    printk("Total: %u, Used: %u, Free: %u, MaxUsed: %u\n", (uint32_t) stats.total_size,
-           (uint32_t) stats.used_size, (uint32_t) stats.free_size, (uint32_t) stats.max_used);
-    printk("Allocations: %u, Frees: %u, Fails: %u\n", stats.alloc_count, stats.free_count,
-           stats.fail_count);
+    printk("Total: %u, Used: %u, Free: %u, MaxUsed: %u\n", (uint32_t) stats.total_size, (uint32_t) stats.used_size,
+           (uint32_t) stats.free_size, (uint32_t) stats.max_used);
+    printk("Allocations: %u, Frees: %u, Fails: %u\n", stats.alloc_count, stats.free_count, stats.fail_count);
 
     /* 打印空闲块信息 */
     k_mutex_lock(&pool->lock, K_FOREVER);
     printk("Free blocks:\n");
     free_block_t* fb = pool->free_list;
-    int idx = 0;
+    int           idx = 0;
     while (fb != NULL) {
         printk("  [%d] addr=%p size=%u\n", idx++, fb, (uint32_t) fb->size);
         fb = fb->next;
@@ -742,10 +737,9 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type) {
             printk("Active Allocations:\n");
             for (uint32_t i = 0; i < g_sys_mem.tracker.count; i++) {
                 sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[i];
-                alloc_header_t* header = get_alloc_header(info->ptr);
+                alloc_header_t*       header = get_alloc_header(info->ptr);
                 if (header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
-                    printk("  [%u] ptr=%p, size=%u, time=%u", i, info->ptr, (uint32_t) info->size,
-                           info->timestamp);
+                    printk("  [%u] ptr=%p, size=%u, time=%u", i, info->ptr, (uint32_t) info->size, info->timestamp);
                     if (info->module != NULL) {
                         printk(" (%s:%u)", info->module, info->line);
                     }
@@ -864,8 +858,7 @@ size_t sys_mem_get_min_free_size(void) {
     return (min_free == SIZE_MAX) ? 0 : min_free;
 }
 
-void* sys_mem_alloc_with_info(sys_mem_pool_type_t type, size_t size, const char* module,
-                              uint32_t line) {
+void* sys_mem_alloc_with_info(sys_mem_pool_type_t type, size_t size, const char* module, uint32_t line) {
     if (size == 0)
         return NULL;
 

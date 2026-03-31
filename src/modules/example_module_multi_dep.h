@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-const module_interface_t *example_module_multi_dep_get_interface(void);
+const module_interface_t* example_module_multi_dep_get_interface(void);
 
 #ifdef __cplusplus
 }

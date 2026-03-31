@@ -21,9 +21,9 @@
 #define EVENT_SYSTEM_H
 
 #include <zephyr/kernel.h>
-#include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,9 +78,9 @@ typedef uint8_t event_type_t;
  * @brief 预定义的事件类型 ID
  * @note 可在各模块中注册具体名称
  */
-#define EVENT_TYPE_GENERIC        1U   /**< 通用事件类型 */
-#define EVENT_TYPE_SENSOR_DATA    10U  /**< 传感器数据事件 */
-#define EVENT_TYPE_SENSOR_CONFIG  11U  /**< 传感器配置事件 */
+#define EVENT_TYPE_GENERIC             1U  /**< 通用事件类型 */
+#define EVENT_TYPE_SENSOR_DATA         10U /**< 传感器数据事件 */
+#define EVENT_TYPE_SENSOR_CONFIG       11U /**< 传感器配置事件 */
 /**
  * @brief Thread IPC Service 结果事件
  * @note 与 CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE 配合使用
@@ -92,10 +92,10 @@ typedef uint8_t event_type_t;
  * @note 数值越小优先级越高，与 Zephyr 线程优先级约定一致
  */
 typedef enum {
-    EVENT_PRIORITY_LOW      = 10,  /**< 低优先级事件 */
-    EVENT_PRIORITY_NORMAL   = 5,   /**< 普通优先级事件 */
-    EVENT_PRIORITY_HIGH     = 2,   /**< 高优先级事件 */
-    EVENT_PRIORITY_CRITICAL = 0    /**< 临界优先级事件（最高） */
+    EVENT_PRIORITY_LOW = 10,    /**< 低优先级事件 */
+    EVENT_PRIORITY_NORMAL = 5,  /**< 普通优先级事件 */
+    EVENT_PRIORITY_HIGH = 2,    /**< 高优先级事件 */
+    EVENT_PRIORITY_CRITICAL = 0 /**< 临界优先级事件（最高） */
 } event_priority_t;
 
 /**
@@ -103,14 +103,14 @@ typedef enum {
  * @note 所有事件 API 均返回此枚举值
  */
 typedef enum {
-    EVENT_OK                = 0,   /**< 操作成功 */
-    EVENT_ERR_NO_MEM        = -1,  /**< 内存不足 */
-    EVENT_ERR_QUEUE_FULL    = -2,  /**< 队列已满 */
-    EVENT_ERR_QUEUE_EMPTY   = -3,  /**< 队列为空 */
-    EVENT_ERR_INVALID_ARG   = -4,  /**< 无效参数 */
-    EVENT_ERR_NOT_FOUND     = -5,  /**< 未找到 */
-    EVENT_ERR_NO_SUBSCRIBER = -6,  /**< 无订阅者 */
-    EVENT_ERR_TIMEOUT       = -7   /**< 操作超时 */
+    EVENT_OK = 0,                 /**< 操作成功 */
+    EVENT_ERR_NO_MEM = -1,        /**< 内存不足 */
+    EVENT_ERR_QUEUE_FULL = -2,    /**< 队列已满 */
+    EVENT_ERR_QUEUE_EMPTY = -3,   /**< 队列为空 */
+    EVENT_ERR_INVALID_ARG = -4,   /**< 无效参数 */
+    EVENT_ERR_NOT_FOUND = -5,     /**< 未找到 */
+    EVENT_ERR_NO_SUBSCRIBER = -6, /**< 无订阅者 */
+    EVENT_ERR_TIMEOUT = -7        /**< 操作超时 */
 } event_status_t;
 
 /**
@@ -125,13 +125,13 @@ typedef enum {
  * @note 如果 data 是动态分配的，确保在事件处理后正确释放
  */
 typedef struct {
-    event_type_t    type;           /**< 事件类型标识符 */
-    event_priority_t priority;      /**< 事件优先级 */
-    uint32_t        timestamp;      /**< 事件创建时间戳（毫秒 uptime） */
-    uint32_t        source_id;      /**< 源模块/组件 ID */
-    uint32_t        data_len;       /**< 事件数据长度（字节） */
-    void           *data;           /**< 事件数据指针 */
-    bool            is_dynamic;     /**< true 表示 data 是动态分配的 */
+    event_type_t     type;       /**< 事件类型标识符 */
+    event_priority_t priority;   /**< 事件优先级 */
+    uint32_t         timestamp;  /**< 事件创建时间戳（毫秒 uptime） */
+    uint32_t         source_id;  /**< 源模块/组件 ID */
+    uint32_t         data_len;   /**< 事件数据长度（字节） */
+    void*            data;       /**< 事件数据指针 */
+    bool             is_dynamic; /**< true 表示 data 是动态分配的 */
 } event_t;
 
 /**
@@ -145,7 +145,7 @@ typedef struct {
  * @note 回调在分发器线程上下文中执行，避免长时间阻塞操作
  * @note 不要在此回调中释放 event 或 event->data
  */
-typedef void (*event_callback_t)(const event_t *event, void *user_data);
+typedef void (*event_callback_t)(const event_t* event, void* user_data);
 
 /**
  * @brief 订阅者条目结构
@@ -154,7 +154,7 @@ typedef void (*event_callback_t)(const event_t *event, void *user_data);
  */
 typedef struct {
     event_callback_t callback;      /**< 回调函数指针 */
-    void            *user_data;     /**< 回调用户数据 */
+    void*            user_data;     /**< 回调用户数据 */
     uint32_t         subscriber_id; /**< 唯一订阅者 ID（由系统分配） */
     bool             is_active;     /**< 订阅者是否处于激活状态 */
 } subscriber_entry_t;
@@ -165,11 +165,11 @@ typedef struct {
  * 每个已注册的事件类型对应一个此结构，包含该类型的所有订阅者信息。
  */
 typedef struct {
-    event_type_t       type;                  /**< 事件类型 ID */
-    const char        *name;                  /**< 事件类型名称（用于调试） */
-    subscriber_entry_t subscribers[CONFIG_EVENT_MAX_SUBSCRIBERS];  /**< 订阅者数组 */
-    uint32_t           subscriber_count;      /**< 当前活跃的订阅者数量 */
-    struct k_mutex     lock;                  /**< 保护订阅者列表的互斥锁 */
+    event_type_t       type;                                      /**< 事件类型 ID */
+    const char*        name;                                      /**< 事件类型名称（用于调试） */
+    subscriber_entry_t subscribers[CONFIG_EVENT_MAX_SUBSCRIBERS]; /**< 订阅者数组 */
+    uint32_t           subscriber_count;                          /**< 当前活跃的订阅者数量 */
+    struct k_mutex     lock;                                      /**< 保护订阅者列表的互斥锁 */
 } event_type_entry_t;
 
 /* =============================================================================
@@ -240,7 +240,7 @@ bool event_system_is_running(void);
  * @note 重复注册同一类型是幂等的，不会返回错误
  * @note 类型 ID 应预先规划，避免冲突
  */
-event_status_t event_register_type(event_type_t type, const char *name);
+event_status_t event_register_type(event_type_t type, const char* name);
 
 /**
  * @brief 注销事件类型
@@ -275,10 +275,7 @@ event_status_t event_unregister_type(event_type_t type);
  * @note 每个订阅者最多订阅 CONFIG_EVENT_MAX_SUBSCRIBERS 个事件类型
  * @note 达到订阅上限时返回 EVENT_ERR_QUEUE_FULL
  */
-event_status_t event_subscribe(event_type_t type,
-                                event_callback_t callback,
-                                void *user_data,
-                                uint32_t *subscriber_id);
+event_status_t event_subscribe(event_type_t type, event_callback_t callback, void* user_data, uint32_t* subscriber_id);
 
 /**
  * @brief 取消订阅事件类型
@@ -324,7 +321,7 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  * @note event 指向的内容会被复制到队列，调用者可安全释放
  * @note 如果 event->is_dynamic 为 true，调用者仍需负责释放 event->data
  */
-event_status_t event_publish(const event_t *event);
+event_status_t event_publish(const event_t* event);
 
 /**
  * @brief 从中断服务程序 (ISR) 发布事件
@@ -339,7 +336,7 @@ event_status_t event_publish(const event_t *event);
  * @note 避免在 ISR 中调用 event_publish_copy，因为其中包含 k_malloc
  * @note 与 event_publish 相同：event_system_stop 后 running 为假时返回 EVENT_ERR_INVALID_ARG
  */
-event_status_t event_publish_from_isr(const event_t *event);
+event_status_t event_publish_from_isr(const event_t* event);
 
 /**
  * @brief 发布事件并复制数据
@@ -357,10 +354,7 @@ event_status_t event_publish_from_isr(const event_t *event);
  * @note 数据副本在事件处理完成后由分发器自动释放
  * @note 适用于栈上数据或临时数据的发布
  */
-event_status_t event_publish_copy(event_type_t type,
-                                   event_priority_t priority,
-                                   const void *data,
-                                   size_t data_len);
+event_status_t event_publish_copy(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /* =============================================================================
  * 事件创建与内存管理 (Event Creation & Memory Management)
@@ -380,7 +374,7 @@ event_status_t event_publish_copy(event_type_t type,
  * @note 此函数只分配事件外壳，不分配数据空间
  * @note 使用 event_publish() 发布后，调用者仍需释放此事件对象
  */
-event_t *event_create(event_type_t type, event_priority_t priority);
+event_t* event_create(event_type_t type, event_priority_t priority);
 
 /**
  * @brief 创建带数据的事件
@@ -397,10 +391,7 @@ event_t *event_create(event_type_t type, event_priority_t priority);
  * @note 数据会被复制到新分配的内存中
  * @note 返回的事件必须用 event_free() 释放
  */
-event_t *event_create_with_data(event_type_t type,
-                                 event_priority_t priority,
-                                 const void *data,
-                                 size_t data_len);
+event_t* event_create_with_data(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /**
  * @brief 释放事件对象
@@ -413,7 +404,7 @@ event_t *event_create_with_data(event_type_t type,
  * @note 传入 NULL 是安全的，函数会直接返回
  * @note 不要释放栈上的事件对象
  */
-void event_free(event_t *event);
+void event_free(event_t* event);
 
 /* =============================================================================
  * 工具函数 (Utility Functions)
@@ -429,7 +420,7 @@ void event_free(event_t *event);
  * @note 如果类型未注册，返回 "UNREGISTERED"
  * @note 如果类型 ID 无效，返回 "UNKNOWN"
  */
-const char *event_get_type_name(event_type_t type);
+const char* event_get_type_name(event_type_t type);
 
 /**
  * @brief 获取事件类型的订阅者数量
@@ -451,9 +442,7 @@ uint32_t event_get_subscriber_count(event_type_t type);
  * @note 用于系统监控和调试
  * @note 所有输出参数都可以为 NULL，表示不关心该值
  */
-void event_get_statistics(uint32_t *total_events,
-                          uint32_t *queue_depth,
-                          uint32_t *dropped_events);
+void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_t* dropped_events);
 
 /**
  * @brief 获取全局事件队列指针
@@ -463,7 +452,7 @@ void event_get_statistics(uint32_t *total_events,
  * @note 主要用于高级用法，如直接操作队列
  * @note 仅在 event_system_init() 调用后有效
  */
-struct k_msgq *event_system_get_queue(void);
+struct k_msgq* event_system_get_queue(void);
 
 /**
  * @brief 将事件分发给所有订阅者
@@ -477,7 +466,7 @@ struct k_msgq *event_system_get_queue(void);
  * @note 回调函数执行时不持有事件类型锁，避免竞态条件
  * @note 如果无订阅者，返回 EVENT_ERR_NO_SUBSCRIBER
  */
-event_status_t event_notify_subscribers(const event_t *event);
+event_status_t event_notify_subscribers(const event_t* event);
 
 #ifdef __cplusplus
 }

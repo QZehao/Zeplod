@@ -22,8 +22,7 @@ extern "C" {
 #endif
 
 #if defined(CONFIG_SYS_MEMORY_DEBUG) && CONFIG_SYS_MEMORY_DEBUG
-#define SYS_MEM_ALLOC_WITH_INFO(type, size, mod, line)                                             \
-    sys_mem_alloc_with_info(type, size, mod, line)
+#define SYS_MEM_ALLOC_WITH_INFO(type, size, mod, line) sys_mem_alloc_with_info(type, size, mod, line)
 #else
 #define SYS_MEM_ALLOC_WITH_INFO(type, size, mod, line) sys_mem_alloc(type, size)
 #endif
@@ -53,10 +52,10 @@ typedef enum {
  * 所有计数器在初始化时清零，可通过 sys_mem_reset_stats() 重置。
  */
 typedef struct {
-    size_t total_size;      ///< 池总大小（字节）
-    size_t used_size;       ///< 当前已使用大小（字节）
-    size_t free_size;       ///< 当前可用大小（字节）
-    size_t max_used;        ///< 历史最大使用量（峰值，字节）
+    size_t   total_size;    ///< 池总大小（字节）
+    size_t   used_size;     ///< 当前已使用大小（字节）
+    size_t   free_size;     ///< 当前可用大小（字节）
+    size_t   max_used;      ///< 历史最大使用量（峰值，字节）
     uint32_t alloc_count;   ///< 累计分配次数
     uint32_t free_count;    ///< 累计释放次数
     uint32_t fail_count;    ///< 分配失败次数
@@ -70,11 +69,11 @@ typedef struct {
  * 仅在启用跟踪功能时有效。
  */
 typedef struct {
-    void* ptr;          ///< 分配的内存指针
-    size_t size;        ///< 请求的大小（字节）
-    uint32_t timestamp; ///< 分配时间戳（系统运行毫秒数）
-    const char* module; ///< 分配模块名称（可选）
-    uint32_t line;      ///< 源代码行号（可选）
+    void*       ptr;       ///< 分配的内存指针
+    size_t      size;      ///< 请求的大小（字节）
+    uint32_t    timestamp; ///< 分配时间戳（系统运行毫秒数）
+    const char* module;    ///< 分配模块名称（可选）
+    uint32_t    line;      ///< 源代码行号（可选）
 } sys_mem_alloc_info_t;
 
 /* =============================================================================
@@ -88,10 +87,10 @@ typedef struct {
  * 在 sys_mem_init() 时传入，之后不可修改。
  */
 typedef struct {
-    size_t pool_sizes[SYS_MEM_POOL_COUNT]; ///< 各内存池大小配置（字节）
-    bool enable_tracking;                  ///< 是否启用分配跟踪
-    bool enable_defrag;                    ///< 是否启用碎片整理
-    uint32_t max_allocations;              ///< 最大跟踪分配数
+    size_t   pool_sizes[SYS_MEM_POOL_COUNT]; ///< 各内存池大小配置（字节）
+    bool     enable_tracking;                ///< 是否启用分配跟踪
+    bool     enable_defrag;                  ///< 是否启用碎片整理
+    uint32_t max_allocations;                ///< 最大跟踪分配数
 } sys_mem_config_t;
 
 /* =============================================================================
@@ -289,20 +288,20 @@ size_t sys_mem_defrag(sys_mem_pool_type_t type);
  * @brief 释放到通用池
  * @param ptr 要释放的指针
  */
-#define SYS_MEM_FREE_GENERAL(ptr) sys_mem_free(SYS_MEM_POOL_GENERAL, ptr)
+#define SYS_MEM_FREE_GENERAL(ptr)   sys_mem_free(SYS_MEM_POOL_GENERAL, ptr)
 
 /**
  * @brief 从事件池分配内存
  * @param size 大小（字节）
  * @return 指针或 NULL
  */
-#define SYS_MEM_ALLOC_EVENT(size) sys_mem_alloc(SYS_MEM_POOL_EVENT, size)
+#define SYS_MEM_ALLOC_EVENT(size)   sys_mem_alloc(SYS_MEM_POOL_EVENT, size)
 
 /**
  * @brief 释放到事件池
  * @param ptr 要释放的指针
  */
-#define SYS_MEM_FREE_EVENT(ptr) sys_mem_free(SYS_MEM_POOL_EVENT, ptr)
+#define SYS_MEM_FREE_EVENT(ptr)     sys_mem_free(SYS_MEM_POOL_EVENT, ptr)
 
 /* =============================================================================
  * 堆信息 API
@@ -344,8 +343,7 @@ size_t sys_mem_get_min_free_size(void);
  * @param  line      行号
  * @return void*
  */
-void* sys_mem_alloc_with_info(sys_mem_pool_type_t type, size_t size, const char* module,
-                              uint32_t line);
+void* sys_mem_alloc_with_info(sys_mem_pool_type_t type, size_t size, const char* module, uint32_t line);
 #ifdef __cplusplus
 }
 #endif

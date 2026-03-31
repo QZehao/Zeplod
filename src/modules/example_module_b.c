@@ -9,10 +9,10 @@
  */
 
 #include "example_module_b.h"
-#include "event_system.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include "event_system.h"
 
 LOG_MODULE_REGISTER(example_module_b, CONFIG_SYS_LOG_LEVEL);
 
@@ -20,13 +20,13 @@ LOG_MODULE_REGISTER(example_module_b, CONFIG_SYS_LOG_LEVEL);
  * Internal Definitions
  * ============================================================================= */
 
-#define EXAMPLE_MODULE_B_THREAD_PRIORITY 6
+#define EXAMPLE_MODULE_B_THREAD_PRIORITY   6
 #define EXAMPLE_MODULE_B_THREAD_STACK_SIZE 1024
 
 /* Control commands */
-#define CMD_SEND_DATA     1
-#define CMD_GET_STATS     2
-#define CMD_CLEAR_BUFFERS 3
+#define CMD_SEND_DATA                      1
+#define CMD_GET_STATS                      2
+#define CMD_CLEAR_BUFFERS                  3
 
 /* =============================================================================
  * Internal Data Structures
@@ -34,8 +34,8 @@ LOG_MODULE_REGISTER(example_module_b, CONFIG_SYS_LOG_LEVEL);
 
 typedef struct {
     example_module_b_config_t config;
-    module_status_t status;
-    struct k_thread thread;
+    module_status_t           status;
+    struct k_thread           thread;
     K_KERNEL_STACK_MEMBER(stack, EXAMPLE_MODULE_B_THREAD_STACK_SIZE);
     uint32_t subscriber_id;
     uint32_t event_type;
@@ -51,15 +51,14 @@ static example_module_b_cb_t g_module_b;
  * Forward Declarations
  * ============================================================================= */
 
-static void module_b_thread_func(void *p1, void *p2, void *p3);
-static void on_sensor_data(const event_t *event, void *user_data);
+static void module_b_thread_func(void* p1, void* p2, void* p3);
+static void on_sensor_data(const event_t* event, void* user_data);
 
 /* =============================================================================
  * Module Interface Implementation
  * ============================================================================= */
 
-int example_module_b_init(void *config)
-{
+int example_module_b_init(void* config) {
     LOG_INF("Initializing Example Module B...");
 
     if (config != NULL) {
@@ -79,8 +78,7 @@ int example_module_b_init(void *config)
     return 0;
 }
 
-int example_module_b_start(void)
-{
+int example_module_b_start(void) {
     LOG_INF("Starting Module B...");
 
     if (g_module_b.status != MODULE_STATUS_INITIALIZED) {
@@ -93,20 +91,15 @@ int example_module_b_start(void)
     event_subscribe(g_module_b.event_type, on_sensor_data, &g_module_b, &g_module_b.subscriber_id);
 
     /* Start module thread */
-    k_thread_create(&g_module_b.thread,
-                    g_module_b.stack,
-                    K_THREAD_STACK_SIZEOF(g_module_b.stack),
-                    module_b_thread_func,
-                    &g_module_b, NULL, NULL,
-                    EXAMPLE_MODULE_B_THREAD_PRIORITY, 0, K_NO_WAIT);
+    k_thread_create(&g_module_b.thread, g_module_b.stack, K_THREAD_STACK_SIZEOF(g_module_b.stack), module_b_thread_func,
+                    &g_module_b, NULL, NULL, EXAMPLE_MODULE_B_THREAD_PRIORITY, 0, K_NO_WAIT);
 
     g_module_b.status = MODULE_STATUS_RUNNING;
     LOG_INF("Module B started");
     return 0;
 }
 
-int example_module_b_stop(void)
-{
+int example_module_b_stop(void) {
     LOG_INF("Stopping Module B...");
 
     if (g_module_b.status != MODULE_STATUS_RUNNING) {
@@ -125,24 +118,21 @@ int example_module_b_stop(void)
     return 0;
 }
 
-int example_module_b_shutdown(void)
-{
+int example_module_b_shutdown(void) {
     LOG_INF("Shutting down Module B...");
 
     example_module_b_stop();
-    g_module_b.status = MODULE_STATUS_ERROR;  /* Use ERROR as shutdown state */
+    g_module_b.status = MODULE_STATUS_ERROR; /* Use ERROR as shutdown state */
 
     LOG_INF("Module B shutdown complete");
     return 0;
 }
 
-module_status_t example_module_b_get_status(void)
-{
+module_status_t example_module_b_get_status(void) {
     return g_module_b.status;
 }
 
-void example_module_b_on_event(const event_t *event, void *user_data)
-{
+void example_module_b_on_event(const event_t* event, void* user_data) {
     ARG_UNUSED(user_data);
 
     if (event == NULL) {
@@ -151,26 +141,25 @@ void example_module_b_on_event(const event_t *event, void *user_data)
 
     /* Handle all events generically */
     LOG_DBG("Received event type: %d", event->type);
-    
+
     if (event->data != NULL && event->data_len >= sizeof(int32_t)) {
-        int32_t sensor_value = *(int32_t *)event->data;
+        int32_t sensor_value = *(int32_t*) event->data;
         LOG_DBG("Event data: %d", sensor_value);
     }
 }
 
-int example_module_b_control(int cmd, void *arg)
-{
+int example_module_b_control(int cmd, void* arg) {
     switch (cmd) {
-        case CMD_GET_STATS:
-            /* Could return statistics */
-            return 0;
+    case CMD_GET_STATS:
+        /* Could return statistics */
+        return 0;
 
-        case CMD_CLEAR_BUFFERS:
-            /* Could clear buffers */
-            return 0;
+    case CMD_CLEAR_BUFFERS:
+        /* Could clear buffers */
+        return 0;
 
-        default:
-            return -1;
+    default:
+        return -1;
     }
 }
 
@@ -178,19 +167,17 @@ int example_module_b_control(int cmd, void *arg)
  * Module-specific API
  * ============================================================================= */
 
-int example_module_b_send(const void *data, size_t len)
-{
+int example_module_b_send(const void* data, size_t len) {
     if (data == NULL || len == 0) {
         return -1;
     }
 
     /* Simulate sending data */
     LOG_DBG("Sending %d bytes", len);
-    return (int)len;
+    return (int) len;
 }
 
-int example_module_b_receive(void *data, size_t len)
-{
+int example_module_b_receive(void* data, size_t len) {
     if (data == NULL || len == 0) {
         return -1;
     }
@@ -200,19 +187,20 @@ int example_module_b_receive(void *data, size_t len)
     return 0;
 }
 
-void example_module_b_get_stats(uint32_t *tx_count, uint32_t *rx_count, uint32_t *errors)
-{
-    if (tx_count != NULL) *tx_count = 0;
-    if (rx_count != NULL) *rx_count = 0;
-    if (errors != NULL) *errors = 0;
+void example_module_b_get_stats(uint32_t* tx_count, uint32_t* rx_count, uint32_t* errors) {
+    if (tx_count != NULL)
+        *tx_count = 0;
+    if (rx_count != NULL)
+        *rx_count = 0;
+    if (errors != NULL)
+        *errors = 0;
 }
 
 /* =============================================================================
  * Internal Functions
  * ============================================================================= */
 
-static void module_b_thread_func(void *p1, void *p2, void *p3)
-{
+static void module_b_thread_func(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
@@ -227,8 +215,7 @@ static void module_b_thread_func(void *p1, void *p2, void *p3)
     LOG_INF("Module B thread stopped");
 }
 
-static void on_sensor_data(const event_t *event, void *user_data)
-{
+static void on_sensor_data(const event_t* event, void* user_data) {
     ARG_UNUSED(user_data);
 
     if (event == NULL) {
@@ -239,10 +226,10 @@ static void on_sensor_data(const event_t *event, void *user_data)
 
     /* Process sensor data and potentially send response */
     if (event->data != NULL && event->data_len >= sizeof(int32_t)) {
-        int32_t sensor_value = *(int32_t *)event->data;
+        int32_t sensor_value = *(int32_t*) event->data;
 
         /* Example: Send acknowledgment */
-        uint32_t ack = sensor_value * 2;  /* Simple transformation */
+        uint32_t ack = sensor_value * 2; /* Simple transformation */
         example_module_b_send(&ack, sizeof(ack));
 
         LOG_DBG("Processed sensor value %d", sensor_value);
@@ -253,21 +240,18 @@ static void on_sensor_data(const event_t *event, void *user_data)
  * Module Interface Declaration
  * ============================================================================= */
 
-const module_interface_t example_module_b_interface = {
-    .name = "example_module_b",
-    .version = MODULE_VERSION(1, 0, 0),
-    .priority = MODULE_PRIORITY_NORMAL,
-    .depends_on = NULL,
-    .init = example_module_b_init,
-    .start = example_module_b_start,
-    .stop = example_module_b_stop,
-    .shutdown = example_module_b_shutdown,
-    .on_event = example_module_b_on_event,
-    .get_status = example_module_b_get_status,
-    .control = example_module_b_control
-};
+const module_interface_t example_module_b_interface = {.name = "example_module_b",
+                                                       .version = MODULE_VERSION(1, 0, 0),
+                                                       .priority = MODULE_PRIORITY_NORMAL,
+                                                       .depends_on = NULL,
+                                                       .init = example_module_b_init,
+                                                       .start = example_module_b_start,
+                                                       .stop = example_module_b_stop,
+                                                       .shutdown = example_module_b_shutdown,
+                                                       .on_event = example_module_b_on_event,
+                                                       .get_status = example_module_b_get_status,
+                                                       .control = example_module_b_control};
 
-const module_interface_t *example_module_b_get_interface(void)
-{
+const module_interface_t* example_module_b_get_interface(void) {
     return &example_module_b_interface;
 }

@@ -44,20 +44,15 @@ LOG_MODULE_REGISTER(ipc_example);
  * @param out_data_size 输出数据大小
  * @return 0 成功
  */
-static int example_service_func(ipc_request_id_t request_id,
-                                 const void *data,
-                                 size_t data_size,
-                                 void **out_data,
-                                 size_t *out_data_size)
-{
-    LOG_INF("Service processing request %u, data_size=%zu",
-            request_id, data_size);
+static int example_service_func(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
+                                size_t* out_data_size) {
+    LOG_INF("Service processing request %u, data_size=%zu", request_id, data_size);
 
     /* 模拟处理延迟 */
     k_msleep(10);
 
     /* 示例：直接返回输入数据（零拷贝） */
-    *out_data = (void *)data;
+    *out_data = (void*) data;
     *out_data_size = data_size;
 
     return 0;
@@ -76,27 +71,22 @@ static ipc_service_t g_example_service;
 
 /**
  * @brief 同步调用示例
- * 
+ *
  * 演示如何使用 ipc_call_sync 进行阻塞式调用。
  */
-static void example_sync_call(void)
-{
+static void example_sync_call(void) {
     LOG_INF("=== SYNC Mode Example ===");
 
-    const char *input_data = "Hello Sync!";
-    void *output_data = NULL;
-    size_t output_size = 0;
+    const char* input_data = "Hello Sync!";
+    void*       output_data = NULL;
+    size_t      output_size = 0;
 
     /* 同步调用：阻塞直到服务返回或超时 */
-    int result = ipc_call_sync(&g_example_service,
-                               input_data,
-                               strlen(input_data) + 1,
-                               &output_data,
-                               &output_size,
-                               K_SECONDS(1));
+    int result =
+        ipc_call_sync(&g_example_service, input_data, strlen(input_data) + 1, &output_data, &output_size, K_SECONDS(1));
 
     if (result == 0) {
-        LOG_INF("SYNC call succeeded: %s", (char *)output_data);
+        LOG_INF("SYNC call succeeded: %s", (char*) output_data);
     } else {
         LOG_ERR("SYNC call failed: %d", result);
     }
@@ -108,43 +98,35 @@ static void example_sync_call(void)
 
 /**
  * @brief 异步调用回调函数
- * 
+ *
  * 当异步请求完成时由框架调用此函数。
- * 
+ *
  * @param request_id 请求 ID
  * @param result 服务函数返回值
  * @param data 输出数据
  * @param data_size 输出数据大小
  * @param user_data 用户自定义数据
  */
-static void async_callback(ipc_request_id_t request_id,
-                           int result,
-                           const void *data,
-                           size_t data_size,
-                           void *user_data)
-{
-    LOG_INF("ASYNC callback: request_id=%u, result=%d, data=%s, user_data=%p",
-            request_id, result, (char *)data, user_data);
+static void async_callback(ipc_request_id_t request_id, int result, const void* data, size_t data_size,
+                           void* user_data) {
+    LOG_INF("ASYNC callback: request_id=%u, result=%d, data=%s, user_data=%p", request_id, result, (char*) data,
+            user_data);
 }
 
 /**
  * @brief 异步调用示例
- * 
+ *
  * 演示如何使用 ipc_call_async 进行非阻塞调用。
  */
-static void example_async_call(void)
-{
+static void example_async_call(void) {
     LOG_INF("=== ASYNC Mode Example ===");
 
-    const char *input_data = "Hello Async!";
+    const char*      input_data = "Hello Async!";
     ipc_request_id_t request_id;
 
     /* 异步调用：立即返回，回调将在服务完成后执行 */
-    int result = ipc_call_async(&g_example_service,
-                                input_data,
-                                strlen(input_data) + 1,
-                                async_callback,
-                                (void *)0x12345678,  /* 用户数据 */
+    int result = ipc_call_async(&g_example_service, input_data, strlen(input_data) + 1, async_callback,
+                                (void*) 0x12345678, /* 用户数据 */
                                 &request_id);
 
     if (result == 0) {
@@ -164,21 +146,17 @@ static void example_async_call(void)
 
 /**
  * @brief Future 模式调用示例
- * 
+ *
  * 演示如何使用 ipc_call_future 和 ipc_future_wait 进行调用。
  */
-static void example_future_call(void)
-{
+static void example_future_call(void) {
     LOG_INF("=== FUTURE Mode Example ===");
 
-    const char *input_data = "Hello Future!";
-    ipc_future_t *future = NULL;
+    const char*   input_data = "Hello Future!";
+    ipc_future_t* future = NULL;
 
     /* Future 模式调用：返回 future 对象，可稍后获取结果 */
-    int result = ipc_call_future(&g_example_service,
-                                 input_data,
-                                 strlen(input_data) + 1,
-                                 &future);
+    int result = ipc_call_future(&g_example_service, input_data, strlen(input_data) + 1, &future);
 
     if (result == 0 && future != NULL) {
         LOG_INF("FUTURE call sent, waiting for result...");
@@ -189,19 +167,14 @@ static void example_future_call(void)
         }
 
         /* 方式 2：阻塞等待 */
-        int future_result;
-        const void *output_data;
-        size_t output_size;
+        int         future_result;
+        const void* output_data;
+        size_t      output_size;
 
-        result = ipc_future_wait(future,
-                                 &future_result,
-                                 &output_data,
-                                 &output_size,
-                                 K_SECONDS(1));
+        result = ipc_future_wait(future, &future_result, &output_data, &output_size, K_SECONDS(1));
 
         if (result == 0) {
-            LOG_INF("FUTURE call succeeded: result=%d, data=%s",
-                    future_result, (char *)output_data);
+            LOG_INF("FUTURE call succeeded: result=%d, data=%s", future_result, (char*) output_data);
         } else {
             LOG_ERR("FUTURE wait failed: %d", result);
         }
@@ -224,11 +197,10 @@ static K_THREAD_STACK_DEFINE(example_stack, 2048);
 
 /**
  * @brief 示例线程函数
- * 
+ *
  * 按顺序演示三种调用模式。
  */
-static void example_thread_func(void *p1, void *p2, void *p3)
-{
+static void example_thread_func(void* p1, void* p2, void* p3) {
     LOG_INF("IPC Service Example Started");
 
     /* 等待服务启动完成 */
@@ -247,8 +219,7 @@ static void example_thread_func(void *p1, void *p2, void *p3)
     LOG_INF("IPC Service Example Completed");
 
     /* 打印统计信息 */
-    LOG_INF("Pending requests: %zu",
-            ipc_service_get_pending_count(&g_example_service));
+    LOG_INF("Pending requests: %zu", ipc_service_get_pending_count(&g_example_service));
 }
 
 /* ============================================================================
@@ -257,23 +228,18 @@ static void example_thread_func(void *p1, void *p2, void *p3)
 
 /**
  * @brief 初始化并启动 IPC 服务
- * 
+ *
  * 此函数在系统启动时自动调用（通过 SYS_INIT）。
- * 
+ *
  * @return 0 成功，负值错误码失败
  */
-static int ipc_service_example_init(void)
-{
+static int ipc_service_example_init(void) {
     int ret;
 
     /* 初始化服务 */
-    ret = ipc_service_init(&g_example_service,
-                           "example_service",
-                           example_service_func,
-                           CONFIG_THREAD_IPC_SERVICE_STACK_SIZE,
-                           CONFIG_THREAD_IPC_SERVICE_PRIORITY,
-                           CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE,
-                           CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE);
+    ret = ipc_service_init(&g_example_service, "example_service", example_service_func,
+                           CONFIG_THREAD_IPC_SERVICE_STACK_SIZE, CONFIG_THREAD_IPC_SERVICE_PRIORITY,
+                           CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE, CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE);
 
     if (ret != 0) {
         LOG_ERR("Failed to initialize IPC service: %d", ret);
@@ -289,12 +255,8 @@ static int ipc_service_example_init(void)
 
     /* 创建示例线程 */
     static struct k_thread example_thread;
-    k_thread_create(&example_thread,
-                    example_stack,
-                    K_THREAD_STACK_SIZEOF(example_stack),
-                    example_thread_func,
-                    NULL, NULL, NULL,
-                    5, 0, K_NO_WAIT);
+    k_thread_create(&example_thread, example_stack, K_THREAD_STACK_SIZEOF(example_stack), example_thread_func, NULL,
+                    NULL, NULL, 5, 0, K_NO_WAIT);
 
     LOG_INF("IPC Service Example initialized");
 

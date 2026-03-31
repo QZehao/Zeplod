@@ -1,10 +1,10 @@
 /**
  * @file example_module_a.h
  * @brief Example Module A Header
- * 
+ *
  * Example business module demonstrating module interface implementation.
  * This module could represent any business logic (sensor handling, communication, etc.)
- * 
+ *
  * @copyright Copyright (c) 2026
  * @par License
  * SPDX-License-Identifier: Apache-2.0
@@ -26,7 +26,7 @@ extern "C" {
 typedef struct {
     uint32_t sample_rate_ms;
     uint32_t buffer_size;
-    bool enable_filtering;
+    bool     enable_filtering;
 } example_module_a_config_t;
 
 /* =============================================================================
@@ -34,7 +34,7 @@ typedef struct {
  * ============================================================================= */
 
 /* Module initialization */
-int example_module_a_init(void *config);
+int example_module_a_init(void* config);
 
 /* Module start */
 int example_module_a_start(void);
@@ -46,16 +46,16 @@ int example_module_a_stop(void);
 int example_module_a_shutdown(void);
 
 /* Event handler */
-void example_module_a_on_event(const event_t *event, void *user_data);
+void example_module_a_on_event(const event_t* event, void* user_data);
 
 /* Get module status */
 module_status_t example_module_a_get_status(void);
 
 /* Module control */
-int example_module_a_control(int cmd, void *arg);
+int example_module_a_control(int cmd, void* arg);
 
 /* Get module interface */
-const module_interface_t *example_module_a_get_interface(void);
+const module_interface_t* example_module_a_get_interface(void);
 
 /* =============================================================================
  * Module-specific API
@@ -67,7 +67,7 @@ const module_interface_t *example_module_a_get_interface(void);
  * @param len Buffer length
  * @return Number of bytes read
  */
-int example_module_a_get_data(void *data, size_t len);
+int example_module_a_get_data(void* data, size_t len);
 
 /**
  * @brief Set sampling rate

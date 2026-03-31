@@ -1,9 +1,9 @@
 /**
  * @file example_module_b.h
  * @brief Example Module B Header
- * 
+ *
  * Example business module - demonstrates a communication/actuator module.
- * 
+ *
  * @copyright Copyright (c) 2026
  * @par License
  * SPDX-License-Identifier: Apache-2.0
@@ -32,16 +32,16 @@ typedef struct {
  * Module Interface
  * ============================================================================= */
 
-int example_module_b_init(void *config);
-int example_module_b_start(void);
-int example_module_b_stop(void);
-int example_module_b_shutdown(void);
-void example_module_b_on_event(const event_t *event, void *user_data);
+int             example_module_b_init(void* config);
+int             example_module_b_start(void);
+int             example_module_b_stop(void);
+int             example_module_b_shutdown(void);
+void            example_module_b_on_event(const event_t* event, void* user_data);
 module_status_t example_module_b_get_status(void);
-int example_module_b_control(int cmd, void *arg);
+int             example_module_b_control(int cmd, void* arg);
 
 /* Get module interface */
-const module_interface_t *example_module_b_get_interface(void);
+const module_interface_t* example_module_b_get_interface(void);
 
 /* =============================================================================
  * Module-specific API
@@ -53,7 +53,7 @@ const module_interface_t *example_module_b_get_interface(void);
  * @param len Data length
  * @return Number of bytes sent
  */
-int example_module_b_send(const void *data, size_t len);
+int example_module_b_send(const void* data, size_t len);
 
 /**
  * @brief Receive data from communication channel
@@ -61,7 +61,7 @@ int example_module_b_send(const void *data, size_t len);
  * @param len Buffer length
  * @return Number of bytes received
  */
-int example_module_b_receive(void *data, size_t len);
+int example_module_b_receive(void* data, size_t len);
 
 /**
  * @brief Get communication statistics
@@ -69,7 +69,7 @@ int example_module_b_receive(void *data, size_t len);
  * @param rx_count Output: received bytes
  * @param errors Output: error count
  */
-void example_module_b_get_stats(uint32_t *tx_count, uint32_t *rx_count, uint32_t *errors);
+void example_module_b_get_stats(uint32_t* tx_count, uint32_t* rx_count, uint32_t* errors);
 
 #ifdef __cplusplus
 }

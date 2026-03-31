@@ -13,7 +13,7 @@ UseTab: Never
 ContinuationIndentWidth: 4
 
 # 列宽
-ColumnLimit: 100
+ColumnLimit: 120
 
 # 函数风格
 AllowShortFunctionsOnASingleLine: Empty
@@ -72,15 +72,6 @@ BreakConstructorInitializers: BeforeColon
 BreakInheritanceList: BeforeColon
 BreakStringLiterals: true
 
-# 其他
-CommentPragmas: '^ IWYU pragma:'
-Cpp11BracedListStyle: true
-IndentCaseLabels: true
-IndentPPDirectives: None
-IndentWrappedFunctionNames: false
-JavaScriptQuotes: Leave
-JavaScriptWrapImports: true
-KeepEmptyLinesAtTheStartOfBlocks: false
-MacroBlockBegin: '^(BUILD_ASSERT|BUILD_ASSERT_MSG|__ASSERT|__ASSERT_MSG)$'
-MacroBlockEnd: ''
-MaxEmptyLinesToKeep: 1
+AlignConsecutiveMacros: AcrossEmptyLinesAndComments           # 对齐宏
+AlignConsecutiveDeclarations: true    # 对齐变量
+AlignTrailingComments: true            # 行尾注释也对齐

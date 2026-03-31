@@ -1,9 +1,9 @@
 /**
  * @file sys_watchdog.h
  * @brief System Watchdog Service Header
- * 
+ *
  * Hardware/software watchdog for system reliability and fault recovery.
- * 
+ *
  * @copyright Copyright (c) 2026
  * @par License
  * SPDX-License-Identifier: Apache-2.0
@@ -13,8 +13,8 @@
 #define SYS_WATCHDOG_H
 
 #include <zephyr/kernel.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,27 +39,27 @@ typedef enum {
  * @brief Watchdog mode
  */
 typedef enum {
-    WDT_MODE_SOFTWARE = 0,    /* Software watchdog (thread monitoring) */
-    WDT_MODE_HARDWARE,        /* Hardware watchdog (if available) */
-    WDT_MODE_DUAL             /* Both hardware and software */
+    WDT_MODE_SOFTWARE = 0, /* Software watchdog (thread monitoring) */
+    WDT_MODE_HARDWARE,     /* Hardware watchdog (if available) */
+    WDT_MODE_DUAL          /* Both hardware and software */
 } wdt_mode_t;
 
 /**
  * @brief Watchdog user callback (before expiry); distinct from Zephyr wdt_callback_t
  */
-typedef void (*sys_wdt_user_cb_t)(void *user_data);
+typedef void (*sys_wdt_user_cb_t)(void* user_data);
 
 /**
  * @brief Watchdog configuration
  */
 typedef struct {
-    wdt_mode_t mode;
-    uint32_t timeout_ms;
-    uint32_t feed_margin_ms;    /* Feed before this time to avoid race */
+    wdt_mode_t        mode;
+    uint32_t          timeout_ms;
+    uint32_t          feed_margin_ms; /* Feed before this time to avoid race */
     sys_wdt_user_cb_t pre_expire_callback;
-    void *callback_user_data;
-    bool reset_on_expire;
-    const char *name;
+    void*             callback_user_data;
+    bool              reset_on_expire;
+    const char*       name;
 } wdt_config_t;
 
 /**
@@ -83,7 +83,7 @@ typedef struct {
  * @param config Watchdog configuration
  * @return 0 on success, negative error code on failure
  */
-int sys_wdt_init(const wdt_config_t *config);
+int sys_wdt_init(const wdt_config_t* config);
 
 /**
  * @brief Start watchdog
@@ -132,8 +132,7 @@ wdt_status_t sys_wdt_get_status(void);
  * @param max_idle_ms Maximum allowed idle time
  * @return 0 on success, negative error code on failure
  */
-int sys_wdt_monitor_thread(k_tid_t thread_id, const char *thread_name, 
-                           uint32_t max_idle_ms);
+int sys_wdt_monitor_thread(k_tid_t thread_id, const char* thread_name, uint32_t max_idle_ms);
 
 /**
  * @brief Unregister a thread from monitoring
@@ -157,7 +156,7 @@ int sys_wdt_thread_alive(k_tid_t thread_id);
  * @brief Get watchdog statistics
  * @param stats Output: statistics structure
  */
-void sys_wdt_get_stats(wdt_stats_t *stats);
+void sys_wdt_get_stats(wdt_stats_t* stats);
 
 /**
  * @brief Reset watchdog statistics

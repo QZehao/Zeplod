@@ -33,9 +33,9 @@ extern "C" {
  * ============================================================================= */
 
 typedef struct {
-    bool enable_logging;
-    bool enable_watchdog;
-    bool enable_shell;
+    bool     enable_logging;
+    bool     enable_watchdog;
+    bool     enable_shell;
     uint32_t log_level;
 } app_config_t;
 
@@ -48,7 +48,7 @@ typedef struct {
  * @param config Application configuration
  * @return 0 on success, negative error code on failure
  */
-int app_init(const app_config_t *config);
+int app_init(const app_config_t* config);
 
 /**
  * @brief Start application
