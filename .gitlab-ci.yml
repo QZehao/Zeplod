@@ -1,0 +1,103 @@
+# GitLab CI — 与 .github/workflows/ci.yml 能力对齐（可选）
+# 保姆级说明：docs/CI平台配置保姆级手册.md
+#
+# 要求：GitLab 13.3+（parallel:matrix）；Runner 能访问 gcr.io 与 github.com（west update）
+
+stages:
+  - quality
+  - build
+  - docs
+
+variables:
+  ZEPHYR_VERSION: "3.6.0"
+  # west / 子模块若需完整历史，可改为 0（全量克隆，较慢）
+  GIT_DEPTH: "20"
+
+# -----------------------------------------------------------------------------
+# 代码质量（与 GitHub「Code Quality」job 一致）
+# -----------------------------------------------------------------------------
+code_quality:
+  stage: quality
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq shellcheck python3-pip
+    - python3 -m pip install --user pre-commit
+    - export PATH="$HOME/.local/bin:$PATH"
+  script:
+    - |
+      mapfile -t sh_files < <(find scripts -name "*.sh" -type f | sort)
+      if [ ${#sh_files[@]} -eq 0 ]; then exit 0; fi
+      shellcheck "${sh_files[@]}"
+    - pre-commit run --all-files
+
+# -----------------------------------------------------------------------------
+# Zephyr 构建前置（west + 本仓库 west.yml）
+# -----------------------------------------------------------------------------
+.zephyr_prep:
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq cmake ninja-build python3-pip
+    - pip3 install west
+    - west init -l .
+    - west update
+    - west zephyr-export
+
+# -----------------------------------------------------------------------------
+# 构建与测试（需先通过 code_quality）
+# -----------------------------------------------------------------------------
+build_native:
+  stage: build
+  image: gcr.io/zephyr-project/zephyr-build:v$ZEPHYR_VERSION
+  extends: .zephyr_prep
+  needs: ["code_quality"]
+  script:
+    - west build -b native_posix --build-dir build_native
+  artifacts:
+    paths:
+      - build_native/zephyr/zephyr.elf
+    expire_in: 1 week
+
+build_tests:
+  stage: build
+  image: gcr.io/zephyr-project/zephyr-build:v$ZEPHYR_VERSION
+  extends: .zephyr_prep
+  needs: ["code_quality"]
+  script:
+    - west build -b native_posix tests/ --build-dir build_tests -p always
+    - west build -t run --build-dir build_tests
+
+build_arm:
+  stage: build
+  image: gcr.io/zephyr-project/zephyr-build:v$ZEPHYR_VERSION
+  extends: .zephyr_prep
+  needs: ["code_quality"]
+  parallel:
+    matrix:
+      - BOARD: [nucleo_f429zi, nucleo_f767zi, disco_l475_iot1]
+  script:
+    - west build -b ${BOARD} --build-dir build_${BOARD}
+  artifacts:
+    paths:
+      - build_${BOARD}/zephyr/zephyr.bin
+    expire_in: 1 week
+
+# -----------------------------------------------------------------------------
+# Doxygen（与 GitHub「docs」job 一致；无 Doxyfile 时跳过）
+# -----------------------------------------------------------------------------
+generate_docs:
+  stage: docs
+  image: ubuntu:22.04
+  needs: ["code_quality"]
+  rules:
+    - exists:
+        - Doxyfile
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq doxygen graphviz
+  script:
+    - doxygen Doxyfile
+  artifacts:
+    paths:
+      - docs/api/
+    expire_in: 1 week

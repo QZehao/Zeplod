@@ -6,16 +6,22 @@
 
 ## CI 使用的 Zephyr 版本
 
-GitHub Actions（`.github/workflows/ci.yml`）中：
+以下两处应使用**同一** Zephyr 主线（镜像标签为 **`v` + 版本号**，如 **`v3.6.0`**）：
 
-- 容器镜像：`gcr.io/zephyr-project/zephyr-build:v<ZEPHYR_VERSION>`
-- 环境变量 `ZEPHYR_VERSION`（例如 `3.6.0`）应与镜像标签一致。
+| 平台 | 配置文件 | 变量 / 镜像 |
+|------|----------|-------------|
+| **GitHub Actions** | `.github/workflows/ci.yml` | `env.ZEPHYR_VERSION`；`image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}` |
+| **GitLab CI** | `.gitlab-ci.yml` | `variables.ZEPHYR_VERSION`；`image: gcr.io/zephyr-project/zephyr-build:v$ZEPHYR_VERSION` |
 
 合并或发版前，若升级 CI 中的 Zephyr 版本，请同步：
 
 1. 本地 `ZEPHYR_BASE` 指向的 Zephyr 仓库检出 **兼容 tag 或分支**。
 2. [Zephyr SDK](https://github.com/zephyrproject-rtos/sdk-ng/releases) 与 [Zephyr 文档](https://docs.zephyrproject.org/) 中该版本要求的工具链版本。
-3. 本仓库 `README.md` 中关于前提条件 / CI 的说明（若有硬编码版本号）。
+3. 本仓库 **`west.yml`** 中 **`revision:`**（建议 **tag**，如 **`v3.6.0`**）。
+4. 若使用 GitLab，同步 **`.gitlab-ci.yml`** 中的 **`ZEPHYR_VERSION`**（与 GitHub 一致）。
+5. 本仓库 `README.md` 中关于前提条件 / CI 的说明（若有硬编码版本号）。
+
+**在托管平台上启用 / 维护 CI 的步骤**（含排查失败）：**[CI平台配置保姆级手册.md](CI平台配置保姆级手册.md)**。
 
 ## West 工作区（可选）
 

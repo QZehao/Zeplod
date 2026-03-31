@@ -28,6 +28,8 @@ zephyr_template/
 ├── README.md
 ├── LICENSE
 ├── west.yml                    # 可选 West 清单
+├── .github/workflows/ci.yml    # GitHub Actions CI
+├── .gitlab-ci.yml              # GitLab CI（可选；步骤见 docs/CI平台配置保姆级手册.md）
 ├── zephyr_config.env           # 本地路径（由 template 复制生成，勿提交密钥）
 ├── zephyr_config.env.template
 ├── boards/
@@ -75,7 +77,7 @@ zephyr_template/
 | 2 | **zephyr_config.env**：由 `zephyr_config.env.template` 复制并填写路径；**勿提交**（已在 `.gitignore` 中忽略）。 |
 | 3 | **CMake**：根目录 `CMakeLists.txt` 中 `project(...)` 名称改为你的产品工程名。 |
 | 4 | **版本与说明**：按需修改 `APP_VERSION`、README 标题与产品描述。 |
-| 5 | **板型与 CI**：`prj.conf`、`.github/workflows/ci.yml` 中 ARM 矩阵 `board` 与目标硬件一致或按需裁剪。 |
+| 5 | **板型与 CI**：`prj.conf`、**`.github/workflows/ci.yml`** / **`.gitlab-ci.yml`** 中 ARM 矩阵 `board` 与目标硬件一致或按需裁剪。 |
 | 6 | **示例代码**：`src/modules/example_*` 可删除或替换；同步 `CMakeLists.txt` 与 `app_main.c` 注册逻辑。 |
 
 > **文档与 CI 的板型示例**：入门文档中可能出现 `nucleo_l4r5zi` 等示例板名；CI 当前固定为若干 Nucleo/Disco 板。**以你手头的 `BOARD` 与 CI 矩阵为准**；若遇 RAM/链接问题，见 **[docs/设备树与内存配置手册.md](docs/设备树与内存配置手册.md)**。
@@ -487,6 +489,7 @@ west build -t run --build-dir build_tests
 | [docs/烧录与调试快速指南.md](docs/烧录与调试快速指南.md) | 烧录、串口、调试 |
 | [docs/脚本与工具说明.md](docs/脚本与工具说明.md) | `scripts/` 脚本说明 |
 | [docs/单元测试与持续集成说明.md](docs/单元测试与持续集成说明.md) | ztest 与 CI 概览 |
+| [docs/CI平台配置保姆级手册.md](docs/CI平台配置保姆级手册.md) | **GitHub / GitLab** 上启用与维护 CI 的逐步说明 |
 | [docs/系统服务使用说明.md](docs/系统服务使用说明.md) | sys_log / sys_memory / sys_timer / sys_watchdog |
 | [docs/参与贡献与代码规范.md](docs/参与贡献与代码规范.md) | PR、代码风格与 CI |
 | [docs/安全与密钥管理说明.md](docs/安全与密钥管理说明.md) | 密钥、Secret、OTA 签名注意 |

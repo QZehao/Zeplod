@@ -22,6 +22,7 @@
 - 环境设置脚本
 
 ### 改进
+- **docs/CI平台配置保姆级手册.md**：GitHub Actions / GitLab 上启用 CI、查看流水线、改版本与板型、Secrets、Runner 与镜像拉取等逐步说明；根目录 **`.gitlab-ci.yml`** 与 **`.github/workflows/ci.yml`** 能力对齐。**README**、**文档索引**、**Zephyr版本与CI说明**、**单元测试与持续集成说明**、**开发者入门指南**、**参与贡献与代码规范** 增加交叉引用。
 - 模板落地：根目录 **README**、**docs/开发者入门指南**、**docs/文档索引** 增加「从模板初始化」检查清单；**`.gitignore`** 忽略 **`zephyr_config.env`** 并补充常见密钥文件名；**`.github/pull_request_template.md`**、**ISSUE_TEMPLATE**；**CI** 增加 **ShellCheck** 与 **`pre-commit run --all-files`**（与 **`.pre-commit-config.yaml`** 对齐）；**docs/参与贡献与代码规范**、**docs/单元测试与持续集成说明** 同步 CI 说明。
 - 完善中文文档
 - 优化项目结构
