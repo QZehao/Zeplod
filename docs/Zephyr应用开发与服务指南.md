@@ -385,6 +385,32 @@ k_poll(events, ARRAY_SIZE(events), K_MSEC(100));
 3. 调用 **`gpio_pin_configure`**、**`i2c_transfer`** 等 API 时传入 **`dev`** 与 **DT 宏**指定的引脚/通道（**`GPIO_DT_SPEC_GET`** 等）。  
 4. 错误码多为 **负 errno**（`-EIO`、`-ETIMEDOUT` 等），需向上传递或记录日志。
 
+### 9.1 示例：GPIO（`gpio_dt_spec`）
+
+下列为常见写法：假定板级 DTS 已为 LED 提供 **`led0`** 别名（许多 Nucleo 如此；若无则需改用你板上的节点标签或 **`DT_NODELABEL`**）。
+
+```c
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
+
+#define LED_NODE DT_ALIAS(led0)
+
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED_NODE, gpios);
+
+static int board_led_init(void)
+{
+	int ret;
+
+	if (!gpio_is_ready_dt(&led)) {
+		return -ENODEV;
+	}
+	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+	return ret;
+}
+```
+
+**`gpio_pin_configure_dt`** 同时完成了 **设备与引脚** 的绑定；若用手动 **`DEVICE_DT_GET(DT_PARENT(...))`** 等方式，则需自行传入 **`dev`** 与 **`pin`**。应用级节点与 **`app.overlay`** 见 **[设备树与内存配置手册.md](设备树与内存配置手册.md)**。
+
 **设备树**：应用级修改优先 **`app.overlay`**，见 **[设备树与内存配置手册.md](设备树与内存配置手册.md)**。
 
 ---
