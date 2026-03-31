@@ -40,11 +40,20 @@
 #include <stdlib.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(app_main, CONFIG_SYS_LOG_LEVEL);
+
+static int app_boot_probe(void) {
+    printk("[DBG] POST_KERNEL init reached\r\n");
+    return 0;
+}
+
+SYS_INIT(app_boot_probe, POST_KERNEL, 99);
 
 /* =============================================================================
  * Internal Data Structures
@@ -186,6 +195,7 @@ SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
  * ============================================================================= */
 
 int app_init(const app_config_t* config) {
+    printk("[DBG] app_init() entered\r\n");
     LOG_INF("========================================");
     LOG_INF("Application Initializing...");
     LOG_INF("========================================");
@@ -477,14 +487,17 @@ static void app_print_banner(void) {
  * ============================================================================= */
 
 int main(void) {
+    printk("[DBG] main() entered\r\n");
     /* Initialize application */
     if (app_init(NULL) != APP_OK) {
+        printk("[DBG] app_init() failed\r\n");
         LOG_ERR("Application initialization failed");
         return -1;
     }
 
     /* Start application */
     if (app_start() != APP_OK) {
+        printk("[DBG] app_start() failed\r\n");
         LOG_ERR("Application start failed");
         return -1;
     }
