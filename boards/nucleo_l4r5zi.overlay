@@ -1,0 +1,9 @@
+/*
+ * nucleo_l4r5zi：为 Settings/NVS 指定 flash 分区（板级 dts 已定义 storage_partition，16KiB）
+ * 启用 CONFIG_APP_KV_PERSIST 时需要此 overlay；其它板请自行在 chosen 中设置 zephyr,settings-partition。
+ */
+/ {
+	chosen {
+		zephyr,settings-partition = &storage_partition;
+	};
+};

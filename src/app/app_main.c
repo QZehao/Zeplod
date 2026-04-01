@@ -10,6 +10,7 @@
 
 #include "app_main.h"
 #include "app_config.h"
+#include "app_kv.h"
 #include "app_version.h"
 #include "event_dispatcher.h"
 #include "event_system.h"
@@ -21,6 +22,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
@@ -57,6 +59,9 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 static void app_print_banner(void);
 
 static int app_init_apply_cb(void);
+#if APP_CONFIG_ENABLE_APP_KV
+static int app_init_kv_step(void);
+#endif
 static int app_init_sys_log(void);
 static int app_init_sys_mem(void);
 static int app_init_event_system_step(void);
@@ -67,6 +72,9 @@ static int app_init_module_mgr_step(void);
 static int app_init_finalize(void);
 
 SYS_INIT(app_init_apply_cb, POST_KERNEL, APP_INIT_PRIO_APP_CB);
+#if APP_CONFIG_ENABLE_APP_KV
+SYS_INIT(app_init_kv_step, POST_KERNEL, APP_INIT_PRIO_APP_KV);
+#endif
 SYS_INIT(app_init_sys_log, POST_KERNEL, APP_INIT_PRIO_SYS_LOG);
 SYS_INIT(app_init_sys_mem, POST_KERNEL, APP_INIT_PRIO_SYS_MEM);
 SYS_INIT(app_init_event_system_step, POST_KERNEL, APP_INIT_PRIO_EVENT_SYS);
@@ -81,6 +89,167 @@ SYS_INIT(app_init_finalize, POST_KERNEL, APP_INIT_PRIO_APP_FINAL);
  * ============================================================================= */
 
 #ifdef CONFIG_SHELL
+
+static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size_t first_idx) {
+    size_t pos = 0U;
+    out[0] = '\0';
+    for (size_t i = first_idx; i < argc; i++) {
+        size_t len = strlen(argv[i]);
+        if (pos > 0U) {
+            if (pos + 1U >= out_sz) {
+                return -ENOSPC;
+            }
+            out[pos++] = ' ';
+            out[pos] = '\0';
+        }
+        if (pos + len >= out_sz) {
+            return -ENOSPC;
+        }
+        memcpy(out + pos, argv[i], len);
+        pos += len;
+        out[pos] = '\0';
+    }
+    return 0;
+}
+
+static int cmd_app_kv_set(const struct shell* shell, size_t argc, char** argv) {
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled (APP_CONFIG_ENABLE_APP_KV=0)");
+    return 0;
+#else
+    if (argc < 2) {
+        shell_print(shell, "Usage: app kv set <key> [<value>...]");
+        return -EINVAL;
+    }
+    char val[APP_KV_VALUE_MAX_LEN];
+    if (argc == 2) {
+        if (app_kv_set(argv[1], "") != APP_OK) {
+            shell_print(shell, "set failed");
+            return -EIO;
+        }
+        return 0;
+    }
+    if (kv_join_argv(val, sizeof(val), argc, argv, 2) != 0) {
+        shell_print(shell, "value too long");
+        return -ENOSPC;
+    }
+    int r = app_kv_set(argv[1], val);
+    if (r == APP_ERR_KV_FULL) {
+        shell_print(shell, "kv full (max %d entries)", APP_KV_MAX_ENTRIES);
+        return -ENOMEM;
+    }
+    if (r != APP_OK) {
+        shell_print(shell, "set failed (%d)", r);
+        return -EIO;
+    }
+    return 0;
+#endif
+}
+
+static int cmd_app_kv_get(const struct shell* shell, size_t argc, char** argv) {
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#else
+    if (argc < 2) {
+        shell_print(shell, "Usage: app kv get <key>");
+        return -EINVAL;
+    }
+    char buf[APP_KV_VALUE_MAX_LEN];
+    int r = app_kv_get(argv[1], buf, sizeof(buf));
+    if (r == APP_ERR_NOT_FOUND) {
+        shell_print(shell, "(not found)");
+        return 0;
+    }
+    if (r != APP_OK) {
+        shell_print(shell, "get failed (%d)", r);
+        return -EIO;
+    }
+    shell_print(shell, "%s", buf);
+    return 0;
+#endif
+}
+
+static int cmd_app_kv_del(const struct shell* shell, size_t argc, char** argv) {
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#else
+    if (argc < 2) {
+        shell_print(shell, "Usage: app kv del <key>");
+        return -EINVAL;
+    }
+    int r = app_kv_remove(argv[1]);
+    if (r == APP_ERR_NOT_FOUND) {
+        shell_print(shell, "(not found)");
+        return 0;
+    }
+    return r == APP_OK ? 0 : -EIO;
+#endif
+}
+
+static int cmd_app_kv_list_cb(const char* k, const char* v, void* user) {
+    shell_print((const struct shell*) user, "  %s = %s", k, v);
+    return 0;
+}
+
+static int cmd_app_kv_list(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#else
+    shell_print(shell, "KV entries: %u / %d", (unsigned) app_kv_count(), APP_KV_MAX_ENTRIES);
+    (void) app_kv_foreach(cmd_app_kv_list_cb, (void*) shell);
+    return 0;
+#endif
+}
+
+static int cmd_app_kv_clear(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#else
+    app_kv_clear();
+    shell_print(shell, "ok");
+    return 0;
+#endif
+}
+
+static int cmd_app_kv_save(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#elif !IS_ENABLED(CONFIG_APP_KV_PERSIST)
+    shell_print(shell, "persist off (CONFIG_APP_KV_PERSIST=n)");
+    return 0;
+#else
+    int r = app_kv_save();
+    shell_print(shell, "%s (%d)", r == APP_OK ? "saved" : "save failed", r);
+    return r == APP_OK ? 0 : -EIO;
+#endif
+}
+
+static int cmd_app_kv_load(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+#if !APP_CONFIG_ENABLE_APP_KV
+    shell_print(shell, "app_kv disabled");
+    return 0;
+#elif !IS_ENABLED(CONFIG_APP_KV_PERSIST)
+    shell_print(shell, "persist off (CONFIG_APP_KV_PERSIST=n)");
+    return 0;
+#else
+    int r = app_kv_load();
+    shell_print(shell, "%s (%d)", r == APP_OK ? "loaded" : "load failed", r);
+    return r == APP_OK ? 0 : -EIO;
+#endif
+}
 
 static int cmd_app_status(const struct shell* shell, size_t argc, char** argv) {
     char version_str[VERSION_STRING_MAX_LEN];
@@ -169,16 +338,26 @@ static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
     shell_print(shell, "  app events     - Show event statistics");
     shell_print(shell, "  app memory     - Show memory statistics");
     shell_print(shell, "  app log [lvl]  - Dump log buffer");
+    shell_print(shell, "  app kv ...     - Key-value (set/get/del/list/clear; save/load if persist)");
     shell_print(shell, "  app help       - Show this help");
 
     return 0;
 }
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_app_kv, SHELL_CMD(set, NULL, "Set key [value words...]", cmd_app_kv_set),
+                               SHELL_CMD(get, NULL, "Get key", cmd_app_kv_get),
+                               SHELL_CMD(del, NULL, "Delete key", cmd_app_kv_del),
+                               SHELL_CMD(list, NULL, "List all entries", cmd_app_kv_list),
+                               SHELL_CMD(clear, NULL, "Remove all entries", cmd_app_kv_clear),
+                               SHELL_CMD(save, NULL, "Write KV to flash (CONFIG_APP_KV_PERSIST)", cmd_app_kv_save),
+                               SHELL_CMD(load, NULL, "Reload KV from flash", cmd_app_kv_load), SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app, SHELL_CMD(status, NULL, "Show application status", cmd_app_status),
                                SHELL_CMD(modules, NULL, "Show registered modules", cmd_app_modules),
                                SHELL_CMD(events, NULL, "Show event statistics", cmd_app_events),
                                SHELL_CMD(memory, NULL, "Show memory statistics", cmd_app_memory),
                                SHELL_CMD(log, NULL, "Dump log buffer [level]", cmd_app_log),
+                               SHELL_CMD(kv, &sub_app_kv, "String key/value store (RAM)", NULL),
                                SHELL_CMD(help, NULL, "Show application help", cmd_app_help), SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
@@ -211,6 +390,14 @@ static int app_init_apply_cb(void) {
 
     return 0;
 }
+
+#if APP_CONFIG_ENABLE_APP_KV
+static int app_init_kv_step(void) {
+    app_kv_init();
+    (void) app_kv_set("build.target", APP_TARGET_NAME);
+    return 0;
+}
+#endif
 
 static int app_init_sys_log(void) {
 #if APP_CONFIG_ENABLE_LOGGING
@@ -401,6 +588,10 @@ uint32_t app_get_uptime(void) {
 
 bool app_is_running(void) {
     return g_app.running;
+}
+
+uint32_t app_get_heartbeat_count(void) {
+    return g_app.heartbeat_count;
 }
 
 /* =============================================================================

@@ -318,6 +318,15 @@ app memory
 # 日志转储
 app log [level]
 
+# 应用键值（字符串 key/value；掉电保存见 prj_app_kv_persist.conf + boards/nucleo_l4r5zi.overlay）
+app kv list
+app kv set mykey hello world
+app kv get mykey
+app kv del mykey
+app kv clear
+app kv save
+app kv load
+
 # 帮助
 app help
 ```

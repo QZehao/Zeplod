@@ -207,6 +207,8 @@ target_sources(app PRIVATE
     src/app/app_main.c
     src/app/app_main.h
     src/app/app_config.h
+    src/app/app_kv.c
+    src/app/app_kv.h
     src/app/app_version.c
     src/app/app_version.h
 )

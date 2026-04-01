@@ -184,6 +184,30 @@ config SYS_WATCHDOG_TIMEOUT_MS
 
 endmenu
 
+menu "Application KV store"
+
+config APP_KV_PERSIST
+	bool "Persist app string KV to flash (Settings/NVS)"
+	default n
+	depends on FLASH
+	select SETTINGS
+	select NVS
+	select FLASH_MAP
+	select SETTINGS_NVS
+	help
+	  When enabled, app_kv_save()/app_kv_load() and optional autosave write a single
+	  blob to flash via Zephyr settings. Requires devicetree chosen
+	  zephyr,settings-partition (see boards/app.overlay for nucleo_l4r5zi).
+
+config APP_KV_PERSIST_AUTOSAVE
+	bool "Autosave app_kv to flash on each set/remove/clear"
+	depends on APP_KV_PERSIST
+	default n
+	help
+	  Wears flash faster. When disabled, call app_kv_save() or shell \"app kv save\".
+
+endmenu
+
 menu "Thread IPC service (in-app)"
 
 rsource "src/modules/ipc_service/Kconfig"

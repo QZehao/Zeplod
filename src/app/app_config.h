@@ -39,12 +39,27 @@ extern "C" {
 #define APP_CONFIG_ENABLE_STATS       1
 /** Shell `app log` 是否允许 sys_log_dump（为 0 时命令提示已禁用） */
 #define APP_CONFIG_ENABLE_LOG_DUMP    1
+/** 应用内字符串键值表；为 0 时 app_kv_* 返回 APP_ERR_DISABLED。掉电保存另需 prj.conf 中 CONFIG_APP_KV_PERSIST=y */
+#define APP_CONFIG_ENABLE_APP_KV      1
+
+/* =============================================================================
+ * App key-value store (string key / string value, RAM only)
+ * ============================================================================= */
+
+#define APP_KV_MAX_ENTRIES   16
+#define APP_KV_KEY_MAX_LEN   32
+#define APP_KV_VALUE_MAX_LEN 128
+
+/** Settings 中单条 blob 上限（魔数+头+各槽位序列化，需 ≥ 实际编码长度） */
+#define APP_KV_PERSIST_BLOB_MAX                                                                                        \
+    (8U + (unsigned) APP_KV_MAX_ENTRIES * (2U + (unsigned) APP_KV_KEY_MAX_LEN + (unsigned) APP_KV_VALUE_MAX_LEN))
 
 /* =============================================================================
  * Zephyr SYS_INIT priorities (POST_KERNEL, same level: lower value runs earlier)
  * ============================================================================= */
 
 #define APP_INIT_PRIO_APP_CB       10
+#define APP_INIT_PRIO_APP_KV       11
 #define APP_INIT_PRIO_SYS_LOG      20
 #define APP_INIT_PRIO_SYS_MEM      30
 #define APP_INIT_PRIO_EVENT_SYS    40
@@ -109,6 +124,8 @@ extern "C" {
 #define APP_ERR_NOT_FOUND             -5
 #define APP_ERR_BUSY                  -6
 #define APP_ERR_DISABLED              -7
+#define APP_ERR_KV_FULL               -8
+#define APP_ERR_IO                    -9
 
 /* =============================================================================
  * Build Configuration
