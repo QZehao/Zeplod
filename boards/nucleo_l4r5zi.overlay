@@ -4,6 +4,9 @@
  * 1) SRAM：合并 SRAM1+SRAM2+SRAM3 为 0x20000000 起连续 640KB（与根目录 app.overlay 一致）。
  *    若仅有「settings」片段而无本段，默认仍约 192KB RAM，易与 64KB heap + NVS 等一起溢出。
  * 2) Settings：板级 dts 已有 storage_partition（16KiB），此处绑定 zephyr,settings-partition。
+ * 3) Flash 分区：为 fixed-partitions 增加 ranges，并增加 slot0（至 storage 前）与
+ *    chosen/zephyr,code-partition，消除 CONFIG_FLASH_CODE_PARTITION_ADDRESS_INVALID 弃用警告，
+ *    且便于按需启用 CONFIG_USE_DT_CODE_PARTITION 将链接范围限制在 image-0，避免覆盖 storage。
  *
  * 其它板请复制并修改 SRAM / chosen 策略，勿直接使用本文件。
  */
@@ -15,10 +18,25 @@
 / {
 	chosen {
 		zephyr,settings-partition = &storage_partition;
+		zephyr,code-partition = &slot0_partition;
 	};
 
 	sram0: memory@20000000 {
 		/* 640 KiB 连续 SRAM（RM0432） */
 		reg = <0x20000000 0xA0000>;
+	};
+};
+
+/* 与板级 nucleo_l4r5zi.dts 中 storage 起始 0x001fb000 对齐；片上 Flash 2048KiB（stm32l4r5Xi.dtsi） */
+&flash0 {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	ranges = <0x0 0x08000000 DT_SIZE_K(2048)>;
+	partitions {
+		ranges;
+		slot0_partition: partition@0 {
+			label = "image-0";
+			reg = <0x0 0x001fb000>;
+		};
 	};
 };
