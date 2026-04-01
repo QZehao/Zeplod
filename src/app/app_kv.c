@@ -9,14 +9,18 @@
 #include "app_kv.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
+
+LOG_MODULE_REGISTER(app_kv, CONFIG_SYS_LOG_LEVEL);
 
 #if APP_CONFIG_ENABLE_APP_KV && IS_ENABLED(CONFIG_APP_KV_PERSIST)
 #include <zephyr/settings/settings.h>
@@ -84,26 +88,34 @@ static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
         }
         uint8_t klen = buf[off++];
         uint8_t vlen = buf[off++];
-        if (klen >= APP_KV_KEY_MAX_LEN || vlen >= APP_KV_VALUE_MAX_LEN) {
+        if (klen == 0U || klen >= APP_KV_KEY_MAX_LEN || vlen >= APP_KV_VALUE_MAX_LEN) {
             return APP_ERR_INVALID_PARAM;
         }
         if (off + (size_t) klen + 1U + (size_t) vlen + 1U > len) {
             return APP_ERR_INVALID_PARAM;
         }
 
-        int idx = find_free_locked();
-        if (idx < 0) {
-            return APP_ERR_KV_FULL;
-        }
+        char tmp_key[APP_KV_KEY_MAX_LEN];
+        char tmp_val[APP_KV_VALUE_MAX_LEN];
 
-        memcpy(s_kv[idx].key, buf + off, (size_t) klen + 1U);
+        memcpy(tmp_key, buf + off, (size_t) klen + 1U);
         off += (size_t) klen + 1U;
-        memcpy(s_kv[idx].value, buf + off, (size_t) vlen + 1U);
+        memcpy(tmp_val, buf + off, (size_t) vlen + 1U);
         off += (size_t) vlen + 1U;
 
-        if (s_kv[idx].key[klen] != '\0' || s_kv[idx].value[vlen] != '\0') {
+        if (tmp_key[klen] != '\0' || tmp_val[vlen] != '\0') {
             return APP_ERR_INVALID_PARAM;
         }
+
+        int idx = find_key_locked(tmp_key);
+        if (idx < 0) {
+            idx = find_free_locked();
+            if (idx < 0) {
+                return APP_ERR_KV_FULL;
+            }
+            memcpy(s_kv[idx].key, tmp_key, sizeof(tmp_key));
+        }
+        memcpy(s_kv[idx].value, tmp_val, sizeof(tmp_val));
         s_kv[idx].in_use = true;
     }
 
@@ -139,7 +151,7 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
         }
         size_t klen = strlen(s_kv[i].key);
         size_t vlen = strlen(s_kv[i].value);
-        if (klen >= (size_t) APP_KV_KEY_MAX_LEN || vlen >= (size_t) APP_KV_VALUE_MAX_LEN) {
+        if (klen == 0U || klen >= (size_t) APP_KV_KEY_MAX_LEN || vlen >= (size_t) APP_KV_VALUE_MAX_LEN) {
             return APP_ERR_INVALID_PARAM;
         }
         if (off + 2U + klen + 1U + vlen + 1U > cap) {
@@ -173,14 +185,19 @@ void app_kv_init(void) {
     memset(s_kv, 0, sizeof(s_kv));
 
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
-    if (settings_subsys_init() == 0) {
+    if (settings_subsys_init() != 0) {
+        LOG_WRN("settings_subsys_init failed; app_kv not loaded from flash");
+    } else {
         uint8_t blob[APP_KV_PERSIST_BLOB_MAX];
         ssize_t n = settings_load_one(KV_SETTINGS_KEY, blob, sizeof(blob));
-        if (n > 0) {
+        if (n < 0 && n != -ENOENT) {
+            LOG_WRN("settings_load_one(%s) failed: %zd", KV_SETTINGS_KEY, n);
+        } else if (n > 0) {
             k_mutex_lock(&s_kv_lock, K_FOREVER);
             int d = kv_decode_into_slots(blob, (size_t) n);
             k_mutex_unlock(&s_kv_lock);
             if (d != APP_OK) {
+                LOG_WRN("app_kv flash blob invalid or corrupt (err=%d), cleared RAM table", d);
                 k_mutex_lock(&s_kv_lock, K_FOREVER);
                 memset(s_kv, 0, sizeof(s_kv));
                 k_mutex_unlock(&s_kv_lock);
@@ -335,9 +352,13 @@ int app_kv_get_int32(const char* key, int32_t* out) {
     if (ret != APP_OK) {
         return ret;
     }
+    errno = 0;
     char* end = NULL;
     long  lv  = strtol(buf, &end, 10);
     if (end == buf || *end != '\0') {
+        return APP_ERR_INVALID_PARAM;
+    }
+    if (errno == ERANGE || lv < (long) INT32_MIN || lv > (long) INT32_MAX) {
         return APP_ERR_INVALID_PARAM;
     }
     *out = (int32_t) lv;

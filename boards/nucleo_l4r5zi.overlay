@@ -1,9 +1,24 @@
 /*
- * nucleo_l4r5zi：为 Settings/NVS 指定 flash 分区（板级 dts 已定义 storage_partition，16KiB）
- * 启用 CONFIG_APP_KV_PERSIST 时需要此 overlay；其它板请自行在 chosen 中设置 zephyr,settings-partition。
+ * STM32L4R5ZI：本文件在选中该板时由 Zephyr 自动合并（应用目录 boards/<board>.overlay）。
+ *
+ * 1) SRAM：合并 SRAM1+SRAM2+SRAM3 为 0x20000000 起连续 640KB（与根目录 app.overlay 一致）。
+ *    若仅有「settings」片段而无本段，默认仍约 192KB RAM，易与 64KB heap + NVS 等一起溢出。
+ * 2) Settings：板级 dts 已有 storage_partition（16KiB），此处绑定 zephyr,settings-partition。
+ *
+ * 其它板请复制并修改 SRAM / chosen 策略，勿直接使用本文件。
  */
+
+/delete-node/ &sram0;
+/delete-node/ &sram1;
+/delete-node/ &sram2;
+
 / {
 	chosen {
 		zephyr,settings-partition = &storage_partition;
+	};
+
+	sram0: memory@20000000 {
+		/* 640 KiB 连续 SRAM（RM0432） */
+		reg = <0x20000000 0xA0000>;
 	};
 };
