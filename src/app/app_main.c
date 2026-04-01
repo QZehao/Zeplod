@@ -13,30 +13,13 @@
 #include "app_version.h"
 #include "event_dispatcher.h"
 #include "event_system.h"
-#include "example_module_a.h"
-#include "example_module_b.h"
 #include "module_manager.h"
 #include "sys_log.h"
 #include "sys_memory.h"
 #include "sys_timer.h"
 #include "sys_watchdog.h"
 
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
-#include "example_module_ipc.h"
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
-#include "example_module_multi_dep.h"
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_GPIO)
-#include "example_module_gpio.h"
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART)
-#include "example_module_uart.h"
-#endif
-
+#include <errno.h>
 #include <stdlib.h>
 
 #include <zephyr/kernel.h>
@@ -47,12 +30,6 @@
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(app_main, CONFIG_SYS_LOG_LEVEL);
-
-static int app_boot_probe(void) {
-    return 0;
-}
-
-SYS_INIT(app_boot_probe, POST_KERNEL, 99);
 
 /* =============================================================================
  * Internal Data Structures
@@ -77,8 +54,27 @@ static app_cb_t g_app;
  * ============================================================================= */
 
 static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_data);
-static int  app_register_modules(void);
 static void app_print_banner(void);
+
+static int app_init_apply_cb(void);
+static int app_init_sys_log(void);
+static int app_init_sys_mem(void);
+static int app_init_event_system_step(void);
+static int app_init_event_dispatcher_step(void);
+static int app_init_sys_timer_step(void);
+static int app_init_sys_wdt_step(void);
+static int app_init_module_mgr_step(void);
+static int app_init_finalize(void);
+
+SYS_INIT(app_init_apply_cb, POST_KERNEL, APP_INIT_PRIO_APP_CB);
+SYS_INIT(app_init_sys_log, POST_KERNEL, APP_INIT_PRIO_SYS_LOG);
+SYS_INIT(app_init_sys_mem, POST_KERNEL, APP_INIT_PRIO_SYS_MEM);
+SYS_INIT(app_init_event_system_step, POST_KERNEL, APP_INIT_PRIO_EVENT_SYS);
+SYS_INIT(app_init_event_dispatcher_step, POST_KERNEL, APP_INIT_PRIO_DISPATCHER);
+SYS_INIT(app_init_sys_timer_step, POST_KERNEL, APP_INIT_PRIO_SYS_TIMER);
+SYS_INIT(app_init_sys_wdt_step, POST_KERNEL, APP_INIT_PRIO_SYS_WDT);
+SYS_INIT(app_init_module_mgr_step, POST_KERNEL, APP_INIT_PRIO_MODULE_MGR);
+SYS_INIT(app_init_finalize, POST_KERNEL, APP_INIT_PRIO_APP_FINAL);
 
 /* =============================================================================
  * Shell Commands
@@ -190,20 +186,10 @@ SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
 #endif /* CONFIG_SHELL */
 
 /* =============================================================================
- * Application API Implementation
+ * Auto-init steps (SYS_INIT, POST_KERNEL; order via APP_INIT_PRIO_*)
  * ============================================================================= */
 
-int app_init(const app_config_t* config) {
-    LOG_INF("========================================");
-    LOG_INF("Application Initializing...");
-    LOG_INF("========================================");
-
-    /* Print version information FIRST */
-    app_version_print();
-
-    memset(&g_app, 0, sizeof(g_app));
-
-    /* Set configuration */
+static void app_apply_config(const app_config_t* config) {
     if (config != NULL) {
         g_app.config = *config;
     } else {
@@ -212,8 +198,21 @@ int app_init(const app_config_t* config) {
         g_app.config.enable_shell = APP_CONFIG_ENABLE_SHELL;
         g_app.config.log_level = CONFIG_SYS_LOG_LEVEL;
     }
+}
 
-    /* Initialize logging */
+static int app_init_apply_cb(void) {
+    LOG_INF("========================================");
+    LOG_INF("Application Initializing...");
+    LOG_INF("========================================");
+    app_version_print();
+
+    memset(&g_app, 0, sizeof(g_app));
+    app_apply_config(NULL);
+
+    return 0;
+}
+
+static int app_init_sys_log(void) {
 #if APP_CONFIG_ENABLE_LOGGING
     sys_log_config_t log_config = {.default_level = (sys_log_level_t) g_app.config.log_level,
                                    .destinations = SYS_LOG_DEST_CONSOLE | SYS_LOG_DEST_MEMORY,
@@ -224,8 +223,10 @@ int app_init(const app_config_t* config) {
     sys_log_init(&log_config);
     LOG_INF("Logging system initialized");
 #endif
+    return 0;
+}
 
-    /* Initialize memory management */
+static int app_init_sys_mem(void) {
 #if APP_CONFIG_ENABLE_MEMORY_MGR
     sys_mem_config_t mem_config = {.pool_sizes =
                                        {
@@ -239,13 +240,16 @@ int app_init(const app_config_t* config) {
     sys_mem_init(&mem_config);
     LOG_INF("Memory system initialized");
 #endif
+    return 0;
+}
 
-    /* Initialize event system */
+static int app_init_event_system_step(void) {
     event_system_init();
     LOG_INF("Event system initialized");
+    return 0;
+}
 
-    /* Initialize event dispatcher (consumes queue; actual thread created in event_dispatcher_start)
-     */
+static int app_init_event_dispatcher_step(void) {
     dispatcher_config_t dispatcher_config = {.stack_size = CONFIG_EVENT_DISPATCHER_STACK_SIZE,
                                              .priority = CONFIG_EVENT_DISPATCHER_PRIORITY,
                                              .thread_name = "event_disp",
@@ -253,17 +257,21 @@ int app_init(const app_config_t* config) {
                                              .max_events_per_cycle = 100};
     if (event_dispatcher_init(&dispatcher_config) != EVENT_OK) {
         LOG_ERR("event_dispatcher_init failed");
-        return APP_ERR_INIT;
+        return -EIO;
     }
     LOG_INF("Event dispatcher initialized");
+    return 0;
+}
 
-    /* Initialize timer service */
+static int app_init_sys_timer_step(void) {
 #if APP_CONFIG_ENABLE_TIMER_SVC
     sys_timer_init();
     LOG_INF("Timer service initialized");
 #endif
+    return 0;
+}
 
-    /* Initialize watchdog */
+static int app_init_sys_wdt_step(void) {
 #if APP_CONFIG_ENABLE_WATCHDOG
     wdt_config_t wdt_config = {.mode = WDT_MODE_SOFTWARE,
                                .timeout_ms = APP_WATCHDOG_TIMEOUT_MS,
@@ -272,19 +280,30 @@ int app_init(const app_config_t* config) {
     sys_wdt_init(&wdt_config);
     LOG_INF("Watchdog initialized");
 #endif
+    return 0;
+}
 
-    /* Initialize module manager */
+static int app_init_module_mgr_step(void) {
     module_manager_init();
     LOG_INF("Module manager initialized");
+    return 0;
+}
 
-    /* Register modules */
-    app_register_modules();
-
+static int app_init_finalize(void) {
     g_app.initialized = true;
     g_app.start_time = k_uptime_get_32();
-
     LOG_INF("Application initialization complete");
-    return APP_OK;
+    return 0;
+}
+
+/* =============================================================================
+ * Application API Implementation
+ * ============================================================================= */
+
+int app_init(const app_config_t* config) {
+    ARG_UNUSED(config);
+    /* 子系统与模块由本文件及各模块内的 SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*) 在 main 之前完成。 */
+    return g_app.initialized ? APP_OK : APP_ERR_INIT;
 }
 
 int app_start(void) {
@@ -400,77 +419,6 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
     if (g_app.heartbeat_count % 10 == 0) {
         LOG_INF("Heartbeat: %d, Uptime: %dms", g_app.heartbeat_count, app_get_uptime());
     }
-}
-
-static int app_register_modules(void) {
-    int      registered = 0;
-    uint32_t module_id;
-
-#if APP_CONFIG_ENABLE_MODULE_A
-    example_module_a_config_t config_a = {.sample_rate_ms = 100, .buffer_size = 256, .enable_filtering = true};
-
-    if (module_manager_register(example_module_a_get_interface(), &config_a, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered Module A (id=%d)", module_id);
-    }
-#endif
-
-#if APP_CONFIG_ENABLE_MODULE_B
-    example_module_b_config_t config_b = {.tx_buffer_size = 512, .rx_buffer_size = 512, .timeout_ms = 1000};
-
-    if (module_manager_register(example_module_b_get_interface(), &config_b, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered Module B (id=%d)", module_id);
-    }
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
-    if (module_manager_register(example_module_multi_dep_get_interface(), NULL, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered example_module_multi_dep (id=%d)", module_id);
-    }
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
-    example_module_ipc_config_t config_ipc = {.reserved = 0};
-
-    if (module_manager_register(example_module_ipc_get_interface(), &config_ipc, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered example_module_ipc (id=%d)", module_id);
-    }
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_GPIO)
-    example_module_gpio_config_t gpio_cfg = {
-        .led_pin = "LED0",
-        .button_pin = "SW0",
-        .blink_interval_ms = 500,
-        .enable_button = true,
-    };
-
-    if (module_manager_register(example_module_gpio_get_interface(), &gpio_cfg, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered example_module_gpio (id=%d)", module_id);
-    }
-#endif
-
-#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART)
-    example_module_uart_config_t uart_cfg = {
-        .device_name = CONFIG_EXAMPLE_MODULE_UART_DEVICE_NAME,
-        .baudrate = 115200,
-        .rx_buffer_size = 256,
-        .tx_buffer_size = 256,
-        .enable_interrupt = true,
-    };
-
-    if (module_manager_register(example_module_uart_get_interface(), &uart_cfg, &module_id) == 0) {
-        registered++;
-        LOG_INF("Registered example_module_uart (id=%d)", module_id);
-    }
-#endif
-
-    LOG_INF("Total modules registered: %d", registered);
-    return registered;
 }
 
 static void app_print_banner(void) {

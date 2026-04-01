@@ -9,11 +9,15 @@
  */
 
 #include "example_module_gpio.h"
+#include "app_config.h"
+#include "event_system.h"
+#include "module_manager.h"
+#include <errno.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include "event_system.h"
 
 #if !DT_NODE_EXISTS(DT_ALIAS(led0))
 #error "example_module_gpio requires devicetree alias led0"
@@ -298,3 +302,22 @@ DECLARE_MODULE_INTERFACE(example_module_gpio);
 const module_interface_t* example_module_gpio_get_interface(void) {
     return &example_module_gpio_interface;
 }
+
+static int example_module_gpio_auto_register(void) {
+    uint32_t                     module_id;
+    example_module_gpio_config_t gpio_cfg = {
+        .led_pin = "LED0",
+        .button_pin = "SW0",
+        .blink_interval_ms = 500,
+        .enable_button = true,
+    };
+
+    if (module_manager_register(example_module_gpio_get_interface(), &gpio_cfg, &module_id) != 0) {
+        LOG_ERR("module_manager_register example_module_gpio failed");
+        return -EIO;
+    }
+    LOG_INF("Registered example_module_gpio (id=%u)", module_id);
+    return 0;
+}
+
+SYS_INIT(example_module_gpio_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_GPIO);

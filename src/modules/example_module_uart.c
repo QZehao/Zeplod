@@ -9,14 +9,18 @@
  */
 
 #include "example_module_uart.h"
+#include "app_config.h"
+#include "event_system.h"
+#include "module_manager.h"
+#include <errno.h>
+#include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
-#include <string.h>
-#include "event_system.h"
 
 LOG_MODULE_REGISTER(example_module_uart, CONFIG_SYS_LOG_LEVEL);
 
@@ -381,3 +385,23 @@ DECLARE_MODULE_INTERFACE(example_module_uart);
 const module_interface_t* example_module_uart_get_interface(void) {
     return &example_module_uart_interface;
 }
+
+static int example_module_uart_auto_register(void) {
+    uint32_t                     module_id;
+    example_module_uart_config_t uart_cfg = {
+        .device_name = CONFIG_EXAMPLE_MODULE_UART_DEVICE_NAME,
+        .baudrate = UART_DEFAULT_BAUDRATE,
+        .rx_buffer_size = 256,
+        .tx_buffer_size = 256,
+        .enable_interrupt = true,
+    };
+
+    if (module_manager_register(example_module_uart_get_interface(), &uart_cfg, &module_id) != 0) {
+        LOG_ERR("module_manager_register example_module_uart failed");
+        return -EIO;
+    }
+    LOG_INF("Registered example_module_uart (id=%u)", module_id);
+    return 0;
+}
+
+SYS_INIT(example_module_uart_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_UART);

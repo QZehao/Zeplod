@@ -41,6 +41,26 @@ extern "C" {
 #define APP_CONFIG_ENABLE_LOG_DUMP    1
 
 /* =============================================================================
+ * Zephyr SYS_INIT priorities (POST_KERNEL, same level: lower value runs earlier)
+ * ============================================================================= */
+
+#define APP_INIT_PRIO_APP_CB       10
+#define APP_INIT_PRIO_SYS_LOG      20
+#define APP_INIT_PRIO_SYS_MEM      30
+#define APP_INIT_PRIO_EVENT_SYS    40
+#define APP_INIT_PRIO_DISPATCHER   45
+#define APP_INIT_PRIO_SYS_TIMER    50
+#define APP_INIT_PRIO_SYS_WDT      52
+#define APP_INIT_PRIO_MODULE_MGR   54
+#define APP_INIT_PRIO_MODULE_A     60
+#define APP_INIT_PRIO_MODULE_B     61
+#define APP_INIT_PRIO_MODULE_GPIO  62
+#define APP_INIT_PRIO_MODULE_UART  63
+#define APP_INIT_PRIO_MODULE_IPC   64
+#define APP_INIT_PRIO_MODULE_MULTI 65
+#define APP_INIT_PRIO_APP_FINAL    99
+
+/* =============================================================================
  * System Configuration
  * ============================================================================= */
 

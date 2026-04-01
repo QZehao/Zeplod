@@ -12,7 +12,12 @@
  */
 
 #include "example_module_multi_dep.h"
+#include "app_config.h"
+#include "module_manager.h"
+#include <errno.h>
+#include <zephyr/init.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include "event_system.h"
 
 LOG_MODULE_REGISTER(example_module_multi_dep, CONFIG_SYS_LOG_LEVEL);
@@ -58,3 +63,16 @@ DECLARE_MODULE_INTERFACE_MINIMAL_WITH_DEPS(example_module_multi_dep, example_mod
 const module_interface_t* example_module_multi_dep_get_interface(void) {
     return &example_module_multi_dep_interface;
 }
+
+static int example_module_multi_dep_auto_register(void) {
+    uint32_t module_id;
+
+    if (module_manager_register(example_module_multi_dep_get_interface(), NULL, &module_id) != 0) {
+        LOG_ERR("module_manager_register example_module_multi_dep failed");
+        return -EIO;
+    }
+    LOG_INF("Registered example_module_multi_dep (id=%u)", module_id);
+    return 0;
+}
+
+SYS_INIT(example_module_multi_dep_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MULTI);

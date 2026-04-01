@@ -44,9 +44,9 @@ typedef struct {
  * ============================================================================= */
 
 /**
- * @brief Initialize application
- * @param config Application configuration
- * @return 0 on success, negative error code on failure
+ * @brief 查询应用是否已由 SYS_INIT 完成初始化（在 main 之前执行）
+ * @param config 保留；运行时传入的配置当前不参与 SYS_INIT 路径
+ * @return APP_OK 若已初始化，否则 APP_ERR_INIT
  */
 int app_init(const app_config_t* config);
 

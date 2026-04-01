@@ -6,16 +6,20 @@
  */
 
 #include "example_module_ipc.h"
+#include "app_config.h"
 #include "ipc_service.h"
+#include "module_manager.h"
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE)
 #include "ipc_service_event.h"
 #endif
 
+#include <errno.h>
+#include <string.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
-#include <string.h>
 
 LOG_MODULE_REGISTER(example_module_ipc, CONFIG_SYS_LOG_LEVEL);
 
@@ -219,3 +223,17 @@ static const module_interface_t example_module_ipc_interface = {
 const module_interface_t* example_module_ipc_get_interface(void) {
     return &example_module_ipc_interface;
 }
+
+static int example_module_ipc_auto_register(void) {
+    uint32_t                    module_id;
+    example_module_ipc_config_t config_ipc = {.reserved = 0};
+
+    if (module_manager_register(example_module_ipc_get_interface(), &config_ipc, &module_id) != 0) {
+        LOG_ERR("module_manager_register example_module_ipc failed");
+        return -EIO;
+    }
+    LOG_INF("Registered example_module_ipc (id=%u)", module_id);
+    return 0;
+}
+
+SYS_INIT(example_module_ipc_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_IPC);

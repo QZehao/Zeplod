@@ -9,10 +9,14 @@
  */
 
 #include "example_module_b.h"
+#include "app_config.h"
+#include "event_system.h"
+#include "module_manager.h"
+#include <errno.h>
+#include <string.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <string.h>
-#include "event_system.h"
 
 LOG_MODULE_REGISTER(example_module_b, CONFIG_SYS_LOG_LEVEL);
 
@@ -255,3 +259,19 @@ const module_interface_t example_module_b_interface = {.name = "example_module_b
 const module_interface_t* example_module_b_get_interface(void) {
     return &example_module_b_interface;
 }
+
+#if APP_CONFIG_ENABLE_MODULE_B
+static int example_module_b_auto_register(void) {
+    uint32_t                  module_id;
+    example_module_b_config_t config_b = {.tx_buffer_size = 512, .rx_buffer_size = 512, .timeout_ms = 1000};
+
+    if (module_manager_register(example_module_b_get_interface(), &config_b, &module_id) != 0) {
+        LOG_ERR("module_manager_register example_module_b failed");
+        return -EIO;
+    }
+    LOG_INF("Registered Module B (id=%u)", module_id);
+    return 0;
+}
+
+SYS_INIT(example_module_b_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_B);
+#endif
