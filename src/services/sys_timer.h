@@ -1,12 +1,17 @@
 /**
  * @file sys_timer.h
- * @brief System Timer Service Header
+ * @brief 系统定时器服务头文件
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * High-resolution timer service with one-shot and periodic timers.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef SYS_TIMER_H

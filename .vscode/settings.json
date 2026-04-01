@@ -84,5 +84,44 @@
             }
         ]
     },
+    "doxdocgen.file.copyrightTag": [
+        "Zehao Qian"
+    ],
+    // 文件注释：自定义模块，这里我添加一个修改日志
+    "doxdocgen.file.customTag": [
+
+        "@par 修改日志:",
+        "",
+        "   Date         Version        Author          Description",
+        "{date}       1.0            {author}            正式发布",
+        "",
+    ],
+    // 文件注释的组成及其排序
+    "doxdocgen.file.fileOrder": [
+        "file", // @file
+        "brief", // @brief 简介
+        "author", // 作者
+        "version", // 版本
+        "date", // 日期
+        "empty", // 空行
+        "copyright", // 版权
+        "empty",
+        "custom" // 自定义
+    ],
+    "doxdocgen.file.fileTemplate": "@file {name}",
+    "doxdocgen.file.versionTag": "@version 1.0",
+    "doxdocgen.generic.authorEmail": "china_qzh@163.com",
+    "doxdocgen.generic.authorName": "zeh",
+    "doxdocgen.generic.authorTag": "@author {author} ({email})",
+    // 日期格式与模板
+    "doxdocgen.generic.dateFormat": "YYYY-MM-DD",
+    "doxdocgen.generic.dateTemplate": "@date {date}",
+    // 根据自动生成的注释模板（目前主要体现在函数注释上）
+    "doxdocgen.generic.order": [
+        "brief",
+        "tparam",
+        "param",
+        "return"
+    ],
     "files.encoding": "utf8"
 }

@@ -1,15 +1,18 @@
 /**
  * @file example_module_a.h
- * @brief Example Module A Header
+ * @brief 示例模块 A 头文件
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Example business module demonstrating module interface implementation.
- * This module could represent any business logic (sensor handling, communication, etc.)
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
-
 #ifndef EXAMPLE_MODULE_A_H
 #define EXAMPLE_MODULE_A_H
 

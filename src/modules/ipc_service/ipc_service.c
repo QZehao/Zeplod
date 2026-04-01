@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2024 Your Name
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /**
  * @file ipc_service.c
  * @brief 基于专用线程 + 双消息队列的 IPC 服务实现
@@ -23,6 +17,17 @@
  * - SYNC：使用 response_sem 信号量同步
  * - ASYNC：直接在分发线程中调用回调
  * - FUTURE：设置 future 完成状态并 signal 信号量
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
+ *
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include "ipc_service.h"

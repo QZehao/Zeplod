@@ -10,10 +10,17 @@
  * - 详细的统计信息（处理数量、延迟等）
  * - 支持暂停/恢复功能
  * - 支持手动批处理模式
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef EVENT_DISPATCHER_H

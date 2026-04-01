@@ -1,12 +1,17 @@
 /**
  * @file app_version.h
- * @brief Application Version Information Header
+ * @brief 应用版本信息头文件
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Software version management with build time and git information.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef APP_VERSION_H
@@ -85,23 +90,23 @@ extern "C" {
 #endif
 
 /* Compiler information */
-#define COMPILER_NAME                         "GCC"
-#define COMPILER_VERSION                      __VERSION__
+#define COMPILER_NAME                       "GCC"
+#define COMPILER_VERSION                    __VERSION__
 
 /* =============================================================================
  * Version Encoding Macros
  * ============================================================================= */
 
-#define VERSION_ENCODE(major, minor, patch)   (((major) << 16) | ((minor) << 8) | (patch))
+#define VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 
-#define VERSION_MAJOR(version)                (((version) >> 16) & 0xFF)
+#define VERSION_MAJOR(version)              (((version) >> 16) & 0xFF)
 
-#define VERSION_MINOR(version)                (((version) >> 8) & 0xFF)
+#define VERSION_MINOR(version)              (((version) >> 8) & 0xFF)
 
-#define VERSION_PATCH(version)                ((version) & 0xFF)
+#define VERSION_PATCH(version)              ((version) & 0xFF)
 
 /* Current version as encoded value */
-#define APP_VERSION_CODE                      VERSION_ENCODE(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH)
+#define APP_VERSION_CODE VERSION_ENCODE(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH)
 
 /* =============================================================================
  * Version Comparison Macros

@@ -3,10 +3,17 @@
  * @brief 示例：在业务模块中集成 Thread IPC Service（与 module_manager 配合）
  *
  * 由 Kconfig CONFIG_EXAMPLE_MODULE_THREAD_IPC 控制是否编译与注册。
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef EXAMPLE_MODULE_IPC_H

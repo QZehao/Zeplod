@@ -4,9 +4,17 @@
  *
  * 可选 CONFIG_APP_KV_PERSIST：整表序列化为单条 Settings blob 写入 flash（需分区与 overlay）。
  * 线程安全。
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef APP_KV_H

@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2024 Your Name
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /**
  * @file ipc_service.h
  * @brief 基于专用线程的 IPC 服务框架（支持同步/异步回调/Future 模式）
@@ -25,6 +19,17 @@
  * 3. 调用 ipc_service_start() 启动服务
  * 4. 使用 ipc_call_sync/async/future 调用服务
  * 5. 调用 ipc_service_stop() 停止服务
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
+ *
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef ZEPHYR_IPC_SERVICE_H_

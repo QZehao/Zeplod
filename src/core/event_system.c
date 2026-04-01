@@ -10,11 +10,18 @@
  * - 订阅管理：每个事件类型维护一个订阅者列表
  * - 线程安全：使用互斥锁保护共享数据结构
  * - ISR 支持：提供专门的中断上下文发布函数
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
-
 #include "event_system.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>

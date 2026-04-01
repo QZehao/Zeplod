@@ -1,11 +1,17 @@
 /**
  * @file app_version.c
- * @brief Application Version Information Implementation
+ * @brief 应用版本信息实现
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Software version management with build time and git information.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include "app_version.h"

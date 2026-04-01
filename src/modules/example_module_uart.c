@@ -3,9 +3,17 @@
  * @brief UART 通信示例模块实现
  *
  * 演示如何使用 Zephyr UART API 进行串口通信。
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include "example_module_uart.h"

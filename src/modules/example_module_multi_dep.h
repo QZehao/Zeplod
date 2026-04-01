@@ -9,10 +9,17 @@
  *
  * 中文：本模块演示单个模块声明多个运行时依赖；需开启运行时依赖排序，并与 A/B 一同注册，
  * start_all 才会在拓扑序上把本模块排在 A、B 之后。
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef EXAMPLE_MODULE_MULTI_DEP_H

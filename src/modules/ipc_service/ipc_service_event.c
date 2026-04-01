@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2026
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /**
  * @file ipc_service_event.c
  * @brief Thread IPC 与事件系统桥接实现
@@ -16,8 +10,18 @@
  * 1. 调用 thread_ipc_event_register_types() 注册事件类型
  * 2. IPC 服务处理完成后调用 thread_ipc_event_publish_result()
  * 3. 事件系统通知所有订阅者
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
+ *
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
-
 #include "ipc_service_event.h"
 #include <zephyr/logging/log.h>
 

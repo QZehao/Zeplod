@@ -1,9 +1,17 @@
 /**
  * @file test_event_system.c
  * @brief 事件系统单元测试
- * 
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
+ *
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include <zephyr/logging/log.h>
@@ -19,8 +27,7 @@ LOG_MODULE_REGISTER(test_event_system);
 /**
  * @brief 测试事件系统初始化
  */
-ZTEST(test_event_system, test_event_system_init)
-{
+ZTEST(test_event_system, test_event_system_init) {
     event_status_t status;
 
     /* 测试正常初始化 */
@@ -35,8 +42,7 @@ ZTEST(test_event_system, test_event_system_init)
 /**
  * @brief 测试事件类型注册
  */
-ZTEST(test_event_system, test_event_register_type)
-{
+ZTEST(test_event_system, test_event_register_type) {
     event_status_t status;
 
     /* 先初始化 */
@@ -58,10 +64,9 @@ ZTEST(test_event_system, test_event_register_type)
 /**
  * @brief 测试事件订阅
  */
-ZTEST(test_event_system, test_event_subscribe)
-{
+ZTEST(test_event_system, test_event_subscribe) {
     event_status_t status;
-    uint32_t subscriber_id;
+    uint32_t       subscriber_id;
 
     /* 先初始化和注册 */
     event_system_init();
@@ -72,7 +77,7 @@ ZTEST(test_event_system, test_event_subscribe)
     zassert_equal(status, EVENT_ERR_INVALID_ARG, "空回调应返回错误");
 
     /* 测试有效订阅 */
-    status = event_subscribe(20, (event_callback_t)0x1000, NULL, &subscriber_id);
+    status = event_subscribe(20, (event_callback_t) 0x1000, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
     zassert_true(subscriber_id > 0, "订阅 ID 应大于 0");
 
@@ -84,9 +89,8 @@ ZTEST(test_event_system, test_event_subscribe)
 /**
  * @brief 测试事件创建和释放
  */
-ZTEST(test_event_system, test_event_create_free)
-{
-    event_t *event;
+ZTEST(test_event_system, test_event_create_free) {
+    event_t* event;
 
     /* 先初始化 */
     event_system_init();
@@ -105,8 +109,7 @@ ZTEST(test_event_system, test_event_create_free)
 /**
  * @brief 测试事件统计
  */
-ZTEST(test_event_system, test_event_statistics)
-{
+ZTEST(test_event_system, test_event_statistics) {
     uint32_t total_events, queue_depth, dropped_events;
 
     /* 先初始化 */
@@ -120,15 +123,9 @@ ZTEST(test_event_system, test_event_statistics)
 /**
  * @brief 测试事件发布（无订阅者）
  */
-ZTEST(test_event_system, test_event_publish_no_subscriber)
-{
+ZTEST(test_event_system, test_event_publish_no_subscriber) {
     event_status_t status;
-    event_t event = {
-        .type = 40,
-        .priority = EVENT_PRIORITY_NORMAL,
-        .data = NULL,
-        .data_len = 0
-    };
+    event_t        event = {.type = 40, .priority = EVENT_PRIORITY_NORMAL, .data = NULL, .data_len = 0};
 
     /* 先初始化和启动 */
     event_system_init();

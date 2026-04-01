@@ -1,9 +1,3 @@
-/*
- * Copyright (c) 2026
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /**
  * @file ipc_service_event.h
  * @brief 可选桥接模块：Thread IPC Service → Event System
@@ -21,6 +15,17 @@
  * 1. 在系统初始化时调用 thread_ipc_event_register_types()
  * 2. 在 IPC 服务函数末尾调用 thread_ipc_event_publish_result()
  * 3. 其他模块订阅 EVENT_TYPE_THREAD_IPC_RESPONSE 事件
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
+ *
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef IPC_SERVICE_EVENT_H_

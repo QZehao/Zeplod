@@ -1,12 +1,17 @@
 /**
  * @file app_main.h
- * @brief Application Main Header
+ * @brief
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Main application entry point and initialization.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef APP_MAIN_H

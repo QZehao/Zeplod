@@ -1,11 +1,17 @@
 /**
  * @file example_module_b.c
- * @brief Example Module B Implementation
+ * @brief 示例模块 B 实现
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Example business module - simulates a communication/actuator module.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @license SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include "example_module_b.h"

@@ -1,12 +1,17 @@
 /**
  * @file example_module_b.h
- * @brief Example Module B Header
+ * @brief 示例模块 B 头文件
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * Example business module - demonstrates a communication/actuator module.
+ * Zehao Qian
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #ifndef EXAMPLE_MODULE_B_H

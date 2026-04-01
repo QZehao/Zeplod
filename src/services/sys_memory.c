@@ -4,10 +4,17 @@
  *
  * 支持多内存池，每个池基于空闲链表（first-fit）管理。
  * 提供分配、释放、重新分配、统计、跟踪等功能。
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-04-01
  *
- * @copyright Copyright (c) 2026
- * @par License
- * SPDX-License-Identifier: Apache-2.0
+ * Zehao Qian
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-04-01       1.0            zeh            正式发布
+ *
  */
 
 #include "sys_memory.h"
