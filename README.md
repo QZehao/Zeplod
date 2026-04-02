@@ -485,13 +485,47 @@ west build -t run --build-dir build_tests
 
 ## 贡献
 
+### 提交代码（Pull Request）
+
 1. Fork 仓库
-2. 创建功能分支
-3. 进行更改
-4. 运行测试
+2. 创建功能分支（例如 `feature/my-feature` 或 `fix/issue-123`）
+3. 进行更改，确保构建和测试通过
+4. **使用规范的 Commit 格式**（见下文）
 5. 提交 Pull Request
 
-更完整的流程与代码规范见 **[docs/参与贡献与代码规范.md](docs/参与贡献与代码规范.md)**。
+**Commit 格式**：采用 Conventional Commits 规范
+
+```
+<type>(<scope>): <subject>
+```
+
+**常用 type**：
+- `feat`: 新功能
+- `fix`: Bug 修复
+- `docs`: 文档更新
+- `style`: 代码格式（不改逻辑）
+- `refactor`: 重构
+- `perf`: 性能优化
+- `test`: 测试相关
+- `build`: 构建系统
+- `ci`: CI/CD
+- `chore`: 其他琐事
+
+**示例**：
+```bash
+git commit -m "feat(sys_memory): 增加堆泄漏检测功能"
+git commit -m "fix(event): 修复事件队列统计错误"
+git commit -m "docs(ci): 更新 CI 板型配置说明"
+```
+
+**❌ 避免模糊的提交信息**：
+```bash
+git commit -m "修改"           # 过于模糊
+git commit -m "更新代码"       # 没有信息量
+git commit -m "修复 bug"       # 未说明修复什么
+```
+
+更详细的规范见 **[docs/参与贡献与代码规范.md](docs/参与贡献与代码规范.md)**。
 
 ## 支持
 
