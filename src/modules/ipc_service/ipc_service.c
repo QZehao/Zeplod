@@ -40,23 +40,60 @@
 
 LOG_MODULE_REGISTER(thread_ipc_svc, CONFIG_THREAD_IPC_SERVICE_LOG_LEVEL);
 
+/* =============================================================================
+ * SIL-2: 配置验证宏
+ * ============================================================================= */
+
+/** 最大合理的请求队列大小 */
+#ifndef IPC_SERVICE_MAX_QUEUE_SIZE
+#define IPC_SERVICE_MAX_QUEUE_SIZE 1024U
+#endif
+
+/** 最大合理的线程栈大小 */
+#ifndef IPC_SERVICE_MIN_STACK_SIZE
+#define IPC_SERVICE_MIN_STACK_SIZE 512U
+#endif
+
+/** 线程 join 超时时间（毫秒） */
+#ifndef IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS
+#define IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS 500U
+#endif
+
+/** 线程循环中 msgq 获取的超时时间（毫秒） */
+#ifndef IPC_SERVICE_MSGQ_TIMEOUT_MS
+#define IPC_SERVICE_MSGQ_TIMEOUT_MS 100U
+#endif
+
 /**
  * @brief 全局单调递增请求 ID 计数器
  * @note 跳过 0，避免与未初始化状态混淆
  */
-static atomic_t s_request_id_counter;
+static atomic_t s_request_id_counter = ATOMIC_INIT(1);
 
 /**
  * @brief 生成唯一的请求 ID
  *
  * @return 非零的请求 ID
+ * 
+ * @note SIL-2: 添加溢出保护，计数器达到上限时回绕到 1
  */
 ipc_request_id_t ipc_generate_request_id(void) {
     ipc_request_id_t id;
+    ipc_request_id_t old_val;
 
     do {
+        old_val = (ipc_request_id_t) atomic_get(&s_request_id_counter);
+        
+        /* SIL-2: 防止计数器溢出 */
+        if (old_val == UINT32_MAX) {
+            atomic_set(&s_request_id_counter, 1);
+            LOG_WRN("Request ID counter wrapped around");
+            return 1U;
+        }
+        
         id = (ipc_request_id_t) atomic_inc(&s_request_id_counter);
     } while (id == 0U);
+    
     return id;
 }
 
@@ -236,16 +273,36 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
     LOG_INF("IPC service '%s' worker started", service->name);
 
     for (;;) {
-        /* 阻塞等待请求，shutdown 时通过哑消息唤醒 */
-        int ret = k_msgq_get(&service->request_queue, &request_msg, K_FOREVER);
+        /* SIL-2: 使用有限超时而非永久阻塞，确保能响应 shutdown */
+        int ret = k_msgq_get(&service->request_queue, &request_msg, K_MSEC(IPC_SERVICE_MSGQ_TIMEOUT_MS));
 
         if (ret != 0) {
+            /* 超时，检查 shutdown 标志 */
+            k_mutex_lock(&service->state_lock, K_FOREVER);
+            bool should_exit = service->shutdown;
+            k_mutex_unlock(&service->state_lock);
+            
+            if (should_exit) {
+                LOG_INF("Worker thread exiting on shutdown signal");
+                break;
+            }
             continue;
         }
 
-        /* shutdown 后先收到哑包再退出，避免在已置位时仍调用 service_func */
-        if (service->shutdown) {
+        /* SIL-2: 再次检查 shutdown 标志 */
+        k_mutex_lock(&service->state_lock, K_FOREVER);
+        bool should_exit = service->shutdown;
+        k_mutex_unlock(&service->state_lock);
+        
+        if (should_exit) {
+            LOG_INF("Worker thread detected shutdown after receiving request");
             break;
+        }
+
+        /* SIL-2: 验证 service_func 非空 */
+        if (service->service_func == NULL) {
+            LOG_ERR("Service function is NULL, dropping request %u", request_msg.request_id);
+            continue;
         }
 
         void*  out_data = NULL;
@@ -267,7 +324,7 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
         /* 发送响应到响应队列 */
         ret = k_msgq_put(&service->response_queue, &response_msg, K_FOREVER);
         if (ret != 0) {
-            LOG_ERR("Failed to send response for request %u", request_msg.request_id);
+            LOG_ERR("Failed to send response for request %u: %d", request_msg.request_id, ret);
         }
     }
 
@@ -300,14 +357,29 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
     LOG_INF("IPC service '%s' dispatcher started", service->name);
 
     for (;;) {
-        /* 阻塞等待响应，shutdown 时通过哑消息唤醒 */
-        int ret = k_msgq_get(&service->response_queue, &response_msg, K_FOREVER);
+        /* SIL-2: 使用有限超时而非永久阻塞，确保能响应 shutdown */
+        int ret = k_msgq_get(&service->response_queue, &response_msg, K_MSEC(IPC_SERVICE_MSGQ_TIMEOUT_MS));
 
         if (ret != 0) {
+            /* 超时，检查 shutdown 标志 */
+            k_mutex_lock(&service->state_lock, K_FOREVER);
+            bool should_exit = service->shutdown;
+            k_mutex_unlock(&service->state_lock);
+            
+            if (should_exit) {
+                LOG_INF("Dispatcher thread exiting on shutdown signal");
+                break;
+            }
             continue;
         }
 
-        if (service->shutdown) {
+        /* SIL-2: 检查 shutdown 标志 */
+        k_mutex_lock(&service->state_lock, K_FOREVER);
+        bool should_exit = service->shutdown;
+        k_mutex_unlock(&service->state_lock);
+        
+        if (should_exit) {
+            LOG_INF("Dispatcher thread detected shutdown");
             break;
         }
 
@@ -324,7 +396,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
 
             /* ASYNC 模式：有回调函数 */
             if (entry->callback != NULL) {
-                /* 先复制回调参数并释放槽位，再在锁外调用用户回调，避免死锁 */
+                /* SIL-2: 先复制回调参数并释放槽位，再在锁外调用用户回调，避免死锁 */
                 ipc_async_callback_t cb = entry->callback;
                 void*                ud = entry->callback_user_data;
                 ipc_request_id_t     rid = entry->request_id;
@@ -335,8 +407,12 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
                 release_pending_entry(entry);
                 k_mutex_unlock(&service->pending_lock);
 
-                /* 在锁外调用回调 */
-                cb(rid, res, rdata, rsize, ud);
+                /* SIL-2: 验证回调函数非空后再调用 */
+                if (cb != NULL) {
+                    cb(rid, res, rdata, rsize, ud);
+                } else {
+                    LOG_ERR("NULL callback detected for request %u", rid);
+                }
                 continue;
             }
 
@@ -465,6 +541,8 @@ int ipc_service_start(ipc_service_t* service) {
 
 /**
  * @brief 停止 IPC 服务
+ *
+ * @note SIL-2: 添加超时保护，避免永久阻塞
  */
 int ipc_service_stop(ipc_service_t* service) {
     if (service == NULL) {
@@ -476,29 +554,54 @@ int ipc_service_stop(ipc_service_t* service) {
         k_mutex_unlock(&service->state_lock);
         return 0;
     }
+    
+    /* SIL-2: 设置 shutdown 标志 */
     service->shutdown = true;
     k_mutex_unlock(&service->state_lock);
 
-    /* 非阻塞投递哑消息，唤醒可能阻塞在 k_msgq_get 的 worker/dispatcher */
+    /* SIL-2: 非阻塞投递哑消息，唤醒可能阻塞在 k_msgq_get 的 worker/dispatcher */
     ipc_request_msg_t dummy_request;
-
     memset(&dummy_request, 0, sizeof(dummy_request));
     (void) k_msgq_put(&service->request_queue, &dummy_request, K_NO_WAIT);
 
     ipc_response_msg_t dummy_response;
-
     memset(&dummy_response, 0, sizeof(dummy_response));
     (void) k_msgq_put(&service->response_queue, &dummy_response, K_NO_WAIT);
 
-    /* 等待两线程退出 */
-    k_thread_join(&service->thread, K_FOREVER);
-    k_thread_join(&service->response_thread, K_FOREVER);
+    /* SIL-2: 使用有限超时等待线程退出，避免永久阻塞 */
+    int ret1 = k_thread_join(&service->thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+    int ret2 = k_thread_join(&service->response_thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
 
+    if (ret1 != 0) {
+        LOG_ERR("Worker thread join failed: %d", ret1);
+    }
+    if (ret2 != 0) {
+        LOG_ERR("Dispatcher thread join failed: %d", ret2);
+    }
+
+    /* SIL-2: 无论线程是否成功退出，都清理状态 */
     k_mutex_lock(&service->state_lock, K_FOREVER);
     service->running = false;
+    service->shutdown = true;
     k_mutex_unlock(&service->state_lock);
 
-    LOG_INF("IPC service '%s' stopped", service->name);
+    /* SIL-2: 清理所有 pending 请求，防止资源泄漏 */
+    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
+        if (service->pending_requests[i].in_use) {
+            /* 唤醒 SYNC 模式的等待者 */
+            if (service->pending_requests[i].future == NULL && 
+                service->pending_requests[i].callback == NULL) {
+                service->pending_requests[i].result = -ECANCELED;
+                k_sem_give(&service->pending_requests[i].response_sem);
+            }
+            release_pending_entry(&service->pending_requests[i]);
+        }
+    }
+    k_mutex_unlock(&service->pending_lock);
+
+    LOG_INF("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d)", 
+            service->name, ret1, ret2);
 
     return 0;
 }
@@ -512,11 +615,19 @@ int ipc_service_stop(ipc_service_t* service) {
  */
 int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, void** out_data, size_t* out_data_size,
                   k_timeout_t timeout) {
+    /* SIL-2: 验证所有输入参数 */
     if (service == NULL || !service->running) {
         return -EINVAL;
     }
 
-    if (data == NULL || out_data == NULL || out_data_size == NULL) {
+    /* SIL-2: data 可以为 NULL（某些服务可能不需要输入数据） */
+    if (out_data == NULL || out_data_size == NULL) {
+        return -EINVAL;
+    }
+
+    /* SIL-2: 验证超时有效性 */
+    if (timeout.ticks == 0) {
+        LOG_WRN("ipc_call_sync called with zero timeout");
         return -EINVAL;
     }
 
@@ -529,6 +640,7 @@ int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, vo
 
     if (entry == NULL) {
         k_mutex_unlock(&service->pending_lock);
+        LOG_ERR("No pending slot available");
         return -ENOMEM;
     }
 
@@ -560,8 +672,13 @@ int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, vo
     /* 等待响应信号量 */
     ret = k_sem_take(&entry->response_sem, timeout);
     if (ret != 0) {
+        /* SIL-2: 超时或错误时取消请求 */
         k_mutex_lock(&service->pending_lock, K_FOREVER);
-        release_pending_entry(entry);
+        if (entry->in_use) {
+            entry->result = ret;
+            k_sem_give(&entry->response_sem); /* 唤醒可能的其他等待者 */
+            release_pending_entry(entry);
+        }
         k_mutex_unlock(&service->pending_lock);
         return ret;
     }
