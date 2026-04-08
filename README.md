@@ -2,7 +2,7 @@
 
 基于 Zephyr RTOS 的高性能、实时、事件驱动应用程序模板。此模板使用发布 - 订阅模式，为构建可扩展的模块化嵌入式应用提供了坚实的基础。
 
-> 📺 **视频教程**：关注微信公众号 **硬核嵌入式**，正在连载本框架的详细教程！  
+> 📺 **视频教程**：关注微信公众号 **硬核嵌入式**，正在连载本框架的详细教程！
 > 💬 **技术交流**：加微信/QQ群 [待补充]，与 500+ 嵌入式开发者交流
 
 ---
@@ -94,7 +94,7 @@ zephyr_template/
 
 | 步骤 | 内容 |
 |------|------|
-| 1 | **west.yml**：将 `revision` 与团队 Zephyr 版本对齐（默认 **v3.6.0**，与 CI 一致）；私有镜像可改 `url`。 |
+| 1 | **west.yml**：将 `revision` 与团队 Zephyr 版本对齐（默认 **4.3.0-rc3**，与 CI 一致）；私有镜像可改 `url`。 |
 | 2 | **zephyr_config.env**：由 `zephyr_config.env.template` 复制并填写路径；**勿提交**（已在 `.gitignore` 中忽略）。 |
 | 3 | **CMake**：根目录 `CMakeLists.txt` 中 `project(...)` 名称改为你的产品工程名。 |
 | 4 | **版本与说明**：按需修改 `APP_VERSION`、README 标题与产品描述。 |
@@ -554,8 +554,8 @@ git commit -m "修复 bug"       # 未说明修复什么
 
 ---
 
-**版本**：1.0.0（单一来源：根目录 `APP_VERSION`；发布前可运行 `python scripts/bump_version.py X.Y.Z` 同步 Doxygen/README）  
-**构建类型**：Release/Debug  
+**版本**：1.0.0（单一来源：根目录 `APP_VERSION`；发布前可运行 `python scripts/bump_version.py X.Y.Z` 同步 Doxygen/README）
+**构建类型**：Release/Debug
 **目标**：通用/Zephyr 支持的开发板
 
 ## 文档索引
