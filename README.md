@@ -112,7 +112,7 @@ zephyr_template/
 - Python 3.8+
 - West（Zephyr 构建工具）
 
-CI（`.github/workflows/ci.yml`）当前使用 Zephyr **3.6.0** 构建镜像；本地建议使用相同或兼容的 Zephyr 版本，以减少配置差异。
+CI（`.github/workflows/ci.yml`）当前使用 Zephyr **4.3.0-rc3** 构建镜像；本地建议使用相同或兼容的 Zephyr 版本，以减少配置差异。
 
 ### 项目类型：独立应用程序 (Freestanding Application)
 
