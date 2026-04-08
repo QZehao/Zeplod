@@ -278,6 +278,34 @@ if(CONFIG_EXAMPLE_MODULE_UART)
 endif()
 
 # =============================================================================
+# Proprietary Modules (商业闭源模块)
+# =============================================================================
+
+# Proprietary Modules Framework
+target_sources(app PRIVATE
+    src/proprietary/proprietary_modules.c
+    src/proprietary/proprietary_modules.h
+)
+
+# Mesh Communication Module (商业模块示例)
+if(CONFIG_MESH_COMMUNICATION)
+    # 添加子模块源文件
+    target_sources(app PRIVATE
+        src/proprietary/mesh_communication/src/mesh_transport.c
+    )
+    target_include_directories(app PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/proprietary/mesh_communication/include
+    )
+    message(STATUS "Proprietary Module: Mesh Communication v2.0.0 enabled")
+endif()
+
+# 后续商业模块在此添加
+# if(CONFIG_EVENT_SYSTEM_PRO)
+#     target_sources(app PRIVATE ...)
+#     target_include_directories(app PRIVATE ...)
+# endif()
+
+# =============================================================================
 # Compiler Definitions
 # =============================================================================
 
