@@ -311,6 +311,17 @@ if(CONFIG_EVENT_SYSTEM_PRO)
     message(STATUS "Proprietary Module: Event System Pro v1.0.0 enabled")
 endif()
 
+# Module Manager Pro Module (商业模块)
+if(CONFIG_MODULE_MANAGER_PRO)
+    target_sources(app PRIVATE
+        src/proprietary/module_manager_pro/src/module_manager_pro.c
+    )
+    target_include_directories(app PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/proprietary/module_manager_pro/include
+    )
+    message(STATUS "Proprietary Module: Module Manager Pro v1.0.0 enabled")
+endif()
+
 # 后续商业模块在此添加
 # if(CONFIG_SECURITY_CRYPTO)
 #     target_sources(app PRIVATE ...)

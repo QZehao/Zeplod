@@ -226,6 +226,7 @@ comment "联系：china_qzh@163.com"
 
 source "src/proprietary/mesh_communication/Kconfig"
 source "src/proprietary/event_system_pro/Kconfig"
+source "src/proprietary/module_manager_pro/Kconfig"
 
 # 后续商业模块 Kconfig 在此添加
 # source "src/proprietary/security_crypto/Kconfig"
