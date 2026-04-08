@@ -609,9 +609,12 @@ void sys_mem_free(sys_mem_pool_type_t type, void* ptr) {
 }
 
 void* sys_mem_realloc(sys_mem_pool_type_t type, void* ptr, size_t size) {
+    /* SIL-2: ptr为NULL时等同于alloc */
     if (ptr == NULL) {
         return sys_mem_alloc(type, size);
     }
+    
+    /* SIL-2: size为0时等同于free */
     if (size == 0) {
         sys_mem_free(type, ptr);
         return NULL;
@@ -631,13 +634,19 @@ void* sys_mem_realloc(sys_mem_pool_type_t type, void* ptr, size_t size) {
         return NULL;
     }
 
-    /* 分配新内存 */
+    /* SIL-2: 先分配新内存，失败时保持原指针不变 */
     void* new_ptr = sys_mem_alloc(type, size);
-    if (new_ptr != NULL) {
-        size_t copy_size = (old_size < size) ? old_size : size;
-        memcpy(new_ptr, ptr, copy_size);
-        sys_mem_free(type, ptr);
+    if (new_ptr == NULL) {
+        LOG_WRN("realloc failed: cannot allocate %zu bytes", size);
+        return NULL;  /* 失败时原指针保持不变 */
     }
+
+    /* SIL-2: 复制数据 (取新旧大小的较小值) */
+    size_t copy_size = (old_size < size) ? old_size : size;
+    memcpy(new_ptr, ptr, copy_size);
+    
+    /* SIL-2: 释放原内存 */
+    sys_mem_free(type, ptr);
 
     return new_ptr;
 }

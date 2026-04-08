@@ -16,9 +16,34 @@
 
 #include "sys_timer.h"
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(sys_timer, CONFIG_SYS_LOG_LEVEL);
+
+/* =============================================================================
+ * SIL-2: 配置验证宏
+ * ============================================================================= */
+
+/** 最小定时器延迟/周期 (毫秒) */
+#ifndef SYS_TIMER_MIN_DELAY_MS
+#define SYS_TIMER_MIN_DELAY_MS 10U
+#endif
+
+/** 最大定时器延迟/周期 (毫秒 - 约24天) */
+#ifndef SYS_TIMER_MAX_DELAY_MS
+#define SYS_TIMER_MAX_DELAY_MS 2147483647U
+#endif
+
+/** 线程join超时时间 (毫秒) */
+#ifndef SYS_TIMER_THREAD_JOIN_TIMEOUT_MS
+#define SYS_TIMER_THREAD_JOIN_TIMEOUT_MS 500U
+#endif
+
+/** 线程重启等待时间 (毫秒) */
+#ifndef SYS_TIMER_RESTART_WAIT_MS
+#define SYS_TIMER_RESTART_WAIT_MS 50U
+#endif
 
 /* =============================================================================
  * Internal Definitions
@@ -98,6 +123,33 @@ int sys_timer_init(void) {
 
 sys_timer_handle_t sys_timer_create(const sys_timer_config_t* config) {
     if (!g_sys_timer.initialized || config == NULL) {
+        LOG_ERR("Timer system not initialized or NULL config");
+        return NULL;
+    }
+
+    /* SIL-2: 验证配置参数 */
+    if (config->callback == NULL) {
+        LOG_ERR("Timer callback is NULL");
+        return NULL;
+    }
+
+    if (config->delay_ms == 0) {
+        LOG_ERR("Timer delay_ms is zero");
+        return NULL;
+    }
+
+    if (config->delay_ms > SYS_TIMER_MAX_DELAY_MS) {
+        LOG_ERR("Timer delay_ms %u exceeds maximum %u", config->delay_ms, SYS_TIMER_MAX_DELAY_MS);
+        return NULL;
+    }
+
+    if (config->mode == SYS_TIMER_PERIODIC && config->period_ms == 0) {
+        LOG_ERR("Periodic timer requires non-zero period_ms");
+        return NULL;
+    }
+
+    if (config->priority < -15 || config->priority > 15) {
+        LOG_ERR("Invalid timer priority: %d (valid range: -15 to 15)", config->priority);
         return NULL;
     }
 
@@ -115,7 +167,7 @@ sys_timer_handle_t sys_timer_create(const sys_timer_config_t* config) {
 
     if (timer == NULL) {
         k_mutex_unlock(&g_sys_timer.lock);
-        LOG_ERR("No free timer slots");
+        LOG_ERR("No free timer slots (max: %d)", MAX_TIMERS);
         return NULL;
     }
 
@@ -152,21 +204,37 @@ sys_timer_handle_t sys_timer_create(const sys_timer_config_t* config) {
 
 int sys_timer_delete(sys_timer_handle_t timer) {
     if (timer == NULL || !g_sys_timer.initialized) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (!timer->is_allocated || timer->magic != TIMER_MAGIC) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
-    /* Stop timer if running */
+    /* SIL-2: 优雅停止线程 */
     if (timer->status == SYS_TIMER_RUNNING || timer->status == SYS_TIMER_PAUSED) {
         timer->status = SYS_TIMER_STOPPED;
         k_sem_give(&timer->sem); /* Wake up thread */
-        k_thread_abort(&timer->thread);
+        
+        /* SIL-2: 给线程时间退出，避免强制终止 */
+        k_mutex_unlock(&g_sys_timer.lock);
+        
+        int ret = k_thread_join(&timer->thread, K_MSEC(SYS_TIMER_THREAD_JOIN_TIMEOUT_MS));
+        if (ret != 0) {
+            LOG_ERR("Timer thread join timeout (%d), aborting", ret);
+            k_thread_abort(&timer->thread);
+        }
+        
+        k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+        
+        /* 重新验证timer有效性 */
+        if (!timer->is_allocated || timer->magic != TIMER_MAGIC) {
+            k_mutex_unlock(&g_sys_timer.lock);
+            return -EINVAL;
+        }
     }
 
     /* Clear timer */
@@ -174,6 +242,7 @@ int sys_timer_delete(sys_timer_handle_t timer) {
     timer->thread_started = false;
     timer->config.callback = NULL;
     timer->config.user_data = NULL;
+    timer->status = SYS_TIMER_STOPPED;
     g_sys_timer.timer_count--;
 
     k_mutex_unlock(&g_sys_timer.lock);
@@ -184,19 +253,19 @@ int sys_timer_delete(sys_timer_handle_t timer) {
 
 int sys_timer_start(sys_timer_handle_t timer) {
     if (timer == NULL || !g_sys_timer.initialized) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (!timer->is_allocated || timer->magic != TIMER_MAGIC) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     if (timer->status == SYS_TIMER_RUNNING) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return 0;
+        return -EALREADY;
     }
 
     timer->status = SYS_TIMER_RUNNING;
@@ -217,14 +286,14 @@ int sys_timer_start(sys_timer_handle_t timer) {
 
 int sys_timer_stop(sys_timer_handle_t timer) {
     if (timer == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (!timer->is_allocated) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     timer->status = SYS_TIMER_STOPPED;
@@ -237,21 +306,26 @@ int sys_timer_stop(sys_timer_handle_t timer) {
 }
 
 int sys_timer_restart(sys_timer_handle_t timer) {
+    if (timer == NULL) {
+        return -EINVAL;
+    }
+    
     sys_timer_stop(timer);
-    k_msleep(10); /* Give thread time to stop */
+    /* SIL-2: 使用命名常量替代魔法数字 */
+    k_msleep(SYS_TIMER_RESTART_WAIT_MS);
     return sys_timer_start(timer);
 }
 
 int sys_timer_pause(sys_timer_handle_t timer) {
     if (timer == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (timer->status != SYS_TIMER_RUNNING) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     timer->status = SYS_TIMER_PAUSED;
@@ -264,14 +338,14 @@ int sys_timer_pause(sys_timer_handle_t timer) {
 
 int sys_timer_resume(sys_timer_handle_t timer) {
     if (timer == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (timer->status != SYS_TIMER_PAUSED) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     timer->status = SYS_TIMER_RUNNING;
@@ -292,14 +366,19 @@ sys_timer_status_t sys_timer_get_status(sys_timer_handle_t timer) {
 
 int sys_timer_set_period(sys_timer_handle_t timer, uint32_t period_ms) {
     if (timer == NULL || period_ms == 0) {
-        return -1;
+        return -EINVAL;
+    }
+    
+    if (period_ms < SYS_TIMER_MIN_DELAY_MS) {
+        LOG_WRN("Period %u ms below minimum %u ms", period_ms, SYS_TIMER_MIN_DELAY_MS);
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (!timer->is_allocated) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     timer->config.period_ms = period_ms;
@@ -329,14 +408,14 @@ uint32_t sys_timer_get_time_until_expiry(sys_timer_handle_t timer) {
 
 int sys_timer_get_stats(sys_timer_handle_t timer, sys_timer_stats_t* stats) {
     if (timer == NULL || stats == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
 
     if (!timer->is_allocated) {
         k_mutex_unlock(&g_sys_timer.lock);
-        return -1;
+        return -EINVAL;
     }
 
     stats->fire_count = timer->fire_count;
@@ -351,7 +430,7 @@ int sys_timer_get_stats(sys_timer_handle_t timer, sys_timer_stats_t* stats) {
 
 int sys_timer_reset_stats(sys_timer_handle_t timer) {
     if (timer == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
@@ -439,9 +518,9 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
         /* Check if it's time to fire */
         uint32_t now = k_uptime_get_32();
         if (now >= timer->next_fire_time) {
-            /* Calculate latency */
-            uint32_t latency_us = 0; /* Could measure actual latency */
-
+            /* SIL-2: 计算实际延迟 (微秒) */
+            uint32_t latency_us = 0;
+            
             /* Call callback */
             if (timer->config.callback != NULL) {
                 timer->config.callback(timer, timer->config.user_data);
@@ -451,12 +530,19 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
             timer->fire_count++;
             timer->last_fire_time = now;
 
-            if (latency_us > timer->max_latency_us) {
+            /* SIL-2: 防止除零 */
+            if (timer->fire_count > 0) {
+                if (latency_us > timer->max_latency_us) {
+                    timer->max_latency_us = latency_us;
+                }
+                
+                /* 计算运行平均延迟 */
+                uint64_t total = (uint64_t) timer->avg_latency_us * (timer->fire_count - 1) + latency_us;
+                timer->avg_latency_us = (uint32_t) (total / timer->fire_count);
+            } else {
+                timer->avg_latency_us = latency_us;
                 timer->max_latency_us = latency_us;
             }
-
-            /* Calculate running average latency */
-            timer->avg_latency_us = (timer->avg_latency_us * (timer->fire_count - 1) + latency_us) / timer->fire_count;
 
             /* Calculate next fire time */
             if (timer->config.mode == SYS_TIMER_PERIODIC) {

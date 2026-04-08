@@ -29,6 +29,28 @@
 LOG_MODULE_REGISTER(sys_log, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
+ * SIL-2: 配置验证宏
+ * ============================================================================= */
+
+/** 最小日志缓冲区大小 */
+#ifndef SYS_LOG_MIN_BUFFER_SIZE
+#define SYS_LOG_MIN_BUFFER_SIZE 4U
+#endif
+
+/** 最大日志缓冲区大小 */
+#ifndef SYS_LOG_MAX_BUFFER_SIZE
+#define SYS_LOG_MAX_BUFFER_SIZE 1024U
+#endif
+
+/** 最大模块名称长度 */
+#ifndef SYS_LOG_MAX_MODULE_NAME_LEN
+#define SYS_LOG_MAX_MODULE_NAME_LEN 32U
+#endif
+
+/** 目的地数组大小 */
+#define SYS_LOG_DEST_COUNT 4U
+
+/* =============================================================================
  * Internal Definitions
  * ============================================================================= */
 
@@ -201,10 +223,17 @@ static void emit_log_line(sys_log_level_t level, const char* module, const char*
 int sys_log_init(const sys_log_config_t* config) {
     LOG_INF("Initializing system log...");
 
+    /* SIL-2: 清零全局控制块 */
     memset(&g_sys_log, 0, sizeof(g_sys_log));
 
     /* Set default config */
     if (config != NULL) {
+        /* SIL-2: 验证配置参数 */
+        if (config->memory_buffer_size > 0 && 
+            config->memory_buffer_size < sizeof(sys_log_entry_t)) {
+            LOG_ERR("Invalid memory_buffer_size: %u", config->memory_buffer_size);
+            return -EINVAL;
+        }
         g_sys_log.config = *config;
     } else {
         g_sys_log.config.default_level = SYS_LOG_LEVEL_INF;
@@ -213,6 +242,12 @@ int sys_log_init(const sys_log_config_t* config) {
         g_sys_log.config.enable_colors = true;
         g_sys_log.config.enable_module_name = true;
         g_sys_log.config.memory_buffer_size = CONFIG_SYS_MEMORY_POOL_SIZE;
+    }
+
+    /* SIL-2: 验证MAX_LOG_ENTRIES合理性 */
+    if (MAX_LOG_ENTRIES < SYS_LOG_MIN_BUFFER_SIZE || MAX_LOG_ENTRIES > SYS_LOG_MAX_BUFFER_SIZE) {
+        LOG_WRN("MAX_LOG_ENTRIES %u outside reasonable range [%u, %u]",
+                MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE, SYS_LOG_MAX_BUFFER_SIZE);
     }
 
     /* Initialize buffer */

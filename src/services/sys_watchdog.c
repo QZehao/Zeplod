@@ -23,6 +23,30 @@
 LOG_MODULE_REGISTER(sys_watchdog, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
+ * SIL-2: 配置验证宏
+ * ============================================================================= */
+
+/** 看门狗线程join超时 (毫秒) */
+#ifndef SYS_WDT_THREAD_JOIN_TIMEOUT_MS
+#define SYS_WDT_THREAD_JOIN_TIMEOUT_MS 500U
+#endif
+
+/** 监控循环检查间隔 (毫秒) */
+#ifndef SYS_WDT_MONITOR_INTERVAL_MS
+#define SYS_WDT_MONITOR_INTERVAL_MS 100U
+#endif
+
+/** 喂狗提前量最小值 (毫秒) */
+#ifndef SYS_WDT_MIN_FEED_MARGIN_MS
+#define SYS_WDT_MIN_FEED_MARGIN_MS 100U
+#endif
+
+/** 线程名称最大长度 */
+#ifndef SYS_WDT_THREAD_NAME_MAX_LEN
+#define SYS_WDT_THREAD_NAME_MAX_LEN (sizeof(thread_monitor_t::name) - 1)
+#endif
+
+/* =============================================================================
  * Internal Definitions
  * ============================================================================= */
 
@@ -160,11 +184,16 @@ int sys_wdt_stop(void) {
         return 0;
     }
 
+    /* SIL-2: 设置停止标志，让线程自行退出 */
     g_wdt.status = WDT_STATUS_STOPPED;
     k_mutex_unlock(&g_wdt.lock);
 
-    /* Stop monitor thread */
-    k_thread_abort(&g_wdt.monitor_thread);
+    /* SIL-2: 给线程时间退出 */
+    int ret = k_thread_join(&g_wdt.monitor_thread, K_MSEC(SYS_WDT_THREAD_JOIN_TIMEOUT_MS));
+    if (ret != 0) {
+        LOG_ERR("Watchdog monitor thread join timeout (%d), aborting", ret);
+        k_thread_abort(&g_wdt.monitor_thread);
+    }
 
     LOG_INF("Watchdog stopped");
     return 0;
@@ -225,22 +254,35 @@ wdt_status_t sys_wdt_get_status(void) {
 
 int sys_wdt_monitor_thread(k_tid_t thread_id, const char* thread_name, uint32_t max_idle_ms) {
     if (thread_id == NULL || max_idle_ms == 0) {
-        return -1;
+        return -EINVAL;
+    }
+    
+    /* SIL-2: 验证max_idle_ms合理性 */
+    if (max_idle_ms < SYS_WDT_MONITOR_INTERVAL_MS) {
+        LOG_ERR("max_idle_ms %u too small (min: %u)", max_idle_ms, SYS_WDT_MONITOR_INTERVAL_MS);
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_wdt.lock, K_FOREVER);
 
     if (g_wdt.thread_count >= MAX_MONITORED_THREADS) {
         k_mutex_unlock(&g_wdt.lock);
-        LOG_ERR("Maximum monitored threads reached");
-        return -1;
+        LOG_ERR("Maximum monitored threads reached (%u)", MAX_MONITORED_THREADS);
+        return -ENOMEM;
     }
 
     /* Find empty slot or existing thread */
     for (uint32_t i = 0; i < MAX_MONITORED_THREADS; i++) {
         if (!g_wdt.threads[i].is_monitored) {
             g_wdt.threads[i].thread_id = thread_id;
-            strncpy(g_wdt.threads[i].name, thread_name != NULL ? thread_name : "unknown", 31);
+            /* SIL-2: 安全复制字符串，确保终止符 */
+            if (thread_name != NULL) {
+                strncpy(g_wdt.threads[i].name, thread_name, SYS_WDT_THREAD_NAME_MAX_LEN);
+                g_wdt.threads[i].name[SYS_WDT_THREAD_NAME_MAX_LEN] = '\0';
+            } else {
+                strncpy(g_wdt.threads[i].name, "unknown", SYS_WDT_THREAD_NAME_MAX_LEN);
+                g_wdt.threads[i].name[SYS_WDT_THREAD_NAME_MAX_LEN] = '\0';
+            }
             g_wdt.threads[i].max_idle_ms = max_idle_ms;
             g_wdt.threads[i].last_alive_time = k_uptime_get_32();
             g_wdt.threads[i].is_monitored = true;
@@ -253,12 +295,12 @@ int sys_wdt_monitor_thread(k_tid_t thread_id, const char* thread_name, uint32_t 
     }
 
     k_mutex_unlock(&g_wdt.lock);
-    return -1;
+    return -ENOMEM;
 }
 
 int sys_wdt_unmonitor_thread(k_tid_t thread_id) {
     if (thread_id == NULL) {
-        return -1;
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_wdt.lock, K_FOREVER);
@@ -275,7 +317,7 @@ int sys_wdt_unmonitor_thread(k_tid_t thread_id) {
     }
 
     k_mutex_unlock(&g_wdt.lock);
-    return -1;
+    return -ENOENT;
 }
 
 int sys_wdt_thread_alive(k_tid_t thread_id) {
