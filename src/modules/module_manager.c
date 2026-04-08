@@ -38,6 +38,30 @@
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
+ * SIL-2: 配置验证宏
+ * ============================================================================= */
+
+/** 模块初始化超时默认值（毫秒） */
+#ifndef MODULE_MGR_INIT_TIMEOUT_MS
+#define MODULE_MGR_INIT_TIMEOUT_MS 1000U
+#endif
+
+/** 模块操作超时（毫秒） */
+#ifndef MODULE_MGR_OPERATION_TIMEOUT_MS
+#define MODULE_MGR_OPERATION_TIMEOUT_MS 500U
+#endif
+
+/** 最大合理的模块数量 */
+#ifndef MODULE_MGR_MAX_MODULES
+#define MODULE_MGR_MAX_MODULES 64U
+#endif
+
+/** 最大模块名称长度 */
+#ifndef MODULE_MGR_MAX_NAME_LEN
+#define MODULE_MGR_MAX_NAME_LEN 32U
+#endif
+
+/* =============================================================================
  * 内部数据结构 (Internal Data Structures)
  * ============================================================================= */
 
@@ -605,10 +629,16 @@ static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
 /**
  * @brief 初始化模块管理器
  *
- * @return 0 成功，-1 失败
+ * @return 0 成功，-EALREADY 已初始化
  */
 int module_manager_init(void) {
     LOG_INF("Initializing module manager...");
+
+    /* SIL-2: 检查是否已初始化 */
+    if (g_module_mgr.initialized) {
+        LOG_WRN("Module manager already initialized");
+        return -EALREADY;
+    }
 
     (void) memset(&g_module_mgr, 0, sizeof(g_module_mgr));
     k_mutex_init(&g_module_mgr.lock);
@@ -629,14 +659,20 @@ int module_manager_init(void) {
 /**
  * @brief 启动模块管理器
  *
- * @return 0 成功，-1 未初始化
+ * @return 0 成功，-EINVAL 未初始化，-EALREADY 已启动
  */
 int module_manager_start(void) {
     if (!g_module_mgr.initialized) {
-        return -1;
+        LOG_ERR("Module manager not initialized");
+        return -EINVAL;
     }
 
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+    if (g_module_mgr.running) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_WRN("Module manager already running");
+        return -EALREADY;
+    }
     g_module_mgr.running = true;
     k_mutex_unlock(&g_module_mgr.lock);
 
@@ -647,11 +683,12 @@ int module_manager_start(void) {
 /**
  * @brief 停止模块管理器
  *
- * @return 0 成功，-1 未初始化
+ * @return 0 成功，-EINVAL 未初始化
  */
 int module_manager_stop(void) {
     if (!g_module_mgr.initialized) {
-        return -1;
+        LOG_ERR("Module manager not initialized");
+        return -EINVAL;
     }
 
     (void) module_manager_stop_all();
@@ -669,13 +706,20 @@ int module_manager_stop(void) {
  *
  * 停止所有模块，调用 shutdown 回调，清空注册表。
  *
- * @return 0 成功，-1 失败
+ * @return 0 成功，-EINVAL 未初始化
  */
 int module_manager_shutdown(void) {
     int (*shutdown_fn[CONFIG_MAX_MODULES])(void);
     bool need_shutdown[CONFIG_MAX_MODULES];
+    uint32_t shutdown_count = 0;
 
     LOG_INF("Shutting down module manager...");
+
+    /* SIL-2: 验证初始化状态 */
+    if (!g_module_mgr.initialized) {
+        LOG_ERR("Module manager not initialized");
+        return -EINVAL;
+    }
 
     (void) module_manager_stop();
 
@@ -695,15 +739,23 @@ int module_manager_shutdown(void) {
             info->interface->shutdown != NULL) {
             shutdown_fn[i] = info->interface->shutdown;
             need_shutdown[i] = true;
+            shutdown_count++;
         }
     }
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    /* 在锁外调用 shutdown 函数 */
+    /* SIL-2: 在锁外调用 shutdown 函数，避免重入死锁 */
+    if (shutdown_count > 0) {
+        LOG_INF("Calling shutdown for %u modules", shutdown_count);
+    }
+    
     for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
         if (need_shutdown[i] && shutdown_fn[i] != NULL) {
-            shutdown_fn[i]();
+            int ret = shutdown_fn[i]();
+            if (ret != 0) {
+                LOG_WRN("Module shutdown at index %d returned %d", i, ret);
+            }
         }
     }
 
@@ -717,6 +769,7 @@ int module_manager_shutdown(void) {
     g_module_mgr.module_count = 0U;
     (void) memset(&g_module_mgr.stats, 0, sizeof(g_module_mgr.stats));
     g_module_mgr.initialized = false;
+    g_module_mgr.running = false;
 
     k_mutex_unlock(&g_module_mgr.lock);
 
@@ -734,14 +787,51 @@ int module_manager_shutdown(void) {
  * @param interface 模块接口指针
  * @param config 模块配置数据
  * @param module_id 输出参数：分配的模块 ID
- * @return 0 成功，-1 失败
+ * @return 0 成功，负值错误码失败
  */
 int module_manager_register(const module_interface_t* interface, void* config, uint32_t* module_id) {
-    if (!g_module_mgr.initialized || interface == NULL) {
-        return -1;
+    /* SIL-2: 验证管理器状态和输入参数 */
+    if (!g_module_mgr.initialized) {
+        LOG_ERR("Module manager not initialized");
+        return -EINVAL;
     }
-
+    
+    if (interface == NULL) {
+        LOG_ERR("NULL interface pointer");
+        return -EINVAL;
+    }
+    
+    /* SIL-2: 验证模块名称有效性 */
+    if (interface->name == NULL || interface->name[0] == '\0') {
+        LOG_ERR("Module name is NULL or empty");
+        return -EINVAL;
+    }
+    
+    /* SIL-2: 验证必需的回调函数 */
+    if (interface->init == NULL) {
+        LOG_ERR("Module '%s' missing required init function", interface->name);
+        return -EINVAL;
+    }
+    
+    /* SIL-2: 验证模块数量未超限 */
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+    if (g_module_mgr.module_count >= CONFIG_MAX_MODULES) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_ERR("Maximum module count (%d) reached", CONFIG_MAX_MODULES);
+        return -ENOMEM;
+    }
+    
+    /* SIL-2: 检查是否已注册同名模块 */
+    for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
+        if (g_module_mgr.modules[i].status != MODULE_STATUS_UNINITIALIZED &&
+            g_module_mgr.modules[i].interface != NULL &&
+            g_module_mgr.modules[i].interface->name != NULL &&
+            strcmp(g_module_mgr.modules[i].interface->name, interface->name) == 0) {
+            k_mutex_unlock(&g_module_mgr.lock);
+            LOG_WRN("Module '%s' already registered", interface->name);
+            return -EALREADY;
+        }
+    }
 
     /* 查找空闲槽位 */
     module_info_t* info = NULL;
@@ -755,8 +845,8 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 
     if (info == NULL) {
         k_mutex_unlock(&g_module_mgr.lock);
-        LOG_ERR("Maximum module count reached");
-        return -1;
+        LOG_ERR("No free module slot available");
+        return -ENOMEM;
     }
 
     /* 初始化模块信息 */
@@ -770,6 +860,12 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 
     if (module_id != NULL) {
         *module_id = info->id;
+    }
+    
+    /* SIL-2: 验证模块 ID 未溢出 */
+    if (g_module_mgr.next_module_id == 0U) {
+        LOG_WRN("Module ID counter wrapped around");
+        g_module_mgr.next_module_id = 1U;
     }
 
     /* 调用模块初始化函数 */
