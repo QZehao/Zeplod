@@ -1,3 +1,3 @@
-[submodule "proprietary/mesh_communication"]
-	path = proprietary/mesh_communication
-	url = ./proprietary/mesh_communication
+[submodule "src/proprietary"]
+	path = src/proprietary
+	url = ./src/proprietary
