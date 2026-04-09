@@ -147,49 +147,48 @@ void event_compat_reset_statistics(void);
 /**
  * @brief 订阅事件（商业版）
  */
-#define event_subscribe(type, callback, user_data, subscriber_id) \
+#define event_subscribe(type, callback, user_data, subscriber_id)                                                      \
     event_system_pro_subscribe(type, callback, user_data, subscriber_id)
 
 /**
  * @brief 取消订阅（商业版）
  */
-#define event_unsubscribe(type, subscriber_id) event_system_pro_unsubscribe(type, subscriber_id)
+#define event_unsubscribe(type, subscriber_id)             event_system_pro_unsubscribe(type, subscriber_id)
 
 /**
  * @brief 取消全部订阅（商业版）
  */
-#define event_unsubscribe_all(subscriber_id) event_system_pro_unsubscribe_all(subscriber_id)
+#define event_unsubscribe_all(subscriber_id)               event_system_pro_unsubscribe_all(subscriber_id)
 
 /**
  * @brief 发布事件（商业版）
  */
-#define event_publish(event) event_system_pro_publish(event)
+#define event_publish(event)                               event_system_pro_publish(event)
 
 /**
  * @brief 从 ISR 发布事件（商业版）
  */
-#define event_publish_from_isr(event) event_system_pro_publish_from_isr(event)
+#define event_publish_from_isr(event)                      event_system_pro_publish_from_isr(event)
 
 /**
  * @brief 发布事件并复制数据（商业版）
  */
-#define event_publish_copy(type, priority, data, data_len) \
-    event_system_pro_publish_copy(type, priority, data, data_len)
+#define event_publish_copy(type, priority, data, data_len) event_system_pro_publish_copy(type, priority, data, data_len)
 
 /**
  * @brief 获取事件类型名称（商业版）
  */
-#define event_get_type_name(type) event_system_pro_get_type_name(type)
+#define event_get_type_name(type)                          event_system_pro_get_type_name(type)
 
 /**
  * @brief 获取事件类型订阅者数量（商业版）
  */
-#define event_get_subscriber_count(type) event_system_pro_get_subscriber_count(type)
+#define event_get_subscriber_count(type)                   event_system_pro_get_subscriber_count(type)
 
 /**
  * @brief 获取事件队列指针（商业版）
  */
-#define event_system_get_queue() event_system_pro_get_queue()
+#define event_system_get_queue()                           event_system_pro_get_queue()
 
 #else
 

@@ -74,7 +74,7 @@ typedef struct {
 } thread_monitor_t;
 
 /* 验证宏与结构体定义一致 */
-BUILD_ASSERT(SYS_WDT_THREAD_NAME_MAX_LEN == (sizeof(((thread_monitor_t*)0)->name) - 1),
+BUILD_ASSERT(SYS_WDT_THREAD_NAME_MAX_LEN == (sizeof(((thread_monitor_t*) 0)->name) - 1),
              "SYS_WDT_THREAD_NAME_MAX_LEN mismatch");
 
 typedef struct {

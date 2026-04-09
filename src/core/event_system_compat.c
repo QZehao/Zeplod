@@ -4,9 +4,9 @@
  */
 
 #include "event_system_compat.h"
-#include "event_system.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include "event_system.h"
 
 LOG_MODULE_REGISTER(event_system_compat, CONFIG_SYS_LOG_LEVEL);
 

@@ -130,82 +130,82 @@ void module_compat_reset_stats(void);
 /**
  * @brief 注销模块
  */
-#define module_compat_unregister(module_id) module_manager_unregister(module_id)
+#define module_compat_unregister(module_id)                  module_manager_unregister(module_id)
 
 /**
  * @brief 获取模块信息
  */
-#define module_compat_get_module_info(module_id, out) module_manager_get_module_info(module_id, out)
+#define module_compat_get_module_info(module_id, out)        module_manager_get_module_info(module_id, out)
 
 /**
  * @brief 按名称获取模块 ID
  */
-#define module_compat_get_id_by_name(name) module_manager_get_id_by_name(name)
+#define module_compat_get_id_by_name(name)                   module_manager_get_id_by_name(name)
 
 /**
  * @brief 遍历所有模块
  */
-#define module_compat_foreach(callback, user_data) module_manager_foreach(callback, user_data)
+#define module_compat_foreach(callback, user_data)           module_manager_foreach(callback, user_data)
 
 /**
  * @brief 启动指定模块
  */
-#define module_compat_start_module(module_id) module_manager_start_module(module_id)
+#define module_compat_start_module(module_id)                module_manager_start_module(module_id)
 
 /**
  * @brief 停止指定模块
  */
-#define module_compat_stop_module(module_id) module_manager_stop_module(module_id)
+#define module_compat_stop_module(module_id)                 module_manager_stop_module(module_id)
 
 /**
  * @brief 启动所有模块
  */
-#define module_compat_start_all() module_manager_start_all()
+#define module_compat_start_all()                            module_manager_start_all()
 
 /**
  * @brief 停止所有模块
  */
-#define module_compat_stop_all() module_manager_stop_all()
+#define module_compat_stop_all()                             module_manager_stop_all()
 
 /**
  * @brief 挂起模块
  */
-#define module_compat_suspend_module(module_id) module_manager_suspend_module(module_id)
+#define module_compat_suspend_module(module_id)              module_manager_suspend_module(module_id)
 
 /**
  * @brief 恢复模块
  */
-#define module_compat_resume_module(module_id) module_manager_resume_module(module_id)
+#define module_compat_resume_module(module_id)               module_manager_resume_module(module_id)
 
 /**
  * @brief 模块订阅事件
  */
-#define module_compat_subscribe(module_id, event_type) module_manager_subscribe(module_id, event_type)
+#define module_compat_subscribe(module_id, event_type)       module_manager_subscribe(module_id, event_type)
 
 /**
  * @brief 模块取消订阅
  */
-#define module_compat_unsubscribe(module_id, event_type) module_manager_unsubscribe(module_id, event_type)
+#define module_compat_unsubscribe(module_id, event_type)     module_manager_unsubscribe(module_id, event_type)
 
 /**
  * @brief 发送事件到指定模块
  */
-#define module_compat_send_to_module(module_id, event) module_manager_send_to_module(module_id, event)
+#define module_compat_send_to_module(module_id, event)       module_manager_send_to_module(module_id, event)
 
 /**
  * @brief 广播事件
  */
-#define module_compat_broadcast(event) module_manager_broadcast(event)
+#define module_compat_broadcast(event)                       module_manager_broadcast(event)
 
 /**
  * @brief 打印模块信息
  */
-#define module_compat_dump_info() module_manager_dump_info()
+#define module_compat_dump_info()                            module_manager_dump_info()
 
 /**
  * @brief 注册模块回调
  */
-#define module_compat_set_callback(callback, user_data) module_manager_set_callback(callback, user_data)
+#define module_compat_set_callback(callback, user_data)      module_manager_set_callback(callback, user_data)
 
 /* =============================================================================
  * 商业版 API 前置声明（用于编译检测）

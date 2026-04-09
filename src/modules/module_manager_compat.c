@@ -4,9 +4,9 @@
  */
 
 #include "module_manager_compat.h"
-#include "module_manager.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include "module_manager.h"
 
 LOG_MODULE_REGISTER(module_manager_compat, CONFIG_SYS_LOG_LEVEL);
 
