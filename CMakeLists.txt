@@ -284,6 +284,17 @@ endif()
 # =============================================================================
 # Proprietary Modules (商业闭源模块)
 # =============================================================================
+# 管理方式：
+#   1. 源码模式（默认）：模块自带 CMakeLists.txt + Kconfig，自动管理特性和依赖
+#   2. 预编译库模式：提供 .a 文件 + 头文件，适合闭源商业分发
+#
+# 切换方式（在主 CMakeLists.txt 开头设置）：
+#   set(PROPRIETARY_MODULE_EVENT_SYSTEM_PRO_USE_PREBUILT ON)
+#   set(PROPRIETARY_MODULE_EVENT_SYSTEM_PRO_LIB_PATH "/path/to/libevent_pro.a")
+# =============================================================================
+
+# 加载商业模块公共函数
+include(src/proprietary/proprietary_modules_common.cmake)
 
 # Proprietary Modules Framework
 target_sources(app PRIVATE
@@ -291,89 +302,58 @@ target_sources(app PRIVATE
     src/proprietary/proprietary_modules.h
 )
 
-# Mesh Communication Module (商业模块示例)
+# =============================================================================
+# 商业模块加载（统一使用 add_proprietary_module 函数）
+# 每个模块内部 CMakeLists.txt 管理：
+#   - Kconfig 特性开关（条件编译）
+#   - 依赖库链接
+#   - 包含目录
+#   - 编译定义
+# =============================================================================
+
+# Mesh Communication Module (商业模块)
 if(CONFIG_MESH_COMMUNICATION)
-    # 添加子模块源文件
-    target_sources(app PRIVATE
-        src/proprietary/mesh_communication/src/mesh_transport.c
-        src/proprietary/mesh_communication/src/mesh_communication_register.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/mesh_communication/include
-    )
-    message(STATUS "Proprietary Module: Mesh Communication v2.0.0 enabled")
+    add_proprietary_module(MESH_COMMUNICATION)
 endif()
 
 # Event System Pro Module (商业模块)
 if(CONFIG_EVENT_SYSTEM_PRO)
-    target_sources(app PRIVATE
-        src/proprietary/event_system_pro/src/event_system_pro.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/event_system_pro/include
-    )
-    message(STATUS "Proprietary Module: Event System Pro v1.0.0 enabled")
+    add_proprietary_module(EVENT_SYSTEM_PRO)
 endif()
 
 # Module Manager Pro Module (商业模块)
 if(CONFIG_MODULE_MANAGER_PRO)
-    target_sources(app PRIVATE
-        src/proprietary/module_manager_pro/src/module_manager_pro.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/module_manager_pro/include
-    )
-    message(STATUS "Proprietary Module: Module Manager Pro v1.0.0 enabled")
+    add_proprietary_module(MODULE_MANAGER_PRO)
 endif()
 
 # Security Crypto Module (商业模块)
 if(CONFIG_SECURITY_CRYPTO)
-    target_sources(app PRIVATE
-        src/proprietary/security_crypto/src/security_crypto.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/security_crypto/include
-    )
-    message(STATUS "Proprietary Module: Security Crypto v1.0.0 enabled")
+    add_proprietary_module(SECURITY_CRYPTO)
 endif()
 
 # OTA Manager Module (商业模块)
 if(CONFIG_OTA_MANAGER)
-    target_sources(app PRIVATE
-        src/proprietary/ota_manager/src/ota_manager.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/ota_manager/include
-    )
-    message(STATUS "Proprietary Module: OTA Manager v1.0.0 enabled")
+    add_proprietary_module(OTA_MANAGER)
 endif()
 
 # Cellular 5G USB CDC ECM Module (商业模块)
 if(CONFIG_CELLULAR_5G_USB)
-    target_sources(app PRIVATE
-        src/proprietary/cellular_5g_usb/src/cellular_5g_usb.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/cellular_5g_usb/include
-    )
-    message(STATUS "Proprietary Module: Cellular 5G USB CDC ECM v1.0.0 enabled")
+    add_proprietary_module(CELLULAR_5G_USB)
 endif()
 
 # USB Host CDC ECM Module (商业模块)
-if(CONFIG_CELLULAR_USB_HOST_CDC_ECM)
-    target_sources(app PRIVATE
-        src/proprietary/usb_host_cdc_ecm/src/usb_host_cdc_ecm.c
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/proprietary/usb_host_cdc_ecm/include
-    )
-    message(STATUS "Proprietary Module: USB Host CDC ECM v1.0.0 enabled")
+if(CONFIG_USB_HOST_CDC_ECM)
+    add_proprietary_module(USB_HOST_CDC_ECM)
+endif()
+
+# USB Host RNDIS Module (商业模块)
+if(CONFIG_USB_HOST_RNDIS)
+    add_proprietary_module(USB_HOST_RNDIS)
 endif()
 
 # 后续商业模块在此添加
 # if(CONFIG_CLOUD_CONNECTOR)
-#     target_sources(app PRIVATE ...)
-#     target_include_directories(app PRIVATE ...)
+#     add_proprietary_module(CLOUD_CONNECTOR)
 # endif()
 
 # =============================================================================
