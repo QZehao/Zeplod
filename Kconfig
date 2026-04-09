@@ -190,15 +190,19 @@ config APP_KV_PERSIST
 	bool "Persist app string KV to flash (Settings/NVS)"
 	default n
 	depends on FLASH
-	depends on SETTINGS && SETTINGS_NVS
+	depends on FLASH_MAP
+	depends on NVS
+	depends on SETTINGS_NVS
 	help
 	  When enabled, app_kv_save()/app_kv_load() and optional autosave write a single
 	  blob to flash via Zephyr settings (NVS backend).
 
-	  In prj.conf you need CONFIG_FLASH=y first (enables on-chip flash driver,
-	  FLASH_PAGE_LAYOUT, FLASH_HAS_DRIVER_ENABLED). Then CONFIG_SETTINGS, CONFIG_NVS,
-	  CONFIG_FLASH_MAP, CONFIG_SETTINGS_NVS (choice symbol; cannot be "select"ed from
-	  app Kconfig). See prj_app_kv_persist.conf.
+	  需要在 prj.conf 中启用以下依赖：
+	  - CONFIG_FLASH=y
+	  - CONFIG_FLASH_MAP=y
+	  - CONFIG_NVS=y
+	  - CONFIG_SETTINGS=y
+	  - CONFIG_SETTINGS_NVS=y（choice 符号，必须显式设置）
 
 	  Requires devicetree chosen zephyr,settings-partition (e.g. boards/nucleo_l4r5zi.overlay).
 
