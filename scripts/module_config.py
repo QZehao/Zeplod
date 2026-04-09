@@ -42,6 +42,10 @@ MODULES = {
     "SECURITY_CRYPTO": {"name": "加密安全套件", "default": False, "proprietary": True},
     "OTA_MANAGER": {"name": "OTA 升级管理", "default": False, "proprietary": True},
     "CELLULAR_USB_HOST_CDC_ECM": {"name": "USB Host CDC ECM", "default": False, "proprietary": True},
+    "USB_HOST_RNDIS": {"name": "USB Host RNDIS (5G 模块)", "default": False, "proprietary": True},
+    # 以下模块已定义但未启用（Kconfig 中注释状态）
+    # "CELLULAR_5G_USB": {"name": "5G USB 模块", "default": False, "proprietary": True},
+    # "CLOUD_CONNECTOR": {"name": "云端连接器", "default": False, "proprietary": True},
 }
 
 
