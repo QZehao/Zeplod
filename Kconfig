@@ -225,15 +225,15 @@ comment "注意：以下为商业闭源模块，需购买授权后使用"
 comment "联系：china_qzh@163.com"
 
 # 商业模块已禁用（未授权）
-# source "src/proprietary/mesh_communication/Kconfig"
-# source "src/proprietary/event_system_pro/Kconfig"
-# source "src/proprietary/module_manager_pro/Kconfig"
-# source "src/proprietary/security_crypto/Kconfig"
-# source "src/proprietary/ota_manager/Kconfig"
-# source "src/proprietary/cellular_5g_usb/Kconfig"
-# source "src/proprietary/usb_host_cdc_ecm/Kconfig"
+# rsource "src/proprietary/mesh_communication/Kconfig"
+# rsource "src/proprietary/event_system_pro/Kconfig"
+rsource "src/proprietary/module_manager_pro/Kconfig"
+# rsource "src/proprietary/security_crypto/Kconfig"
+# rsource "src/proprietary/ota_manager/Kconfig"
+# rsource "src/proprietary/cellular_5g_usb/Kconfig"
+# rsource "src/proprietary/usb_host_cdc_ecm/Kconfig"
 
 # 后续商业模块 Kconfig 在此添加
-# source "src/proprietary/cloud_connector/Kconfig"
+# rsource "src/proprietary/cloud_connector/Kconfig"
 
 endmenu
