@@ -50,6 +50,11 @@ target_sources(app PRIVATE
 	test_sys_timer.c
 	test_sys_watchdog.c
 	test_sys_log.c
+	test_example_module_a.c
+	test_example_module_b.c
+	test_example_module_gpio.c
+	test_example_module_uart.c
+	test_example_module_multi_dep.c
 )
 
 if(CONFIG_THREAD_IPC_SERVICE)
@@ -67,6 +72,16 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/core
 	${APP_SRC_DIR}/services
 	${APP_SRC_DIR}/modules
+	${APP_SRC_DIR}/app
+)
+
+# 示例模块源码（用于单元测试）
+target_sources(app PRIVATE
+	${APP_SRC_DIR}/modules/example_module_a.c
+	${APP_SRC_DIR}/modules/example_module_b.c
+	${APP_SRC_DIR}/modules/example_module_gpio.c
+	${APP_SRC_DIR}/modules/example_module_uart.c
+	${APP_SRC_DIR}/modules/example_module_multi_dep.c
 )
 
 target_compile_definitions(app PRIVATE
