@@ -117,9 +117,7 @@ static void module_manager_suite_teardown(void *fixture)
 static void module_manager_test_teardown(void *fixture)
 {
     (void)fixture;
-    /* 停止所有模块 */
-    module_manager_stop_all();
-    /* 注销所有模块（通过 shutdown 并重新初始化）*/
+    /* 直接调用 shutdown，它内部会处理 stop 和清理 */
     module_manager_shutdown();
     /* 重新初始化和启动 */
     module_manager_init();

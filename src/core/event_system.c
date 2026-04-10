@@ -188,6 +188,48 @@ event_status_t event_system_stop(void) {
 }
 
 /**
+ * @brief 关闭事件系统
+ *
+ * 完全关闭事件系统，清理所有资源，重置所有状态。
+ *
+ * @return EVENT_OK 成功
+ */
+event_status_t event_system_shutdown(void) {
+    LOG_INF("Shutting down event system...");
+
+    if (!g_event_system.initialized) {
+        return EVENT_OK;
+    }
+
+    /* 停止事件系统（停止会清空队列）*/
+    atomic_set(&g_event_system.running, 0);
+
+    /* 清理所有事件类型和订阅
+     * 注意：event_type_t 是 uint8_t，需要用 int 避免溢出死循环 */
+    for (int type = 0; type < MAX_EVENT_TYPES; type++) {
+        event_type_entry_t* entry = &g_event_system.event_types[type];
+
+        /* 只有在名称不为 NULL 时才加锁清理 */
+        if (entry->name != NULL) {
+            k_mutex_lock(&entry->lock, K_FOREVER);
+            entry->name = NULL;
+            entry->subscriber_count = 0;
+            memset(entry->subscribers, 0, sizeof(entry->subscribers));
+            k_mutex_unlock(&entry->lock);
+        }
+    }
+
+    /* 重置控制块 */
+    g_event_system.initialized = false;
+    g_event_system.total_events = 0;
+    g_event_system.next_subscriber_id = 1;
+    atomic_set(&g_event_system.running, 0);
+
+    LOG_INF("Event system shutdown complete");
+    return EVENT_OK;
+}
+
+/**
  * @brief 检查事件系统是否正在运行
  *
  * @return true 正在运行，false 已停止
@@ -386,7 +428,8 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
         return;
     }
 
-    for (event_type_t type = 0; type < MAX_EVENT_TYPES; type++) {
+    /* 注意：event_type_t 是 uint8_t，需要用 int 避免溢出死循环 */
+    for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
 
         if (entry->name == NULL) {

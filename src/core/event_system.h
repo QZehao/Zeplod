@@ -224,6 +224,19 @@ event_status_t event_system_start(void);
 event_status_t event_system_stop(void);
 
 /**
+ * @brief 关闭事件系统
+ *
+ * 完全关闭事件系统，清理所有资源，重置所有状态。
+ * 调用后需要重新调用 event_system_init 才能再次使用。
+ *
+ * @return EVENT_OK 成功
+ *
+ * @note 会清理所有已注册的事件类型和订阅
+ * @note 会释放所有动态分配的事件负载
+ */
+event_status_t event_system_shutdown(void);
+
+/**
  * @brief 检查事件系统是否正在运行
  *
  * @return true 正在运行，false 已停止

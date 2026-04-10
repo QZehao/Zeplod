@@ -326,7 +326,39 @@ ZTEST(test_event_system, test_event_is_running) {
 }
 
 /* =============================================================================
+ * 测试夹具 (Test Fixtures)
+ * ============================================================================= */
+
+static void *event_system_suite_setup(void)
+{
+    /* 全局初始化 - 允许重复初始化（返回 -EALREADY）*/
+    event_system_init();
+    event_system_start();
+    return NULL;
+}
+
+static void event_system_suite_teardown(void *fixture)
+{
+    (void)fixture;
+    event_system_stop();
+}
+
+/**
+ * @brief 每个测试用例后的清理函数
+ *
+ * 确保测试间的状态隔离。
+ */
+static void event_system_test_teardown(void *fixture)
+{
+    (void)fixture;
+    /* 停止并关闭事件系统，清理所有注册的类型和订阅 */
+    event_system_stop();
+    event_system_shutdown();
+    /* 不重新初始化，让下一个测试用例自己调用 init/start */
+}
+
+/* =============================================================================
  * 测试套件
  * ============================================================================= */
 
-ZTEST_SUITE(test_event_system, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(test_event_system, NULL, event_system_suite_setup, event_system_suite_teardown, NULL, event_system_test_teardown);
