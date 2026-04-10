@@ -199,10 +199,11 @@ config SYS_WATCHDOG_FORCE_RESET
 	bool "Force System Reset on Watchdog Expiry"
 	default n
 	depends on SYS_WATCHDOG_ENABLE
+	select REBOOT
 	help
 	  When enabled, the system will execute a hardware reset via
 	  sys_reboot() when watchdog expires.
-	  
+
 	  For development/testing, leave this disabled to prevent
 	  unwanted resets. Enable for production builds.
 

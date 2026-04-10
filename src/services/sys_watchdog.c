@@ -20,6 +20,7 @@
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/reboot.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(sys_watchdog, CONFIG_SYS_LOG_LEVEL);
@@ -545,7 +546,7 @@ static void wdt_expire_handler(void) {
         LOG_ERR("Executing system reset via watchdog");
         /* SIL-2: 在最终产品中使用实际复位调用 */
 #if defined(CONFIG_SYS_WATCHDOG_FORCE_RESET)
-        sys_reboot(SYS_REBOOT_COLD_START);
+        sys_reboot(SYS_REBOOT_COLD);
 #else
         /* 开发阶段: 仅记录,不实际复位 */
         LOG_WRN("SYS_WATCHDOG_FORCE_RESET not enabled, reset skipped (development mode)");
