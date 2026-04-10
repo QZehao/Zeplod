@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "ipc_service.h"
+#include "example_module_uart.h"
 
 LOG_MODULE_REGISTER(test_ipc_service);
 
@@ -30,6 +31,20 @@ static int ipc_ut_handler(ipc_request_id_t request_id, const void* data, size_t 
     *out_data = (void*) data;
     *out_data_size = data_size;
     return 0;
+}
+
+static void *test_suite_setup(void)
+{
+    /* 确保 UART 模块不会在后台运行（避免 spinlock 竞争） */
+    example_module_uart_stop();
+
+    return NULL;
+}
+
+static void test_suite_teardown(void *fixture)
+{
+    (void)fixture;
+    ipc_service_stop(&g_ipc);
 }
 
 ZTEST(ipc_service, test_init_start_sync_stop) {
@@ -54,4 +69,4 @@ ZTEST(ipc_service, test_init_start_sync_stop) {
     zassert_equal(r, 0, "ipc_service_stop failed: %d", r);
 }
 
-ZTEST_SUITE(ipc_service, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(ipc_service, NULL, test_suite_setup, NULL, NULL, test_suite_teardown);

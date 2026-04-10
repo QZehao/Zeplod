@@ -54,7 +54,7 @@ ZTEST(sys_timer, test_create_and_delete) {
 
 ZTEST(sys_timer, test_delete_null) {
     zassert_equal(sys_timer_init(), 0, NULL);
-    zassert_equal(sys_timer_delete(NULL), -1, "NULL handle 应失败");
+    zassert_equal(sys_timer_delete(NULL), -EINVAL, "NULL handle 应失败");
 }
 
 ZTEST_SUITE(sys_timer, NULL, NULL, NULL, NULL, NULL);

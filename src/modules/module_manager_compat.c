@@ -4,8 +4,11 @@
  */
 
 #include "module_manager_compat.h"
+#include <zephyr/init.h>
 #include <zephyr/logging/log.h>
+#include <errno.h>
 #include <string.h>
+#include "app_config.h"
 #include "module_manager.h"
 
 LOG_MODULE_REGISTER(module_manager_compat, CONFIG_SYS_LOG_LEVEL);
@@ -142,3 +145,26 @@ void module_compat_reset_stats(void) {
     module_manager_reset_stats();
 #endif
 }
+
+/* =============================================================================
+ * SYS_INIT 自动注册
+ * ============================================================================= */
+
+static int module_compat_auto_register(void) {
+    int ret = module_compat_init(NULL);
+    if (ret != 0) {
+        LOG_ERR("Failed to init module manager compat");
+        return -EIO;
+    }
+
+    ret = module_compat_start();
+    if (ret != 0) {
+        LOG_ERR("Failed to start module manager compat");
+        return -EIO;
+    }
+
+    LOG_INF("Module manager compat initialized and started");
+    return 0;
+}
+
+SYS_INIT(module_compat_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MGR);

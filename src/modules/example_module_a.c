@@ -135,9 +135,13 @@ int example_module_a_stop(void) {
         return 0;
     }
 
+    /* 先设置状态，让线程看到并退出循环 */
     g_module_a.status = MODULE_STATUS_STOPPED;
 
-    k_thread_abort(&g_module_a.thread);
+    /* 等待线程检测到状态变化并自然退出
+     * 线程循环中有 k_msleep(10)，所以等待 50ms 足够
+     */
+    k_msleep(50);
 
     /* Unsubscribe from events */
     if (g_subscriber_id != 0) {

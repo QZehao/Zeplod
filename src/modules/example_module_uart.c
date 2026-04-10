@@ -211,7 +211,8 @@ int example_module_uart_control(int cmd, void* arg) {
             return -1;
         {
             const example_module_uart_tx_req_t* tx_req = (const example_module_uart_tx_req_t*) arg;
-            return example_module_uart_send(tx_req->data, tx_req->len);
+            int sent = example_module_uart_send(tx_req->data, tx_req->len);
+            return (sent >= 0) ? 0 : sent;
         }
 
     case UART_CMD_GET_RX_COUNT:

@@ -45,7 +45,10 @@ typedef struct {
 } event_queue_cb_t;
 
 /* 静态队列控制块数组，用于跟踪统计信息 */
-static event_queue_cb_t g_queue_cb[CONFIG_EVENT_QUEUE_SIZE > 256 ? 2 : 1];
+/* SIL-2: 增加数组大小以支持测试场景，最多支持 16 个独立队列 */
+#define MAX_QUEUE_CB_ENTRIES 16
+
+static event_queue_cb_t g_queue_cb[MAX_QUEUE_CB_ENTRIES];
 
 /**
  * DROP_LOWEST 使用的临时缓冲（与 CONFIG_EVENT_QUEUE_SIZE 上限一致）
@@ -206,7 +209,7 @@ static void msgq_get_attrs_const(const struct k_msgq* queue, struct k_msgq_attrs
 }
 
 static event_queue_cb_t* event_queue_find_cb(const struct k_msgq* queue) {
-    for (size_t i = 0; i < ARRAY_SIZE(g_queue_cb); i++) {
+    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
         if (g_queue_cb[i].msgq == queue) {
             return &g_queue_cb[i];
         }
@@ -217,7 +220,7 @@ static event_queue_cb_t* event_queue_find_cb(const struct k_msgq* queue) {
 static event_queue_cb_t* event_queue_alloc_cb(struct k_msgq* queue) {
     event_queue_cb_t* free_cb = NULL;
 
-    for (size_t i = 0; i < ARRAY_SIZE(g_queue_cb); i++) {
+    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
         if (g_queue_cb[i].msgq == queue) {
             return &g_queue_cb[i];
         }

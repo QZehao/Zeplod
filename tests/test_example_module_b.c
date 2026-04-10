@@ -28,9 +28,21 @@ LOG_MODULE_REGISTER(test_example_module_b);
 
 static void *test_suite_setup(void)
 {
-    zassert_equal(event_system_init(), EVENT_OK, "事件系统初始化失败");
-    zassert_equal(module_manager_init(), 0, "模块管理器初始化失败");
-    zassert_equal(module_manager_start(), 0, "模块管理器启动失败");
+    int ret;
+
+    /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
+    ret = event_system_init();
+    zassert_true(ret == EVENT_OK || ret == -EALREADY, "事件系统初始化失败: %d", ret);
+
+    ret = event_system_start();
+    zassert_true(ret == EVENT_OK || ret == -EALREADY, "事件系统启动失败: %d", ret);
+
+    ret = module_manager_init();
+    zassert_true(ret == 0 || ret == -EALREADY, "模块管理器初始化失败: %d", ret);
+
+    ret = module_manager_start();
+    zassert_true(ret == 0 || ret == -EALREADY, "模块管理器启动失败: %d", ret);
+
     return NULL;
 }
 

@@ -555,7 +555,12 @@ event_t* event_create(event_type_t type, event_priority_t priority) {
 event_t* event_create_with_data(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
     /* SIL-2: 验证参数 */
     if (data == NULL || data_len == 0) {
-        return event_create(type, priority);
+        event_t* event = event_create(type, priority);
+        if (event != NULL) {
+            /* 没有数据时，is_dynamic 应为 false */
+            event->is_dynamic = false;
+        }
+        return event;
     }
 
     /* SIL-2: 验证数据长度合理性 */

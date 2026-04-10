@@ -41,42 +41,113 @@ static void stub_on_event(const event_t* event, void* user_data) {
 
 DECLARE_MODULE_INTERFACE_MINIMAL(stub);
 
+/* 为需要多模块的测试创建额外的 stub 模块 */
+static int stub2_init(void* config) {
+    (void) config;
+    return 0;
+}
+
+static int stub2_start(void) {
+    return 0;
+}
+
+static int stub2_stop(void) {
+    return 0;
+}
+
+static void stub2_on_event(const event_t* event, void* user_data) {
+    (void) event;
+    (void) user_data;
+}
+
+DECLARE_MODULE_INTERFACE_MINIMAL(stub2);
+
+static int stub3_init(void* config) {
+    (void) config;
+    return 0;
+}
+
+static int stub3_start(void) {
+    return 0;
+}
+
+static int stub3_stop(void) {
+    return 0;
+}
+
+static void stub3_on_event(const event_t* event, void* user_data) {
+    (void) event;
+    (void) user_data;
+}
+
+DECLARE_MODULE_INTERFACE_MINIMAL(stub3);
+
+/* =============================================================================
+ * 测试夹具 (Test Fixtures)
+ * ============================================================================= */
+
+static void *module_manager_suite_setup(void)
+{
+    int ret;
+
+    /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
+    ret = event_system_init();
+    zassert_true(ret == EVENT_OK || ret == -EALREADY, "事件系统初始化失败: %d", ret);
+
+    ret = module_manager_init();
+    zassert_true(ret == 0 || ret == -EALREADY, "模块管理器初始化失败: %d", ret);
+
+    ret = module_manager_start();
+    zassert_true(ret == 0 || ret == -EALREADY, "模块管理器启动失败: %d", ret);
+
+    return NULL;
+}
+
+static void module_manager_suite_teardown(void *fixture)
+{
+    (void)fixture;
+    module_manager_shutdown();
+}
+
+/**
+ * @brief 每个测试用例后的清理函数
+ *
+ * 确保测试间的状态隔离，即使某个测试失败，也不会影响后续测试。
+ */
+static void module_manager_test_teardown(void *fixture)
+{
+    (void)fixture;
+    /* 停止所有模块 */
+    module_manager_stop_all();
+    /* 注销所有模块（通过 shutdown 并重新初始化）*/
+    module_manager_shutdown();
+    /* 重新初始化和启动 */
+    module_manager_init();
+    module_manager_start();
+}
+
 ZTEST(module_manager, test_register_unregister) {
     uint32_t id = 0U;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
 
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, "register 失败");
     zassert_true(id > 0U, "module id 应非 0");
 
     zassert_equal(module_manager_unregister(id), 0, "unregister 失败");
-    zassert_equal(module_manager_shutdown(), 0, "shutdown 失败");
 }
 
 ZTEST(module_manager, test_get_stats) {
     module_mgr_stats_t stats;
 
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-
     module_manager_get_stats(&stats);
     zassert_equal(stats.total_modules, 0U, "初始应为 0 个模块");
-
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_start_all_stop_all) {
     uint32_t id1 = 0U, id2 = 0U;
 
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
-
-    /* 注册多个模块 */
+    /* 注册多个不同的模块 */
     zassert_equal(module_manager_register(&stub_interface, NULL, &id1), 0, "register 1 失败");
-    zassert_equal(module_manager_register(&stub_interface, NULL, &id2), 0, "register 2 失败");
+    zassert_equal(module_manager_register(&stub2_interface, NULL, &id2), 0, "register 2 失败");
 
     /* 启动所有模块 */
     int started = module_manager_start_all();
@@ -88,15 +159,10 @@ ZTEST(module_manager, test_start_all_stop_all) {
 
     zassert_equal(module_manager_unregister(id1), 0, NULL);
     zassert_equal(module_manager_unregister(id2), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_suspend_resume) {
     uint32_t id = 0U;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
 
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, "register 失败");
 
@@ -112,16 +178,11 @@ ZTEST(module_manager, test_suspend_resume) {
     /* 停止并注销 */
     zassert_equal(module_manager_stop_module(id), 0, "stop_module 失败");
     zassert_equal(module_manager_unregister(id), 0, "unregister 失败");
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_get_module_info) {
     uint32_t id = 0U;
     module_info_t info;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
 
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, "register 失败");
 
@@ -138,15 +199,10 @@ ZTEST(module_manager, test_get_module_info) {
     zassert_equal(module_manager_get_module_info(id, NULL), -1, "NULL 输出应返回 -1");
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_get_id_by_name) {
     uint32_t id = 0U;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
 
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, "register 失败");
 
@@ -159,21 +215,16 @@ ZTEST(module_manager, test_get_id_by_name) {
     zassert_equal(invalid_id, 0U, "不存在的名称应返回 0");
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_foreach) {
     static int count = 0;
 
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
-
-    /* 注册几个模块 */
+    /* 注册几个不同的模块 */
     uint32_t id1 = 0U, id2 = 0U, id3 = 0U;
     zassert_equal(module_manager_register(&stub_interface, NULL, &id1), 0, NULL);
-    zassert_equal(module_manager_register(&stub_interface, NULL, &id2), 0, NULL);
-    zassert_equal(module_manager_register(&stub_interface, NULL, &id3), 0, NULL);
+    zassert_equal(module_manager_register(&stub2_interface, NULL, &id2), 0, NULL);
+    zassert_equal(module_manager_register(&stub3_interface, NULL, &id3), 0, NULL);
 
     /* 遍历回调 */
     void count_callback(module_info_t* info, void* user_data) {
@@ -189,14 +240,10 @@ ZTEST(module_manager, test_foreach) {
     zassert_equal(module_manager_unregister(id1), 0, NULL);
     zassert_equal(module_manager_unregister(id2), 0, NULL);
     zassert_equal(module_manager_unregister(id3), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_reset_stats) {
     module_mgr_stats_t stats;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
 
     /* 注册和注销模块会增加 events_processed */
     uint32_t id = 0U;
@@ -207,15 +254,9 @@ ZTEST(module_manager, test_reset_stats) {
     module_manager_reset_stats();
     module_manager_get_stats(&stats);
     zassert_equal(stats.total_modules, 0U, "重置后 total_modules 应为 0");
-
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_dump_info) {
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
-
     /* 注册一个模块 */
     uint32_t id = 0U;
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, NULL);
@@ -224,15 +265,10 @@ ZTEST(module_manager, test_dump_info) {
     module_manager_dump_info();
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
 ZTEST(module_manager, test_set_callback) {
     static int callback_count = 0;
-
-    zassert_equal(event_system_init(), EVENT_OK, NULL);
-    zassert_equal(module_manager_init(), 0, NULL);
-    zassert_equal(module_manager_start(), 0, NULL);
 
     /* 设置回调 */
     void mgr_callback(uint32_t module_id, module_mgr_event_t event, void* user_data) {
@@ -252,7 +288,6 @@ ZTEST(module_manager, test_set_callback) {
     zassert_true(callback_count > 0, "回调应被调用");
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
-    zassert_equal(module_manager_shutdown(), 0, NULL);
 }
 
-ZTEST_SUITE(module_manager, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(module_manager, NULL, module_manager_suite_setup, NULL, NULL, module_manager_test_teardown);

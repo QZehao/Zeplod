@@ -91,7 +91,8 @@ int example_module_b_init(void* config) {
 int example_module_b_start(void) {
     LOG_INF("Starting Module B...");
 
-    if (g_module_b.status != MODULE_STATUS_INITIALIZED) {
+    if (g_module_b.status != MODULE_STATUS_INITIALIZED &&
+        g_module_b.status != MODULE_STATUS_STOPPED) {
         LOG_ERR("Module not initialized");
         return -1;
     }
@@ -132,7 +133,7 @@ int example_module_b_shutdown(void) {
     LOG_INF("Shutting down Module B...");
 
     example_module_b_stop();
-    g_module_b.status = MODULE_STATUS_ERROR; /* Use ERROR as shutdown state */
+    g_module_b.status = MODULE_STATUS_UNINITIALIZED;
 
     LOG_INF("Module B shutdown complete");
     return 0;
