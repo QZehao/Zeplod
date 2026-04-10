@@ -2,11 +2,6 @@
 
 / {
 	chosen {
-		zephyr,sram = &sram_region;
-	};
-
-	sram_region: memory@20000000 {
-		/* 640 KiB */
-		reg = <0x20000000 0xA0000>;
+		zephyr,sram = &sdram0;
 	};
 };
