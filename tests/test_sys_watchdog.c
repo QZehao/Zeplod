@@ -35,4 +35,154 @@ ZTEST(sys_watchdog, test_pause_resume) {
     zassert_equal(sys_wdt_stop(), 0, NULL);
 }
 
+ZTEST(sys_watchdog, test_get_status) {
+    wdt_status_t status;
+
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+
+    /* 初始化后状态 */
+    status = sys_wdt_get_status();
+    zassert_true(status == WDT_STATUS_STOPPED || status == WDT_STATUS_RUNNING, "状态应合理");
+
+    zassert_equal(sys_wdt_start(), 0, NULL);
+    status = sys_wdt_get_status();
+    zassert_equal(status, WDT_STATUS_RUNNING, "启动后应为 RUNNING");
+
+    zassert_equal(sys_wdt_pause(), 0, NULL);
+    status = sys_wdt_get_status();
+    zassert_equal(status, WDT_STATUS_PAUSED, "暂停后应为 PAUSED");
+
+    zassert_equal(sys_wdt_stop(), 0, NULL);
+}
+
+ZTEST(sys_watchdog, test_get_stats) {
+    wdt_stats_t stats;
+
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 获取初始统计 */
+    sys_wdt_get_stats(&stats);
+    zassert_true(stats.feed_count == 0, "初始喂狗计数应为 0");
+
+    /* 喂狗几次 */
+    sys_wdt_feed();
+    sys_wdt_feed();
+    sys_wdt_feed();
+
+    /* 再次获取统计 */
+    sys_wdt_get_stats(&stats);
+    zassert_true(stats.feed_count >= 3, "喂狗计数应至少为 3");
+
+    sys_wdt_stop();
+}
+
+ZTEST(sys_watchdog, test_reset_stats) {
+    wdt_stats_t stats;
+
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 喂狗 */
+    sys_wdt_feed();
+    sys_wdt_feed();
+
+    /* 重置统计 */
+    sys_wdt_reset_stats();
+    sys_wdt_get_stats(&stats);
+    zassert_equal(stats.feed_count, 0U, "重置后喂狗计数应为 0");
+    zassert_equal(stats.warning_count, 0U, "重置后警告计数应为 0");
+    zassert_equal(stats.expire_count, 0U, "重置后过期计数应为 0");
+
+    sys_wdt_stop();
+}
+
+ZTEST(sys_watchdog, test_get_time_since_feed) {
+    uint32_t time_since_feed;
+
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 喂狗 */
+    sys_wdt_feed();
+
+    /* 立即获取 */
+    time_since_feed = sys_wdt_get_time_since_feed();
+    zassert_true(time_since_feed < 100, "应在喂狗后短时间内");
+
+    /* 等待一会儿 */
+    k_msleep(50);
+    time_since_feed = sys_wdt_get_time_since_feed();
+    zassert_true(time_since_feed >= 50, "应至少过了 50ms");
+
+    sys_wdt_stop();
+}
+
+ZTEST(sys_watchdog, test_get_time_until_expire) {
+    uint32_t time_until_expire;
+
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 获取超时时间（不应崩溃）*/
+    time_until_expire = sys_wdt_get_time_until_expire();
+    /* 应该是一个正数 */
+    zassert_true(time_until_expire > 0, "超时时间应 > 0");
+
+    sys_wdt_stop();
+}
+
+ZTEST(sys_watchdog, test_simulate_expire) {
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 模拟过期（不应崩溃）*/
+    sys_wdt_simulate_expire();
+
+    /* 验证状态变为 EXPIRED */
+    wdt_status_t status = sys_wdt_get_status();
+    zassert_equal(status, WDT_STATUS_EXPIRED, "模拟过期后状态应为 EXPIRED");
+
+    sys_wdt_stop();
+}
+
+ZTEST(sys_watchdog, test_custom_config) {
+    wdt_config_t config = {
+        .mode = WDT_MODE_SOFTWARE,
+        .timeout_ms = 1000,
+        .feed_margin_ms = 100,
+        .pre_expire_callback = NULL,
+        .callback_user_data = NULL,
+        .reset_on_expire = false,
+        .name = "test_wdt"
+    };
+
+    /* 使用自定义配置初始化 */
+    zassert_equal(sys_wdt_init(&config), 0, "自定义配置初始化应成功");
+    zassert_equal(sys_wdt_start(), 0, NULL);
+    zassert_equal(sys_wdt_feed(), 0, NULL);
+    zassert_equal(sys_wdt_stop(), 0, NULL);
+}
+
+ZTEST(sys_watchdog, test_monitor_thread) {
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_start(), 0, NULL);
+
+    /* 注册当前线程进行监控 */
+    k_tid_t my_tid = k_current_get();
+    int ret = sys_wdt_monitor_thread(my_tid, "test_thread", 5000);
+    /* 在 native_posix 上可能不支持，但不应崩溃 */
+    (void)ret;
+
+    /* 标记线程存活 */
+    ret = sys_wdt_thread_alive(my_tid);
+    (void)ret;
+
+    /* 取消监控 */
+    ret = sys_wdt_unmonitor_thread(my_tid);
+    (void)ret;
+
+    sys_wdt_stop();
+}
+
 ZTEST_SUITE(sys_watchdog, NULL, NULL, NULL, NULL, NULL);
