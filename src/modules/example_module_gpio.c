@@ -158,8 +158,13 @@ int example_module_gpio_stop(void) {
         return 0;
     }
 
+    /* SIL-2: 先设置状态让线程自行退出，避免 k_thread_abort 强制终止 */
     g_module_gpio.status = MODULE_STATUS_STOPPED;
-    k_thread_abort(&g_module_gpio.thread);
+
+    /* 等待线程检测到状态变化并自然退出
+     * 线程循环中有 k_msleep(50)，等待 150ms 足够
+     */
+    k_msleep(150);
 
     LOG_INF("GPIO 模块已停止");
     return 0;

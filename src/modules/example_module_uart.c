@@ -176,8 +176,13 @@ int example_module_uart_stop(void) {
         uart_irq_rx_disable(g_module_uart.dev);
     }
 
+    /* SIL-2: 先设置状态让线程自行退出，避免 k_thread_abort 强制终止 */
     g_module_uart.status = MODULE_STATUS_STOPPED;
-    k_thread_abort(&g_module_uart.rx_thread);
+
+    /* 等待线程检测到状态变化并自然退出
+     * 线程循环中有 k_msleep(10)，等待 100ms 足够
+     */
+    k_msleep(100);
 
     LOG_INF("UART 模块已停止");
     return 0;

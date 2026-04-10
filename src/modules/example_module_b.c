@@ -114,15 +114,21 @@ int example_module_b_stop(void) {
     LOG_INF("Stopping Module B...");
 
     if (g_module_b.status != MODULE_STATUS_RUNNING) {
-        return -1;
+        return 0;
     }
 
+    /* SIL-2: 先设置状态让线程自行退出，避免 k_thread_abort 强制终止 */
     g_module_b.status = MODULE_STATUS_STOPPED;
-    k_thread_abort(&g_module_b.thread);
+
+    /* 等待线程检测到状态变化并自然退出
+     * 线程循环中有 k_msleep(50)，等待 150ms 足够
+     */
+    k_msleep(150);
 
     /* Unsubscribe from events */
     if (g_module_b.subscriber_id != 0) {
         event_unsubscribe(g_module_b.event_type, g_module_b.subscriber_id);
+        g_module_b.subscriber_id = 0;
     }
 
     LOG_INF("Module B stopped");

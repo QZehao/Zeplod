@@ -15,6 +15,8 @@
  */
 
 #include "sys_watchdog.h"
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -89,7 +91,7 @@ typedef struct {
     uint32_t         thread_count;
     uint32_t         start_time;
     uint32_t         last_feed_time;
-#ifdef CONFIG_WDT
+#ifdef CONFIG_WATCHDOG
     const struct device* wdt_dev;
     int                  wdt_channel;
 #endif
@@ -138,17 +140,42 @@ int sys_wdt_init(const wdt_config_t* config) {
     g_wdt.last_feed_time = g_wdt.start_time;
 
     /* Initialize hardware watchdog if configured */
-#ifdef CONFIG_WDT
+#ifdef CONFIG_WATCHDOG
     if (g_wdt.config.mode == WDT_MODE_HARDWARE || g_wdt.config.mode == WDT_MODE_DUAL) {
-        g_wdt.wdt_dev = device_get_binding("WDG"); /* Adjust device name */
-        if (g_wdt.wdt_dev != NULL) {
+        /* SIL-2: 尝试获取看门狗设备 */
+#if DT_NODE_EXISTS(DT_ALIAS(watchdog0))
+        g_wdt.wdt_dev = DEVICE_DT_GET(DT_ALIAS(watchdog0));
+#elif DT_HAS_COMPAT_STATUS_OKAY(nxp_imx_rtwdog)
+        g_wdt.wdt_dev = DEVICE_DT_GET_ONE(nxp_imx_rtwdog);
+#elif DT_HAS_COMPAT_STATUS_OKAY(st_stm32_watchdog)
+        g_wdt.wdt_dev = DEVICE_DT_GET_ONE(st_stm32_watchdog);
+#else
+        g_wdt.wdt_dev = NULL;
+#endif
+        if (g_wdt.wdt_dev != NULL && device_is_ready(g_wdt.wdt_dev)) {
             LOG_INF("Hardware watchdog device found");
-            /* Hardware watchdog initialization would go here */
+            /* SIL-2: 初始化硬件看门狗通道 */
+            struct wdt_timeout_cfg wdt_config = {
+                .flags = WDT_FLAG_RESET_SOC,
+                .window.min = 0,
+                .window.max = g_wdt.config.timeout_ms,
+                .callback = NULL, /* 使用软件回调 */
+            };
+            g_wdt.wdt_channel = wdt_install_timeout(g_wdt.wdt_dev, &wdt_config);
+            if (g_wdt.wdt_channel < 0) {
+                LOG_ERR("Failed to install watchdog timeout: %d", g_wdt.wdt_channel);
+                g_wdt.config.mode = WDT_MODE_SOFTWARE;
+                g_wdt.wdt_channel = -1;
+            } else {
+                LOG_INF("Hardware watchdog channel installed: %d", g_wdt.wdt_channel);
+            }
         } else {
-            LOG_WRN("Hardware watchdog device not found, using software mode");
+            LOG_WRN("Hardware watchdog device not found or not ready, using software mode");
             g_wdt.config.mode = WDT_MODE_SOFTWARE;
         }
     }
+#else
+    g_wdt.wdt_channel = -1;
 #endif
 
     LOG_INF("Watchdog initialized: timeout=%dms, mode=%d", g_wdt.config.timeout_ms, g_wdt.config.mode);
@@ -479,7 +506,7 @@ static void wdt_feed_internal(void) {
     g_wdt.stats.last_feed_time_ms = now;
 
     int ret = -ENODEV;
-#ifdef CONFIG_WDT
+#ifdef CONFIG_WATCHDOG
     /* SIL-2: 检查硬件喂狗是否成功 */
     if (g_wdt.wdt_dev != NULL && g_wdt.wdt_channel >= 0) {
         ret = wdt_feed(g_wdt.wdt_dev, g_wdt.wdt_channel);

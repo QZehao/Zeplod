@@ -528,21 +528,16 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
     }
 
     event_status_t status = event_publish(event);
-    /*
-     * k_msgq_put 会复制 event_t；队列中的副本仍然指向堆上的 event->data。
-     * 只释放事件外壳；数据负载由队列中的消息拥有。
-     */
-    if (event->data != NULL && event->is_dynamic) {
-        /* SIL-2: 无论发布成功与否，都要确保不重复释放数据 */
-        event->data = NULL;
-        event->is_dynamic = false;
-    }
 
     if (status != EVENT_OK) {
-        /* SIL-2: 发布失败时释放事件外壳 */
+        /* SIL-2: 发布失败时，数据所有权仍在调用者，释放整个事件（包括 data） */
         event_free(event);
     } else {
-        /* SIL-2: 发布成功，数据所有权已转移，只释放外壳 */
+        /* SIL-2: 发布成功，k_msgq_put 已复制 event_t（含 data 指针）。
+         * 数据所有权已转移到队列中的副本，只释放外壳，不释放 data。
+         */
+        event->data = NULL;
+        event->is_dynamic = false;
         k_free(event);
     }
 
