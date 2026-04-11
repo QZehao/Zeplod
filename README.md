@@ -609,11 +609,6 @@ west build -t run --build-dir build_tests
 
 📧 获取商业许可证：发送邮件至 [china_qzh@163.com](mailto:china_qzh@163.com)
 
-💼 企业授权价格：
-  - 初创企业授权：¥2,999 起
-  - 企业授权：¥19,999 起
-  - OEM 授权：¥99,999 起
-
 📄 详细条款：详见 [LICENSE_COMMERCIAL.md](LICENSE_COMMERCIAL.md)
 
 > ⚠️ 违反 GPL 条款使用本代码将面临法律风险！购买商业许可证可合法闭源使用。
