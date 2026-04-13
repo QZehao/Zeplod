@@ -8,15 +8,10 @@ comment "所有商业模块默认禁用，启用后彼此独立，互不影响"
 # 商业模块配置（默认禁用，需授权后启用）
 # 每个模块可以独立启用，不需要启用其他模块
 # 每个模块内部 Kconfig 管理自己的特性开关
+#
+# 注意：使用 osource (optional source) + 通配符
+# 当商业模块目录不存在时自动跳过，不报错
 
-rsource "src/proprietary/mesh_communication/Kconfig"
-rsource "src/proprietary/module_manager_pro/Kconfig"
-rsource "src/proprietary/event_system_pro/Kconfig"
-rsource "src/proprietary/security_crypto/Kconfig"
-rsource "src/proprietary/ota_manager/Kconfig"
-rsource "src/proprietary/usb_host_cdc_ecm/Kconfig"
-rsource "src/proprietary/usb_host_rndis/Kconfig"
-
-rsource "src/proprietary/cloud_connector/Kconfig"
+osource "src/proprietary/*/Kconfig"
 
 endmenu
