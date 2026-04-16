@@ -125,6 +125,12 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
             return EVENT_ERR_INVALID_ARG;
         }
 
+        /* SIL-2: 栈大小不能超过预分配的栈数组大小 */
+        if (config->stack_size > DEFAULT_STACK_SIZE) {
+            LOG_ERR("Stack size %u exceeds pre-allocated stack %u", config->stack_size, DEFAULT_STACK_SIZE);
+            return EVENT_ERR_INVALID_ARG;
+        }
+
         if (config->priority < EVENT_DISPATCHER_MIN_PRIORITY || config->priority > EVENT_DISPATCHER_MAX_PRIORITY) {
             LOG_ERR("Invalid priority: %d (min: %d, max: %d)", config->priority, EVENT_DISPATCHER_MIN_PRIORITY,
                     EVENT_DISPATCHER_MAX_PRIORITY);
@@ -349,17 +355,17 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     void*              filter_user_data;
     bool               enable_stats;
 
-    /* SIL-2: 在持有锁的情况下读取所有需要的状态 */
+    /* SIL-2: 在持有锁的情况下读取所有需要的状态并检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = g_dispatcher.state;
+    if (state != DISPATCHER_RUNNING) {
+        k_mutex_unlock(&g_dispatcher.lock);
+        return EVENT_ERR_INVALID_ARG;
+    }
     filter = g_dispatcher.filter;
     filter_user_data = g_dispatcher.filter_user_data;
     enable_stats = g_dispatcher.config.enable_stats;
     k_mutex_unlock(&g_dispatcher.lock);
-
-    if (state != DISPATCHER_RUNNING) {
-        return EVENT_ERR_INVALID_ARG;
-    }
 
     event_t event;
     int     ret = k_msgq_get(g_event_queue, &event, timeout);

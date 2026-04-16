@@ -40,6 +40,9 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** 魔术字，用于验证控制块有效性 ("EVNT") */
 #define EVENT_SYSTEM_MAGIC 0x45564E54
 
+/** 初始化保护标志 */
+static atomic_flag g_init_lock = ATOMIC_FLAG_INIT;
+
 /* =============================================================================
  * 内部数据结构 (Internal Data Structures)
  * ============================================================================= */
@@ -112,7 +115,14 @@ static void                purge_event_queue_and_free_payload(struct k_msgq* que
 event_status_t event_system_init(void) {
     LOG_INF("Initializing event system...");
 
+    /* SIL-2: 使用原子标志保护初始化，防止多线程竞争 */
+    while (atomic_flag_test_and_set(&g_init_lock)) {
+        /* 等待其他线程完成初始化 */
+        k_yield();
+    }
+
     if (g_event_system.initialized) {
+        atomic_flag_clear(&g_init_lock);
         LOG_WRN("Event system already initialized");
         return EVENT_OK;
     }
@@ -138,6 +148,7 @@ event_status_t event_system_init(void) {
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
 
+    atomic_flag_clear(&g_init_lock);
     LOG_INF("Event system initialized successfully");
     return EVENT_OK;
 }
