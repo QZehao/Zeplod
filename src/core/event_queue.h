@@ -147,7 +147,7 @@ uint32_t event_queue_capacity(const struct k_msgq* queue);
  * @brief 清空队列中的所有事件
  *
  * @param queue 队列实例
- * @note 若队列中事件包含动态负载（is_dynamic=true），会在清空时自动释放 data
+ * @note 若队列中事件包含动态负载（EVENT_FLAG_DATA_DYNAMIC），会在清空时自动释放 data.ptr
  */
 void event_queue_purge(struct k_msgq* queue);
 

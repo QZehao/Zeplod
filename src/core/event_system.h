@@ -390,7 +390,7 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  *
  * @note 如果队列已满，事件将被丢弃并返回 EVENT_ERR_QUEUE_FULL
  * @note event 指向的内容会被复制到队列，调用者可安全释放
- * @note 如果 event->is_dynamic 为 true，调用者仍需负责释放 event->data
+ * @note 如果 event->flags 包含 EVENT_FLAG_DATA_DYNAMIC，调用者仍需负责释放 event->data.ptr
  */
 event_status_t event_publish(const event_t* event);
 
@@ -508,7 +508,7 @@ static inline event_t* event_create_from_isr(event_type_t type,
  * @param priority 事件优先级
  * @return 指向新事件的指针，失败返回 NULL
  *
- * @note 返回的事件 is_dynamic = true，必须用 event_free() 释放
+ * @note 返回的事件 flags 包含 EVENT_FLAG_DATA_DYNAMIC，必须用 event_free() 释放
  * @note 此函数只分配事件外壳，不分配数据空间
  * @note 使用 event_publish() 发布后，调用者仍需释放此事件对象
  */
@@ -538,7 +538,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
  *
  * @param event 要释放的事件指针
  *
- * @note 如果 event->is_dynamic 为 true，event->data 也会被释放
+ * @note 如果 event->flags 包含 EVENT_FLAG_DATA_DYNAMIC，event->data.ptr 也会被释放
  * @note 传入 NULL 是安全的，函数会直接返回
  * @note 不要释放栈上的事件对象
  */

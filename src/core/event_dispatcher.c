@@ -373,8 +373,8 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     /* 应用过滤器（如果已设置） */
     if (filter != NULL) {
         if (!filter(&event, filter_user_data)) {
-            if (event.is_dynamic && event.data != NULL) {
-                k_free(event.data);
+            if ((event.flags & EVENT_FLAG_DATA_DYNAMIC) && event.data.ptr != NULL) {
+                k_free(event.data.ptr);
             }
             /* SIL-2: 使用之前捕获的 enable_stats，避免数据竞争 */
             if (enable_stats) {
@@ -389,8 +389,8 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     process_event(&event);
 
     /* 释放动态数据 */
-    if (event.is_dynamic && event.data != NULL) {
-        k_free(event.data);
+    if ((event.flags & EVENT_FLAG_DATA_DYNAMIC) && event.data.ptr != NULL) {
+        k_free(event.data.ptr);
     }
 
     return EVENT_OK;

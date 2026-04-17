@@ -70,9 +70,9 @@ static bool event_is_valid(const event_t* event) {
 }
 
 static void event_free_queued_payload(event_t* ev) {
-    if (ev->is_dynamic && ev->data != NULL) {
-        k_free(ev->data);
-        ev->data = NULL;
+    if ((ev->flags & EVENT_FLAG_DATA_DYNAMIC) && ev->data.ptr != NULL) {
+        k_free(ev->data.ptr);
+        ev->data.ptr = NULL;
     }
 }
 
