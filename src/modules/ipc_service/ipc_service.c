@@ -364,9 +364,9 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
 #endif
 
         /* 发送响应到响应队列 */
-        int ret = k_msgq_put(&service->response_queue, &response_msg, K_FOREVER);
-        if (ret != 0) {
-            LOG_ERR("Failed to send response for request %u: %d", request_msg.request_id, ret);
+        int put_ret = k_msgq_put(&service->response_queue, &response_msg, K_FOREVER);
+        if (put_ret != 0) {
+            LOG_ERR("Failed to send response for request %u: %d", request_msg.request_id, put_ret);
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
             /* SIL-2: 发送失败时释放共享内存引用 */
             if (response_msg.shm_handle != 0) {

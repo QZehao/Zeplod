@@ -689,7 +689,7 @@ ZTEST(ipc_service, test_shared_memory_invalid_params) {
     zassert_equal(h, IPC_SHM_HANDLE_INVALID, "alloc zero size should fail");
 
     /* 无效句柄 */
-    zassert_null(ipc_shm_get_ptr(&g_ipc, IPC_SHM_HANDLE_INVALID), "get_ptr invalid handle should return NULL");
+    zassert_is_null(ipc_shm_get_ptr(&g_ipc, IPC_SHM_HANDLE_INVALID), "get_ptr invalid handle should return NULL");
     zassert_equal(ipc_shm_get_size(&g_ipc, IPC_SHM_HANDLE_INVALID), 0, "get_size invalid handle should return 0");
     zassert_equal(ipc_shm_release(&g_ipc, IPC_SHM_HANDLE_INVALID), -EINVAL, "release invalid handle should fail");
 

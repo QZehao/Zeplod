@@ -26,11 +26,9 @@
 #include <zephyr/sys/atomic.h>
 #include <errno.h>
 #include <string.h>
+#include "ipc_service.h"
 
 LOG_MODULE_REGISTER(ipc_shm, CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_LOG_LEVEL);
-
-/* 前向声明，避免循环依赖 */
-typedef struct ipc_service ipc_service_t;
 
 /* =============================================================================
  * SIL-2: 配置验证宏
@@ -128,22 +126,22 @@ static bool is_block_valid(const ipc_shm_pool_t* pool, uint32_t index) {
     if (block->state == IPC_SHM_STATE_FREE) {
         /* 空闲块引用计数必须为 0 */
         if (atomic_get(&block->ref_count) != 0) {
-            LOG_ERR("Block %u: FREE state but ref_count=%d", index, atomic_get(&block->ref_count));
+            LOG_ERR("Block %u: FREE state but ref_count=%ld", index, (long)atomic_get(&block->ref_count));
             return false;
         }
     } else {
         /* 已分配块引用计数必须 >= 1 */
         if (atomic_get(&block->ref_count) < 1) {
-            LOG_ERR("Block %u: ALLOCATED/SHARED state but ref_count=%d",
-                    index, atomic_get(&block->ref_count));
+            LOG_ERR("Block %u: ALLOCATED/SHARED state but ref_count=%ld",
+                    index, (long)atomic_get(&block->ref_count));
             return false;
         }
     }
 
     /* 验证指针在池范围内 */
     void* ptr = block->ptr;
-    uint8_t* pool_start = pool->mem_pool;
-    uint8_t* pool_end = pool_start + sizeof(pool->mem_pool);
+    const uint8_t* pool_start = pool->mem_pool;
+    const uint8_t* pool_end = pool_start + sizeof(pool->mem_pool);
 
     if (ptr < (void*)pool_start || ptr >= (void*)pool_end) {
         LOG_ERR("Block %u: ptr %p out of pool range [%p, %p)",
@@ -248,8 +246,8 @@ void ipc_shm_deinit(ipc_service_t* service) {
         for (uint32_t i = 0; i < CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE; i++) {
             ipc_shm_block_t* block = &pool->blocks[i];
             if (block->state != IPC_SHM_STATE_FREE) {
-                LOG_WRN("Leaked block %u: state=%d, ref_count=%d, alloc_id=%u, size=%u",
-                        i, block->state, atomic_get(&block->ref_count),
+                LOG_WRN("Leaked block %u: state=%d, ref_count=%ld, alloc_id=%u, size=%u",
+                        i, block->state, (long)atomic_get(&block->ref_count),
                         block->alloc_id, block->size);
             }
         }

@@ -125,7 +125,11 @@ ZTEST(test_event_system, test_event_statistics) {
  */
 ZTEST(test_event_system, test_event_publish_no_subscriber) {
     event_status_t status;
-    event_t        event = {.type = 40, .priority = EVENT_PRIORITY_NORMAL, .data = NULL, .data_len = 0};
+    event_t        event = {0};
+
+    event.type = 40;
+    event.priority = EVENT_PRIORITY_NORMAL;
+    event.data_len = 0;
 
     /* 先初始化和启动 */
     event_system_init();
@@ -153,20 +157,25 @@ ZTEST(test_event_system, test_event_create_with_data) {
     zassert_equal(event->type, 50, "事件类型不匹配");
     zassert_equal(event->priority, EVENT_PRIORITY_HIGH, "事件优先级不匹配");
     zassert_equal(event->data_len, sizeof(test_data), "数据长度不匹配");
-    zassert_not_null(event->data, "数据指针应为非 NULL");
-    zassert_true(event->is_dynamic, "is_dynamic 应为 true");
 
-    /* 验证数据副本正确 */
-    zassert_equal(*(uint32_t*)event->data, 0x12345678, "数据副本不正确");
+    /* 验证数据副本正确 - 小数据使用内联存储 */
+    zassert_true((event->flags & EVENT_FLAG_DATA_INLINE) != 0 || (event->flags & EVENT_FLAG_DATA_DYNAMIC) != 0,
+                 "数据应标记为内联或动态");
+
+    if (event->flags & EVENT_FLAG_DATA_INLINE) {
+        zassert_mem_equal(event->data.inline_data, &test_data, sizeof(test_data), "内联数据不正确");
+    } else if (event->flags & EVENT_FLAG_DATA_DYNAMIC) {
+        zassert_not_null(event->data.ptr, "动态数据指针不应为 NULL");
+        zassert_equal(*(uint32_t*)event->data.ptr, 0x12345678, "动态数据副本不正确");
+    }
 
     event_free(event);
 
     /* 测试 NULL 数据（应退化为 event_create）*/
     event = event_create_with_data(51, EVENT_PRIORITY_NORMAL, NULL, 0);
     zassert_not_null(event, "事件创建失败");
-    zassert_is_null(event->data, "NULL 数据时 data 应为 NULL");
     zassert_equal(event->data_len, 0, "数据长度应为 0");
-    zassert_false(event->is_dynamic, "is_dynamic 应为 false");
+    zassert_false((event->flags & EVENT_FLAG_DATA_DYNAMIC) != 0, "NULL 数据时不应标记为动态");
 
     event_free(event);
 }
@@ -282,6 +291,230 @@ ZTEST(test_event_system, test_event_system_get_queue) {
     event_system_init();
     queue = event_system_get_queue();
     zassert_not_null(queue, "初始化后队列应为非 NULL");
+}
+
+/**
+ * @brief 测试 event_system_shutdown
+ */
+ZTEST(test_event_system, test_event_system_shutdown) {
+    event_status_t status;
+    uint32_t       subscriber_id;
+
+    event_system_init();
+    event_register_type(90, "shutdown_test");
+    event_subscribe(90, (event_callback_t)0x1000, NULL, &subscriber_id);
+    event_system_start();
+
+    /* 关闭系统 */
+    status = event_system_shutdown();
+    zassert_equal(status, EVENT_OK, "关闭失败");
+
+    /* 关闭后应为未初始化状态 */
+    zassert_false(event_system_is_running(), "关闭后不应运行");
+
+    /* 重新初始化应成功 */
+    status = event_system_init();
+    zassert_equal(status, EVENT_OK, "重新初始化失败");
+}
+
+/**
+ * @brief 测试 event_get_type_name
+ */
+ZTEST(test_event_system, test_event_get_type_name) {
+    const char* name;
+
+    event_system_init();
+
+    /* 注册类型 */
+    event_register_type(100, "test_type_name");
+
+    /* 获取已注册类型名称 */
+    name = event_get_type_name(100);
+    zassert_str_equal(name, "test_type_name", "类型名称不匹配");
+
+    /* 获取未注册类型名称 */
+    name = event_get_type_name(101);
+    zassert_str_equal(name, "UNREGISTERED", "未注册类型应返回 UNREGISTERED");
+
+    /* 获取无效类型 ID */
+    name = event_get_type_name(255);
+    zassert_str_equal(name, "UNREGISTERED", "无效类型应返回 UNREGISTERED");
+}
+
+/**
+ * @brief 测试订阅者上限
+ */
+ZTEST(test_event_system, test_event_subscribe_max_subscribers) {
+    event_status_t status;
+    uint32_t       subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS + 1];
+
+    event_system_init();
+    event_register_type(110, "max_sub_test");
+
+    /* 订阅直到达到上限 */
+    for (int i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
+        status = event_subscribe(110, (event_callback_t)(0x1000 + i), NULL, &subscriber_ids[i]);
+        zassert_equal(status, EVENT_OK, "订阅 %d 失败", i);
+    }
+
+    /* 超过上限应失败 */
+    status = event_subscribe(110, (event_callback_t)0x2000, NULL, &subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS]);
+    zassert_equal(status, EVENT_ERR_QUEUE_FULL, "超过订阅上限应返回 QUEUE_FULL");
+
+    /* 清理 */
+    for (int i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
+        event_unsubscribe(110, subscriber_ids[i]);
+    }
+}
+
+/**
+ * @brief 测试 event_create_rt 实时安全创建
+ */
+ZTEST(test_event_system, test_event_create_rt) {
+    event_t* event;
+
+    event_system_init();
+
+    /* 测试创建 CRITICAL 优先级事件 */
+    event = event_create_rt(120, EVENT_PRIORITY_CRITICAL);
+    if (event != NULL) {
+        zassert_equal(event->type, 120, "事件类型不匹配");
+        zassert_equal(event->priority, EVENT_PRIORITY_CRITICAL, "优先级不匹配");
+        zassert_true((event->flags & EVENT_FLAG_FROM_SLAB) != 0, "应标记为来自 Slab");
+        event_free(event);
+    }
+
+    /* 测试创建 HIGH 优先级事件 */
+    event = event_create_rt(121, EVENT_PRIORITY_HIGH);
+    if (event != NULL) {
+        zassert_equal(event->type, 121, "事件类型不匹配");
+        event_free(event);
+    }
+
+    /* 测试创建 NORMAL 优先级事件 */
+    event = event_create_rt(122, EVENT_PRIORITY_NORMAL);
+    if (event != NULL) {
+        zassert_equal(event->type, 122, "事件类型不匹配");
+        event_free(event);
+    }
+
+    /* 测试创建 LOW 优先级事件 */
+    event = event_create_rt(123, EVENT_PRIORITY_LOW);
+    if (event != NULL) {
+        zassert_equal(event->type, 123, "事件类型不匹配");
+        event_free(event);
+    }
+}
+
+/**
+ * @brief 测试 event_create_with_data_rt 实时安全带数据创建
+ */
+ZTEST(test_event_system, test_event_create_with_data_rt) {
+    event_t* event;
+    uint8_t  small_data[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    uint8_t  large_data[256];
+
+    for (int i = 0; i < 256; i++) {
+        large_data[i] = (uint8_t)i;
+    }
+
+    event_system_init();
+
+    /* 测试 NULL 数据（应退化为 event_create_rt）*/
+    event = event_create_with_data_rt(130, EVENT_PRIORITY_NORMAL, NULL, 0);
+    if (event != NULL) {
+        zassert_equal(event->data_len, 0, "数据长度应为 0");
+        event_free(event);
+    }
+
+    /* 测试小数据（内联存储）*/
+    event = event_create_with_data_rt(131, EVENT_PRIORITY_NORMAL, small_data, sizeof(small_data));
+    if (event != NULL) {
+        zassert_equal(event->data_len, sizeof(small_data), "数据长度不匹配");
+        zassert_true((event->flags & EVENT_FLAG_DATA_INLINE) != 0, "小数据应内联存储");
+        zassert_mem_equal(event->data.inline_data, small_data, sizeof(small_data), "数据内容不匹配");
+        event_free(event);
+    }
+
+    /* 测试大数据（需要 Slab）*/
+    event = event_create_with_data_rt(132, EVENT_PRIORITY_NORMAL, large_data, sizeof(large_data));
+    if (event != NULL) {
+        zassert_equal(event->data_len, sizeof(large_data), "大数据长度不匹配");
+        /* 注意：大数据可能使用 slab 或内联，取决于配置 */
+        event_free(event);
+    }
+}
+
+/**
+ * @brief 测试 event_publish_copy_rt 实时安全发布
+ */
+ZTEST(test_event_system, test_event_publish_copy_rt) {
+    event_status_t status;
+    uint32_t       test_data = 0xDEADBEEF;
+
+    event_system_init();
+    event_system_start();
+    event_register_type(140, "publish_rt_test");
+
+    /* 测试发布 */
+    status = event_publish_copy_rt(140, EVENT_PRIORITY_NORMAL, &test_data, sizeof(test_data));
+    /* 可能成功或失败，取决于 Slab 配置 */
+    if (status == EVENT_OK) {
+        /* 等待事件处理 */
+        k_msleep(50);
+    }
+
+    event_system_stop();
+}
+
+/**
+ * @brief 测试发布到已停止系统
+ */
+ZTEST(test_event_system, test_event_publish_when_stopped) {
+    event_status_t status;
+    event_t        event = {.type = 150, .priority = EVENT_PRIORITY_NORMAL, .data_len = 0};
+
+    event_system_init();
+    /* 不启动系统 */
+
+    /* 发布应被拒绝 */
+    status = event_publish(&event);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "停止状态下发布应被拒绝");
+
+    /* event_publish_copy 也应被拒绝 */
+    status = event_publish_copy(150, EVENT_PRIORITY_NORMAL, "test", 4);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "停止状态下 publish_copy 应被拒绝");
+}
+
+/**
+ * @brief 测试事件系统多次 shutdown
+ */
+ZTEST(test_event_system, test_event_system_shutdown_multiple) {
+    event_status_t status;
+
+    event_system_init();
+
+    /* 第一次关闭 */
+    status = event_system_shutdown();
+    zassert_equal(status, EVENT_OK, "第一次关闭失败");
+
+    /* 第二次关闭应幂等 */
+    status = event_system_shutdown();
+    zassert_equal(status, EVENT_OK, "重复关闭应返回 OK");
+}
+
+/**
+ * @brief 测试订阅未注册类型
+ */
+ZTEST(test_event_system, test_event_subscribe_unregistered_type) {
+    event_status_t status;
+    uint32_t       subscriber_id;
+
+    event_system_init();
+    /* 不注册类型 160 */
+
+    status = event_subscribe(160, (event_callback_t)0x1000, NULL, &subscriber_id);
+    zassert_equal(status, EVENT_ERR_NOT_FOUND, "订阅未注册类型应返回 NOT_FOUND");
 }
 
 /**

@@ -209,4 +209,282 @@ ZTEST(event_dispatcher, test_custom_config) {
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
+/**
+ * @brief 测试无效配置参数 - 栈大小过小
+ */
+ZTEST(event_dispatcher, test_invalid_config_stack_too_small) {
+    dispatcher_config_t config = {
+        .stack_size = 128, /* 小于 EVENT_DISPATCHER_MIN_STACK_SIZE (256) */
+        .priority = 5,
+        .thread_name = "test_disp",
+        .enable_stats = true,
+        .max_events_per_cycle = 100
+    };
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_init(&config), EVENT_ERR_INVALID_ARG, "栈过小应返回错误");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试无效配置参数 - 栈大小过大
+ */
+ZTEST(event_dispatcher, test_invalid_config_stack_too_large) {
+    dispatcher_config_t config = {
+        .stack_size = 128 * 1024, /* 超过 EVENT_DISPATCHER_MAX_STACK_SIZE (64KB) */
+        .priority = 5,
+        .thread_name = "test_disp",
+        .enable_stats = true,
+        .max_events_per_cycle = 100
+    };
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_init(&config), EVENT_ERR_INVALID_ARG, "栈过大应返回错误");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试无效配置参数 - 优先级超出范围
+ */
+ZTEST(event_dispatcher, test_invalid_config_priority_out_of_range) {
+    dispatcher_config_t config_low = {
+        .stack_size = 1024,
+        .priority = -1, /* 小于 EVENT_DISPATCHER_MIN_PRIORITY (0) */
+        .thread_name = "test_disp",
+        .enable_stats = true,
+        .max_events_per_cycle = 100
+    };
+
+    dispatcher_config_t config_high = {
+        .stack_size = 1024,
+        .priority = 20, /* 大于 EVENT_DISPATCHER_MAX_PRIORITY (15) */
+        .thread_name = "test_disp",
+        .enable_stats = true,
+        .max_events_per_cycle = 100
+    };
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_init(&config_low), EVENT_ERR_INVALID_ARG, "优先级过低应返回错误");
+    zassert_equal(event_dispatcher_init(&config_high), EVENT_ERR_INVALID_ARG, "优先级过高应返回错误");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试无效配置参数 - max_events_per_cycle 过大
+ */
+ZTEST(event_dispatcher, test_invalid_config_max_events_too_large) {
+    dispatcher_config_t config = {
+        .stack_size = 1024,
+        .priority = 5,
+        .thread_name = "test_disp",
+        .enable_stats = true,
+        .max_events_per_cycle = 20000 /* 超过 EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE (10000) */
+    };
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_init(&config), EVENT_ERR_INVALID_ARG, "max_events 过大应返回错误");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试在 event_system_init 之前调用 dispatcher_init
+ */
+ZTEST(event_dispatcher, test_dispatcher_init_before_system_init) {
+    /* 确保系统未初始化 */
+    event_system_shutdown();
+
+    zassert_equal(event_dispatcher_init(NULL), EVENT_ERR_INVALID_ARG, "未初始化系统时应返回错误");
+}
+
+/**
+ * @brief 测试重复暂停
+ */
+ZTEST(event_dispatcher, test_double_pause) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    /* 第一次暂停 */
+    zassert_equal(event_dispatcher_pause(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_PAUSED, NULL);
+
+    /* 第二次暂停应失败 */
+    zassert_equal(event_dispatcher_pause(), EVENT_ERR_INVALID_ARG, "重复暂停应返回错误");
+
+    zassert_equal(event_dispatcher_resume(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试重复恢复
+ */
+ZTEST(event_dispatcher, test_double_resume) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    /* 未暂停时恢复应失败 */
+    zassert_equal(event_dispatcher_resume(), EVENT_ERR_INVALID_ARG, "未暂停时恢复应返回错误");
+
+    /* 暂停后恢复 */
+    zassert_equal(event_dispatcher_pause(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_resume(), EVENT_OK, NULL);
+
+    /* 再次恢复应失败 */
+    zassert_equal(event_dispatcher_resume(), EVENT_ERR_INVALID_ARG, "重复恢复应返回错误");
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试暂停状态下 process_one
+ */
+ZTEST(event_dispatcher, test_process_one_when_paused) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    /* 暂停分发器 */
+    zassert_equal(event_dispatcher_pause(), EVENT_OK, NULL);
+
+    /* 暂停状态下 process_one 应返回错误 */
+    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_INVALID_ARG, "暂停时 process_one 应返回错误");
+
+    zassert_equal(event_dispatcher_resume(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试停止状态下 process_one
+ */
+ZTEST(event_dispatcher, test_process_one_when_stopped) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    /* 不启动分发器 */
+
+    /* 停止状态下 process_one 应返回错误 */
+    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_INVALID_ARG, "停止时 process_one 应返回错误");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试过滤器阻止所有事件
+ */
+ZTEST(event_dispatcher, test_filter_block_all) {
+    static uint32_t dropped_count = 0;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+
+    /* 设置一个总是返回 false 的过滤器 */
+    bool block_all_filter(const event_t* event, void* user_data) {
+        (void)event;
+        (void)user_data;
+        dropped_count++;
+        return false;
+    }
+
+    event_dispatcher_set_filter(block_all_filter, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    /* 发布事件 */
+    for (int i = 0; i < 5; i++) {
+        event_publish_copy(210, EVENT_PRIORITY_NORMAL, "test", 4);
+    }
+
+    k_msleep(100);
+
+    /* 验证事件被过滤 */
+    zassert_true(dropped_count >= 5, "事件应被过滤器阻止");
+
+    event_dispatcher_clear_filter();
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试多次启动
+ */
+ZTEST(event_dispatcher, test_multiple_start) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+
+    /* 重复启动应幂等 */
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试多次停止
+ */
+ZTEST(event_dispatcher, test_multiple_stop) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_STOPPED, NULL);
+
+    /* 重复停止应幂等 */
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_STOPPED, NULL);
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 测试 process_all 带上限
+ */
+ZTEST(event_dispatcher, test_process_all_with_limit) {
+    uint32_t processed;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    /* 发布多个事件 */
+    for (int i = 0; i < 10; i++) {
+        event_publish_copy(220 + i, EVENT_PRIORITY_NORMAL, "test", 4);
+    }
+
+    k_msleep(50);
+
+    /* 处理最多 3 个事件 */
+    processed = event_dispatcher_process_all(3);
+    zassert_true(processed <= 3, "处理数量不应超过上限");
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
 ZTEST_SUITE(event_dispatcher, NULL, NULL, NULL, NULL, NULL);

@@ -331,7 +331,10 @@ ZTEST(example_module_gpio, test_event_null)
     example_module_gpio_on_event(NULL, NULL);
     /* 不应崩溃 */
 
-    event_t event = {.type = EVENT_TYPE_GENERIC, .priority = EVENT_PRIORITY_NORMAL, .data = NULL, .data_len = 0};
+    event_t event = {0};
+    event.type = EVENT_TYPE_GENERIC;
+    event.priority = EVENT_PRIORITY_NORMAL;
+    event.data_len = 0;
     example_module_gpio_on_event(&event, NULL);
     /* 不应崩溃 */
 }

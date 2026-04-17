@@ -27,39 +27,100 @@ enable_testing()
 
 set(APP_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-# 被测实现（与主应用核心一致；不包含 app_main / 示例业务模块）
+# =============================================================================
+# 核心源码（始终包含）
+# =============================================================================
 target_sources(app PRIVATE
 	${APP_SRC_DIR}/core/event_system.c
 	${APP_SRC_DIR}/core/event_queue.c
 	${APP_SRC_DIR}/core/event_dispatcher.c
-	${APP_SRC_DIR}/core/event_system_compat.c  # 事件系统兼容层
+	${APP_SRC_DIR}/core/event_memory.c
+	${APP_SRC_DIR}/core/event_system_compat.c
 	${APP_SRC_DIR}/services/sys_log.c
 	${APP_SRC_DIR}/services/sys_memory.c
-	${APP_SRC_DIR}/services/sys_watchdog.c
-	${APP_SRC_DIR}/services/sys_timer.c
 	${APP_SRC_DIR}/modules/module_manager.c
-	${APP_SRC_DIR}/modules/module_manager_compat.c  # 模块管理器兼容层
+	${APP_SRC_DIR}/modules/module_manager_compat.c
 )
 
+# =============================================================================
+# 核心测试（始终包含）
+# =============================================================================
 target_sources(app PRIVATE
 	test_event_system.c
 	test_event_queue.c
 	test_event_dispatcher.c
+	test_event_memory.c
 	test_module_manager.c
 	test_sys_memory.c
-	test_sys_timer.c
-	test_sys_watchdog.c
 	test_sys_log.c
-	test_example_module_a.c
-	test_example_module_b.c
-	test_example_module_gpio.c
-	test_example_module_uart.c
-	test_example_module_multi_dep.c
 )
 
+# =============================================================================
+# 可选服务测试
+# =============================================================================
+
+# 看门狗测试
+if(CONFIG_SYS_WATCHDOG_ENABLE)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/services/sys_watchdog.c
+		test_sys_watchdog.c
+	)
+endif()
+
+# 定时器测试
+if(CONFIG_SYS_TIMER_ENABLE)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/services/sys_timer.c
+		test_sys_timer.c
+	)
+endif()
+
+# =============================================================================
+# 示例模块测试（按配置条件包含）
+# =============================================================================
+
+if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/modules/example_module_a.c
+		test_example_module_a.c
+	)
+endif()
+
+if(CONFIG_EXAMPLE_MODULE_B_ENABLE)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/modules/example_module_b.c
+		test_example_module_b.c
+	)
+endif()
+
+if(CONFIG_EXAMPLE_MODULE_GPIO)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/modules/example_module_gpio.c
+		test_example_module_gpio.c
+	)
+endif()
+
+if(CONFIG_EXAMPLE_MODULE_UART)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/modules/example_module_uart.c
+		test_example_module_uart.c
+	)
+endif()
+
+if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/modules/example_module_multi_dep.c
+		test_example_module_multi_dep.c
+	)
+endif()
+
+# =============================================================================
+# IPC 服务测试
+# =============================================================================
 if(CONFIG_THREAD_IPC_SERVICE)
 	target_sources(app PRIVATE
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_shared_mem.c
 		test_ipc_service.c
 	)
 	target_include_directories(app PRIVATE
@@ -67,21 +128,15 @@ if(CONFIG_THREAD_IPC_SERVICE)
 	)
 endif()
 
+# =============================================================================
+# 包含路径
+# =============================================================================
 target_include_directories(app PRIVATE
 	${APP_SRC_DIR}
 	${APP_SRC_DIR}/core
 	${APP_SRC_DIR}/services
 	${APP_SRC_DIR}/modules
 	${APP_SRC_DIR}/app
-)
-
-# 示例模块源码（用于单元测试）
-target_sources(app PRIVATE
-	${APP_SRC_DIR}/modules/example_module_a.c
-	${APP_SRC_DIR}/modules/example_module_b.c
-	${APP_SRC_DIR}/modules/example_module_gpio.c
-	${APP_SRC_DIR}/modules/example_module_uart.c
-	${APP_SRC_DIR}/modules/example_module_multi_dep.c
 )
 
 target_compile_definitions(app PRIVATE
