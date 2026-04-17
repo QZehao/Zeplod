@@ -428,6 +428,73 @@ event_status_t event_publish_from_isr(const event_t* event);
 event_status_t event_publish_copy(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /* =============================================================================
+ * 实时安全 API (Real-time Safe API)
+ * 用于 ISR 上下文和实时关键任务的确定性内存分配
+ * ============================================================================= */
+
+/**
+ * @brief 创建事件（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @return 指向新事件的指针，失败返回 NULL
+ *
+ * @note 完全从 slab 池分配，分配时间 O(1) 确定
+ * @note Slab 耗尽时返回 NULL，不回退 k_malloc
+ * @note 无 Slab 配置时返回 NULL
+ */
+event_t* event_create_rt(event_type_t type, event_priority_t priority);
+
+/**
+ * @brief 创建带数据的事件（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @param data 要附加的数据指针
+ * @param data_len 数据长度（字节）
+ * @return 指向新事件的指针，失败返回 NULL
+ *
+ * @note 数据存储策略：
+ *   - data_len <= INLINE_DATA_SIZE: 内联存储，无额外分配
+ *   - data_len > INLINE_DATA_SIZE: 从 slab 池分配
+ *   - 无可用 slab 或 slab 满: 返回 NULL
+ * @note 完全实时安全，永不回退 k_malloc
+ */
+event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
+                                    const void* data, size_t data_len);
+
+/**
+ * @brief 发布事件并复制数据（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @param data 要复制的数据指针
+ * @param data_len 数据长度（字节）
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
+ *
+ * @note 完全实时安全，内存不足时返回错误
+ */
+event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priority,
+                                      const void* data, size_t data_len);
+
+/**
+ * @brief 从 ISR 创建事件（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @param data 数据指针
+ * @param data_len 数据长度
+ * @return 事件指针，失败返回 NULL
+ *
+ * @note 等同于 event_create_with_data_rt，明确 ISR 上下文使用
+ */
+static inline event_t* event_create_from_isr(event_type_t type,
+                                              event_priority_t priority,
+                                              const void* data, size_t data_len) {
+    return event_create_with_data_rt(type, priority, data, data_len);
+}
+
+/* =============================================================================
  * 事件创建与内存管理 (Event Creation & Memory Management)
  * 用于动态创建和管理事件对象
  * ============================================================================= */

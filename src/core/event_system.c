@@ -23,6 +23,7 @@
  *
  */
 #include "event_system.h"
+#include "event_memory.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -552,6 +553,142 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
         k_free(event);
     }
 
+    return status;
+}
+
+/* =============================================================================
+ * 实时安全 API 实现 (Real-time Safe API Implementation)
+ * ============================================================================= */
+
+/**
+ * @brief 创建事件（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @return 指向新事件的指针，失败返回 NULL
+ */
+event_t* event_create_rt(event_type_t type, event_priority_t priority) {
+    event_t* event = NULL;
+
+#if EVENT_SLAB_ENABLED
+    struct k_mem_slab* slab = event_memory_select_event_slab(priority);
+    int ret = k_mem_slab_alloc(slab, (void**)&event, K_NO_WAIT);
+
+    /* 尝试降级借用低优先级池 */
+    if (ret != 0 && priority == EVENT_PRIORITY_CRITICAL && EVENT_SLAB_HIGH_AVAILABLE) {
+        ret = k_mem_slab_alloc(&event_slab_high, (void**)&event, K_NO_WAIT);
+    }
+    if (ret != 0 && priority <= EVENT_PRIORITY_HIGH) {
+        ret = k_mem_slab_alloc(&event_slab_normal, (void**)&event, K_NO_WAIT);
+    }
+
+    if (ret != 0) {
+        LOG_WRN("Event slab exhausted for priority %d", priority);
+        return NULL;
+    }
+
+    event->flags = EVENT_FLAG_FROM_SLAB;
+#else
+    LOG_ERR("event_create_rt called but slab not enabled");
+    return NULL;
+#endif
+
+    /* 初始化字段 */
+    event->type = type;
+    event->priority = priority;
+    event->timestamp = k_uptime_get_32();
+    event->source_id = 0;
+    event->data_len = 0;
+    event->reserved = 0;
+    memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
+
+    return event;
+}
+
+/**
+ * @brief 创建带数据的事件（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @param data 要附加的数据指针
+ * @param data_len 数据长度（字节）
+ * @return 指向新事件的指针，失败返回 NULL
+ */
+event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
+                                    const void* data, size_t data_len) {
+    if (data == NULL || data_len == 0) {
+        return event_create_rt(type, priority);
+    }
+
+    /* 大数据检查 slab 可用性 */
+    if (data_len > CONFIG_EVENT_INLINE_DATA_SIZE) {
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+        struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
+        if (data_slab == NULL) {
+            LOG_WRN("Data size %zu exceeds largest slab", data_len);
+            return NULL;
+        }
+#else
+        LOG_WRN("Large data requested but no slab configured");
+        return NULL;
+#endif
+    }
+
+    event_t* event = event_create_rt(type, priority);
+    if (event == NULL) {
+        return NULL;
+    }
+
+    event->data_len = (uint32_t)data_len;
+
+    /* 小数据：内联存储 */
+    if (data_len <= CONFIG_EVENT_INLINE_DATA_SIZE) {
+        memcpy(event->data.inline_data, data, data_len);
+        event->flags |= EVENT_FLAG_DATA_INLINE;
+        return event;
+    }
+
+    /* 大数据：从 slab 分配 */
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+    struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
+    if (k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) != 0) {
+        event_free(event);
+        LOG_WRN("Data slab exhausted for size %zu", data_len);
+        return NULL;
+    }
+    memcpy(event->data.ptr, data, data_len);
+    event->flags |= EVENT_FLAG_DATA_DYNAMIC;
+    return event;
+#else
+    event_free(event);
+    return NULL;
+#endif
+}
+
+/**
+ * @brief 发布事件并复制数据（实时安全）
+ *
+ * @param type 事件类型 ID
+ * @param priority 事件优先级
+ * @param data 要复制的数据指针
+ * @param data_len 数据长度（字节）
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
+ */
+event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priority,
+                                      const void* data, size_t data_len) {
+    event_t* event = event_create_with_data_rt(type, priority, data, data_len);
+    if (event == NULL) {
+        return EVENT_ERR_NO_MEM;
+    }
+
+    event_status_t status = event_publish(event);
+
+    /* 发布成功后，数据所有权已转移到队列副本 */
+    if (status == EVENT_OK) {
+        event->flags &= ~EVENT_FLAG_DATA_DYNAMIC;
+    }
+
+    event_free(event);
     return status;
 }
 
