@@ -42,9 +42,6 @@ LOG_MODULE_REGISTER(event_dispatcher, CONFIG_SYS_LOG_LEVEL);
 /** 每个周期默认最大处理事件数 */
 #define DEFAULT_MAX_EVENTS_CYCLE        100
 
-/** 分发线程在 RUNNING 下从队列取事件的超时（便于响应 pause/stop，避免永久阻塞） */
-#define DISPATCH_THREAD_MSGQ_TIMEOUT_MS 100
-
 /* =============================================================================
  * 内部数据结构 (Internal Data Structures)
  * ============================================================================= */
@@ -486,7 +483,8 @@ uint32_t event_dispatcher_get_current_latency(void) {
 /**
  * @brief 分发器线程入口函数
  *
- * 主循环：RUNNING 时带超时取队事件；PAUSED 时休眠不消费；STOPPED 时退出。
+ * 主循环：RUNNING 时批量处理事件；PAUSED 时休眠不消费；STOPPED 时退出。
+ * 批量处理可提高吞吐量，同时 max_events_per_cycle 限制防止饥饿其他线程。
  */
 static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p1);
@@ -497,9 +495,12 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
 
     while (1) {
         dispatcher_state_t st;
+        uint32_t           max_events;
 
+        /* SIL-2: 读取状态和配置，使用锁保护 */
         k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
         st = g_dispatcher.state;
+        max_events = g_dispatcher.config.max_events_per_cycle;
         k_mutex_unlock(&g_dispatcher.lock);
 
         /* SIL-2: 优先检查停止状态，确保快速退出 */
@@ -514,7 +515,13 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
             continue;
         }
 
-        (void) event_dispatcher_process_one(K_MSEC(DISPATCH_THREAD_MSGQ_TIMEOUT_MS));
+        /* SIL-2: 批量处理事件，max_events_per_cycle 限制防止单轮处理时间过长 */
+        uint32_t processed = event_dispatcher_process_all(max_events);
+
+        /* SIL-2: 若本周期未处理任何事件，短暂休眠以释放 CPU 并等待新事件 */
+        if (processed == 0) {
+            k_msleep(1);
+        }
     }
 
     /* SIL-2: 清理线程状态 */
