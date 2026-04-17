@@ -23,6 +23,8 @@ LOG_MODULE_REGISTER(event_memory, CONFIG_SYS_LOG_LEVEL);
  * 使用 K_MEM_SLAB_DEFINE 定义 Slab 池
  * ============================================================================= */
 
+#if EVENT_SLAB_ENABLED
+
 #if EVENT_SLAB_CRITICAL_AVAILABLE
 /** CRITICAL 优先级事件 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_critical, CONFIG_EVENT_STRUCT_SIZE,
@@ -38,6 +40,8 @@ K_MEM_SLAB_DEFINE(event_slab_high, CONFIG_EVENT_STRUCT_SIZE,
 /** NORMAL/LOW 优先级事件 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_normal, CONFIG_EVENT_STRUCT_SIZE,
                   CONFIG_EVENT_SLAB_NORMAL_COUNT, 4);
+
+#if EVENT_SLAB_LARGE_AVAILABLE
 
 #if EVENT_SLAB_256_AVAILABLE
 /** 256 字节数据块 Slab 池定义 */
@@ -56,6 +60,10 @@ K_MEM_SLAB_DEFINE(event_slab_data_1k, 1024,
 K_MEM_SLAB_DEFINE(event_slab_data_4k, 4096,
                   CONFIG_EVENT_SLAB_LARGE_4K_COUNT, 4);
 #endif
+
+#endif /* EVENT_SLAB_LARGE_AVAILABLE */
+
+#endif /* EVENT_SLAB_ENABLED */
 
 /* =============================================================================
  * 统计计数器 (Statistics Counters)

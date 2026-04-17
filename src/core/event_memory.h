@@ -79,6 +79,8 @@ BUILD_ASSERT(CONFIG_EVENT_INLINE_DATA_SIZE <= 128,
  * 使用 K_MEM_SLAB_DECLARE 声明外部可访问的 Slab 池
  * ============================================================================= */
 
+#if EVENT_SLAB_ENABLED
+
 #if EVENT_SLAB_CRITICAL_AVAILABLE
 /** CRITICAL 优先级事件 Slab 池 */
 K_MEM_SLAB_DECLARE(event_slab_critical);
@@ -91,6 +93,8 @@ K_MEM_SLAB_DECLARE(event_slab_high);
 
 /** NORMAL/LOW 优先级事件 Slab 池（必须存在） */
 K_MEM_SLAB_DECLARE(event_slab_normal);
+
+#if EVENT_SLAB_LARGE_AVAILABLE
 
 #if EVENT_SLAB_256_AVAILABLE
 /** 256 字节数据块 Slab 池 */
@@ -106,6 +110,10 @@ K_MEM_SLAB_DECLARE(event_slab_data_1k);
 /** 4KB 数据块 Slab 池 */
 K_MEM_SLAB_DECLARE(event_slab_data_4k);
 #endif
+
+#endif /* EVENT_SLAB_LARGE_AVAILABLE */
+
+#endif /* EVENT_SLAB_ENABLED */
 
 /* =============================================================================
  * 内部分配函数 (Internal Allocation Functions)
