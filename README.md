@@ -186,10 +186,11 @@ zephyr_template/
 ├── docs/                       # 说明文档（总目录见 docs/文档索引.md）
 └── src/
     ├── core/
-    │   ├── event_system.c/h
-    │   ├── event_queue.c/h
-    │   ├── event_dispatcher.c/h
-    │   └── event_system_compat.c/h  # 事件系统兼容层
+    │   ├── event_system.c/h        # 事件系统核心（发布-订阅、类型管理）
+    │   ├── event_queue.c/h         # 事件队列管理（优先级、溢出处理）
+    │   ├── event_dispatcher.c/h    # 事件分发器（独立线程、统计、暂停/恢复）
+    │   ├── event_memory.c/h        # Slab 内存管理（优先级分层池、大数据块池）
+    │   └── event_system_compat.c/h # 事件系统兼容层
     ├── services/
     │   ├── sys_log.c/h
     │   ├── sys_memory.c/h
@@ -367,16 +368,21 @@ west build -b vendor/board_name .
 
 核心事件系统提供：
 - **事件类型**：256 个唯一事件类型（0-255）
-- **事件优先级**：低、普通、高、关键
+- **事件优先级**：低、普通、高、关键（数值越小优先级越高）
 - **订阅者**：每个事件类型最多 16 个订阅者
-- **队列**：可配置的事件队列（默认 64 个事件）
+- **队列**：可配置的事件队列（默认 32 个事件）
+- **Slab 内存池**：优先级分层（CRITICAL/HIGH/NORMAL）和大数据块（256B/1KB/4KB）
+- **实时安全 API**：`_rt` 后缀 API 完全从 Slab 池分配，O(1) 确定时间
 
 ```c
 // 订阅事件
 event_subscribe(EVENT_TYPE_SENSOR_DATA, my_callback, user_data, &subscriber_id);
 
-// 发布事件
+// 发布事件（推荐，自动内存管理）
 event_publish_copy(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_NORMAL, &data, sizeof(data));
+
+// ISR/实时任务使用（实时安全，Slab 池分配）
+event_publish_copy_rt(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_HIGH, &data, sizeof(data));
 ```
 
 ### 模块系统
