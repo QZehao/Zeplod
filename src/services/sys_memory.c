@@ -115,9 +115,12 @@ typedef struct sys_mem_cb {
 
 static sys_mem_cb_t g_sys_mem;
 
-/** 静态分配的内存池缓冲区（仅当 SYS_MEMORY_ENABLE 时分配） */
+/** 静态分配的内存池缓冲区（仅当 SYS_MEMORY_ENABLE 时分配）
+ *  @note 使用对齐属性确保缓冲区适合存放任何结构体
+ */
 #if defined(CONFIG_SYS_MEMORY_ENABLE) && (DEFAULT_POOL_SIZE > 0)
-static uint8_t g_mem_buffer[SYS_MEM_POOL_COUNT][DEFAULT_POOL_SIZE];
+/* 确保缓冲区对齐到 8 字节，适合存放 free_block_t 等结构 */
+static __aligned(8) uint8_t g_mem_buffer[SYS_MEM_POOL_COUNT][DEFAULT_POOL_SIZE];
 #else
 /* 当内存池禁用或大小为0时，不分配缓冲区 */
 static uint8_t (*g_mem_buffer)[DEFAULT_POOL_SIZE] = NULL;

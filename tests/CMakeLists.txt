@@ -37,7 +37,6 @@ target_sources(app PRIVATE
 	${APP_SRC_DIR}/core/event_memory.c
 	${APP_SRC_DIR}/core/event_system_compat.c
 	${APP_SRC_DIR}/services/sys_log.c
-	${APP_SRC_DIR}/services/sys_memory.c
 	${APP_SRC_DIR}/modules/module_manager.c
 	${APP_SRC_DIR}/modules/module_manager_compat.c
 )
@@ -51,9 +50,16 @@ target_sources(app PRIVATE
 	test_event_dispatcher.c
 	test_event_memory.c
 	test_module_manager.c
-	test_sys_memory.c
 	test_sys_log.c
 )
+
+# 系统内存管理器（可选）
+if(CONFIG_SYS_MEMORY_ENABLE)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/services/sys_memory.c
+		test_sys_memory.c
+	)
+endif()
 
 # =============================================================================
 # 可选服务测试
