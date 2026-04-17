@@ -50,6 +50,144 @@ config EVENT_DISPATCHER_PRIORITY
 	help
 	  Priority of the event dispatcher thread (lower = higher priority).
 
+	# =============================================================================
+	# Event Structure Size Configuration
+	# =============================================================================
+
+	choice
+		prompt "Event structure size"
+		default EVENT_STRUCT_SIZE_64
+		help
+		  Select event_t structure size. Larger size provides more inline
+		  data capacity but consumes more memory per event.
+
+	config EVENT_STRUCT_SIZE_32
+		bool "32 bytes (compact)"
+		help
+		  Minimal footprint. Inline data: 16 bytes.
+		  Recommended for < 16KB RAM devices.
+
+	config EVENT_STRUCT_SIZE_64
+		bool "64 bytes (balanced)"
+		help
+		  Good balance. Inline data: 48 bytes.
+		  Recommended for 16KB-256KB RAM devices.
+
+	config EVENT_STRUCT_SIZE_128
+		bool "128 bytes (high capacity)"
+		help
+		  Maximum inline capacity. Inline data: 112 bytes.
+		  Recommended for > 256KB RAM devices.
+
+	endchoice
+
+	config EVENT_STRUCT_SIZE
+		int
+		default 32 if EVENT_STRUCT_SIZE_32
+		default 64 if EVENT_STRUCT_SIZE_64
+		default 128 if EVENT_STRUCT_SIZE_128
+
+	config EVENT_INLINE_DATA_SIZE
+		int
+		default 16 if EVENT_STRUCT_SIZE_32
+		default 48 if EVENT_STRUCT_SIZE_64
+		default 112 if EVENT_STRUCT_SIZE_128
+
+	# =============================================================================
+	# Event Slab Memory Configuration
+	# =============================================================================
+
+	config EVENT_SLAB_ENABLE
+		bool "Enable slab-based memory management"
+		default y
+		help
+		  Use k_mem_slab for deterministic O(1) memory allocation.
+		  Disable to fall back to k_malloc (not real-time safe).
+
+	if EVENT_SLAB_ENABLE
+
+	config EVENT_SLAB_CRITICAL_COUNT
+		int "CRITICAL priority event pool size"
+		default 8
+		range 0 64
+		help
+		  Number of event_t blocks reserved for CRITICAL priority.
+		  Set to 0 to share with NORMAL pool.
+
+	config EVENT_SLAB_HIGH_COUNT
+		int "HIGH priority event pool size"
+		default 16
+		range 0 64
+		help
+		  Number of event_t blocks reserved for HIGH priority.
+		  Set to 0 to share with NORMAL pool.
+
+	config EVENT_SLAB_NORMAL_COUNT
+		int "NORMAL/LOW priority event pool size"
+		default 32
+		range 4 128
+		help
+		  Number of event_t blocks for NORMAL and LOW priority events.
+
+	config EVENT_SLAB_LARGE_ENABLE
+		bool "Enable large data slab pools"
+		default y
+		help
+		  Enable slab pools for event data larger than inline threshold.
+		  Disable to use k_malloc for large data (not real-time safe).
+
+	if EVENT_SLAB_LARGE_ENABLE
+
+	config EVENT_SLAB_LARGE_256_COUNT
+		int "256-byte data block count"
+		default 8
+		range 0 32
+
+	config EVENT_SLAB_LARGE_1K_COUNT
+		int "1KB data block count"
+		default 4
+		range 0 16
+
+	config EVENT_SLAB_LARGE_4K_COUNT
+		int "4KB data block count"
+		default 2
+		range 0 8
+
+	endif # EVENT_SLAB_LARGE_ENABLE
+
+	endif # EVENT_SLAB_ENABLE
+
+	# =============================================================================
+	# Event Extended Features
+	# =============================================================================
+
+	config EVENT_SLAB_EXHAUSTED_CB
+		bool "Enable slab exhausted callback"
+		default n
+		help
+		  Invoke callback when a slab pool is exhausted.
+
+	config EVENT_DEBUG_MEM
+		bool "Enable memory debugging support"
+		default n
+		help
+		  Enable leak detection and memory diagnostics.
+		  Increases memory usage, for development only.
+
+	config EVENT_RUNTIME_STATUS
+		bool "Enable runtime pool status query"
+		default y
+		help
+		  Provide APIs to query slab availability at runtime.
+
+	config EVENT_SLAB_STATS_DETAILED
+		bool "Enable detailed slab statistics"
+		default n
+		depends on EVENT_RUNTIME_STATUS
+		help
+		  Track detailed statistics including allocation counts
+		  and high watermarks.
+
 endmenu
 
 menu "Module Manager Configuration"
