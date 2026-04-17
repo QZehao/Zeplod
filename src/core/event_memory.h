@@ -79,12 +79,6 @@ extern "C" {
 #define EVENT_SLAB_4K_AVAILABLE 0
 #endif
 
-/** 1KB 数据 Slab 是否可用 */
-#define EVENT_SLAB_1K_AVAILABLE       (EVENT_SLAB_LARGE_AVAILABLE && (CONFIG_EVENT_SLAB_LARGE_1K_COUNT > 0))
-
-/** 4KB 数据 Slab 是否可用 */
-#define EVENT_SLAB_4K_AVAILABLE       (EVENT_SLAB_LARGE_AVAILABLE && (CONFIG_EVENT_SLAB_LARGE_4K_COUNT > 0))
-
 /* =============================================================================
  * 编译时验证 (Compile-time Assertions)
  * ============================================================================= */
