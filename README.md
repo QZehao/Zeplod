@@ -11,14 +11,14 @@
 
 | 我想... | 阅读文档 | 预计时间 |
 |---------|----------|----------|
-| **5 分钟看看效果** | [docs/5 分钟快速体验.md](docs/5 分钟快速体验.md) | 5 分钟 |
-| **正式搭建环境** | [docs/环境搭建与配置指南.md](docs/环境搭建与配置指南.md) | 1-2 小时 |
-| **开始写代码** | [docs/开发者入门指南.md](docs/开发者入门指南.md) | 1 小时 |
-| **控制硬件（LED）** | [docs/开发者入门指南.md](docs/开发者入门指南.md) | 30 分钟 |
-| **查术语** | [docs/术语速查卡片.md](docs/术语速查卡片.md) | 随时 |
-| **浏览全部文档** | [docs/文档索引.md](docs/文档索引.md) | - |
+| **5 分钟看看效果** | [docs/5 分钟快速体验.md](docs/00-入门/01-5分钟快速体验.md) | 5 分钟 |
+| **正式搭建环境** | [docs/10-环境与构建/11-环境搭建与配置指南.md](docs/10-环境与构建/11-环境搭建与配置指南.md) | 1-2 小时 |
+| **开始写代码** | [docs/00-入门/04-开发者入门指南.md](docs/00-入门/04-开发者入门指南.md) | 1 小时 |
+| **控制硬件（LED）** | [docs/00-入门/04-开发者入门指南.md](docs/00-入门/04-开发者入门指南.md) | 30 分钟 |
+| **查术语** | [docs/00-入门/03-术语速查卡片.md](docs/00-入门/03-术语速查卡片.md) | 随时 |
+| **浏览全部文档** | [docs/00-入门/02-文档索引.md](docs/00-入门/02-文档索引.md) | - |
 
-> 💡 **提示**：第一次接触？从 **[5 分钟快速体验](docs/5 分钟快速体验.md)** 开始，无需开发板即可在 PC 上运行！
+> 💡 **提示**：第一次接触？从 **[5 分钟快速体验](docs/00-入门/01-5分钟快速体验.md)** 开始，无需开发板即可在 PC 上运行！
 
 ---
 
@@ -32,7 +32,7 @@
 - **线程安全**：完整的线程安全操作和正确的同步机制
 - **Shell 命令**：内置调试和监控的 Shell 命令
 - **版本管理**：完整的软件版本跟踪，包含 Git 信息和编译时间
-- **Thread IPC（应用内）**：可选的工作线程 + 分发线程、请求/响应队列，及与事件系统的桥接（见 `docs/Thread_IPC服务使用说明.md`）
+- **Thread IPC（应用内）**：可选的工作线程 + 分发线程、请求/响应队列，及与事件系统的桥接（见 `docs/30-核心模块/33-Thread_IPC服务使用说明.md`）
 
 ## 适用场景
 
@@ -147,7 +147,7 @@
 - ❌ 对Flash/RAM占用极度敏感的低成本产品
 - ❌ 不需要模块间通信的独立功能设备
 
-> 💡 **32KB SRAM 解决方案**：使用 `prj_tiny.conf` 极限配置，框架占用 **< 10KB**，预留 **> 22KB** 给 APP 模块。详见 [配置方案对比指南](docs/配置方案对比指南.md)。
+> 💡 **32KB SRAM 解决方案**：使用 `prj_tiny.conf` 极限配置，框架占用 **< 10KB**，预留 **> 22KB** 给 APP 模块。详见 [配置方案对比指南](docs/40-应用开发/43-配置方案对比指南.md)。
 
 ### 📊 内存配置方案
 
@@ -183,7 +183,7 @@ zephyr_template/
 │   ├── Kconfig                 # rsource 复用根目录 Kconfig
 │   ├── prj.conf
 │   └── test_*.c
-├── docs/                       # 说明文档（总目录见 docs/文档索引.md）
+├── docs/                       # 说明文档（总目录见 docs/00-入门/02-文档索引.md）
 └── src/
     ├── core/
     │   ├── event_system.c/h        # 事件系统核心（发布-订阅、类型管理）
@@ -217,7 +217,7 @@ zephyr_template/
 
 ## 从本模板初始化新项目（检查清单）
 
-复制或 fork 本仓库后，建议按顺序完成下列项，便于在任意产品上落地（更细的说明见 **[docs/开发者入门指南.md](docs/开发者入门指南.md#从模板复制后的检查清单)**）。
+复制或 fork 本仓库后，建议按顺序完成下列项，便于在任意产品上落地（更细的说明见 **[docs/00-入门/04-开发者入门指南.md](docs/00-入门/04-开发者入门指南.md#从模板复制后的检查清单)**）。
 
 | 步骤 | 内容 |
 |------|------|
@@ -228,7 +228,7 @@ zephyr_template/
 | 5 | **板型与 CI**：`prj.conf`、**`.github/workflows/ci.yml`** / **`.gitlab-ci.yml`** 中 ARM 矩阵 `board` 与目标硬件一致或按需裁剪。 |
 | 6 | **示例代码**：`src/modules/example_*` 可删除或替换；同步 `CMakeLists.txt`、Kconfig，以及各模块 **`.c` 的 `SYS_INIT` 注册**与 **`app_config.h` 的 `APP_INIT_PRIO_*`**。 |
 
-> **文档与 CI 的板型示例**：入门文档中可能出现 `nucleo_l4r5zi` 等示例板名；CI 当前固定为若干 Nucleo/Disco 板。**以你手头的 `BOARD` 与 CI 矩阵为准**；若遇 RAM/链接问题，见 **[docs/设备树与内存配置手册.md](docs/设备树与内存配置手册.md)**。
+> **文档与 CI 的板型示例**：入门文档中可能出现 `nucleo_l4r5zi` 等示例板名；CI 当前固定为若干 Nucleo/Disco 板。**以你手头的 `BOARD` 与 CI 矩阵为准**；若遇 RAM/链接问题，见 **[docs/40-应用开发/44-设备树与内存配置手册.md](docs/40-应用开发/44-设备树与内存配置手册.md)**。
 
 ## 快速开始
 
@@ -429,7 +429,7 @@ CONFIG_EVENT_DISPATCHER_PRIORITY=5
 # 模块管理器
 CONFIG_MODULE_MANAGER=y
 CONFIG_MAX_MODULES=16
-# 可选：运行时按 depends_on 拓扑启动/逆序停止（详见 docs/模块系统详细使用说明.md）
+# 可选：运行时按 depends_on 拓扑启动/逆序停止（详见 docs/30-核心模块/32-模块系统详细使用说明.md）
 # CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES=y
 # CONFIG_MODULE_MANAGER_DEPENDS_LIST_MAX=16
 # CONFIG_MODULE_MANAGER_START_ALL_ABORT_ON_FAILURE=y
@@ -547,7 +547,7 @@ static int my_module_auto_register(void) {
 SYS_INIT(my_module_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MINE);
 ```
 
-多模块依赖、`depends_on` 写法与 Kconfig 开关说明见 **docs/模块系统详细使用说明.md** 中的「应用启动与初始化顺序（Zephyr SYS_INIT）」「运行时依赖」与「配置选项」；多依赖示例源码为 `src/modules/example_module_multi_dep.c`。
+多模块依赖、`depends_on` 写法与 Kconfig 开关说明见 **docs/30-核心模块/32-模块系统详细使用说明.md** 中的「应用启动与初始化顺序（Zephyr SYS_INIT）」「运行时依赖」与「配置选项」；多依赖示例源码为 `src/modules/example_module_multi_dep.c`。
 
 ## 事件流程
 
@@ -673,7 +673,7 @@ git commit -m "更新代码"       # 没有信息量
 git commit -m "修复 bug"       # 未说明修复什么
 ```
 
-更详细的规范见 **[docs/参与贡献与代码规范.md](docs/参与贡献与代码规范.md)**。
+更详细的规范见 **[docs/80-贡献与维护/81-参与贡献与代码规范.md](docs/80-贡献与维护/81-参与贡献与代码规范.md)**。
 
 ## 支持
 
@@ -687,33 +687,33 @@ git commit -m "修复 bug"       # 未说明修复什么
 
 ## 文档索引
 
-**总目录（推荐阅读顺序、名词表、旧文件名对照）**：[docs/文档索引.md](docs/文档索引.md)
+**总目录（推荐阅读顺序、名词表、旧文件名对照）**：[docs/00-入门/02-文档索引.md](docs/00-入门/02-文档索引.md)
 
 | 文档 | 说明 |
 |------|------|
-| [docs/文档索引.md](docs/文档索引.md) | **总入口**：学习路径、全部手册列表 |
-| [docs/环境搭建与配置指南.md](docs/环境搭建与配置指南.md) | 工具链、路径、验证构建 |
-| [docs/独立应用构建说明.md](docs/独立应用构建说明.md) | 独立应用、`ZEPHYR_BASE`、overlay |
-| [docs/开发者入门指南.md](docs/开发者入门指南.md) | 日常开发、测试、调试 |
-| [docs/Zephyr应用开发与服务指南.md](docs/Zephyr应用开发与服务指南.md) | Zephyr 通用技术与服务开发纲要 |
-| [docs/设备树与内存配置手册.md](docs/设备树与内存配置手册.md) | Devicetree、SRAM、`app.overlay` |
-| [docs/项目配置项说明.md](docs/项目配置项说明.md) | **Kconfig 与应用配置项集中说明** |
-| [docs/事件系统详细使用说明.md](docs/事件系统详细使用说明.md) | 事件 API 与用法 |
-| [docs/模块系统详细使用说明.md](docs/模块系统详细使用说明.md) | 模块生命周期、运行时依赖 |
-| [docs/Thread_IPC服务使用说明.md](docs/Thread_IPC服务使用说明.md) | Thread IPC 服务 |
-| [docs/Thread_IPC模块集成指南.md](docs/Thread_IPC模块集成指南.md) | 在模块中集成 IPC |
-| [docs/OTA与存储扩展指南.md](docs/OTA与存储扩展指南.md) | OTA、NVS、低功耗（可选） |
-| [docs/版本管理.md](docs/版本管理.md) | 版本号与构建信息 |
-| [docs/Zephyr版本与CI说明.md](docs/Zephyr版本与CI说明.md) | 与 CI 镜像版本对齐 |
-| [docs/发布检查清单.md](docs/发布检查清单.md) | 发布前检查 |
-| [docs/常见问题与故障排除.md](docs/常见问题与故障排除.md) | 构建与环境排错 |
-| [docs/烧录与调试快速指南.md](docs/烧录与调试快速指南.md) | 烧录、串口、调试 |
-| [docs/脚本与工具说明.md](docs/脚本与工具说明.md) | `scripts/` 脚本说明 |
-| [docs/单元测试与持续集成说明.md](docs/单元测试与持续集成说明.md) | ztest 与 CI 概览 |
-| [docs/CI平台配置保姆级手册.md](docs/CI平台配置保姆级手册.md) | **GitHub / GitLab** 上启用与维护 CI 的逐步说明 |
-| [docs/系统服务使用说明.md](docs/系统服务使用说明.md) | sys_log / sys_memory / sys_timer / sys_watchdog |
-| [docs/参与贡献与代码规范.md](docs/参与贡献与代码规范.md) | PR、代码风格与 CI |
-| [docs/安全与密钥管理说明.md](docs/安全与密钥管理说明.md) | 密钥、Secret、OTA 签名注意 |
+| [docs/00-入门/02-文档索引.md](docs/00-入门/02-文档索引.md) | **总入口**：学习路径、全部手册列表 |
+| [docs/10-环境与构建/11-环境搭建与配置指南.md](docs/10-环境与构建/11-环境搭建与配置指南.md) | 工具链、路径、验证构建 |
+| [docs/10-环境与构建/12-独立应用构建说明.md](docs/10-环境与构建/12-独立应用构建说明.md) | 独立应用、`ZEPHYR_BASE`、overlay |
+| [docs/00-入门/04-开发者入门指南.md](docs/00-入门/04-开发者入门指南.md) | 日常开发、测试、调试 |
+| [docs/40-应用开发/41-Zephyr应用开发与服务指南.md](docs/40-应用开发/41-Zephyr应用开发与服务指南.md) | Zephyr 通用技术与服务开发纲要 |
+| [docs/40-应用开发/44-设备树与内存配置手册.md](docs/40-应用开发/44-设备树与内存配置手册.md) | Devicetree、SRAM、`app.overlay` |
+| [docs/40-应用开发/42-项目配置项说明.md](docs/40-应用开发/42-项目配置项说明.md) | **Kconfig 与应用配置项集中说明** |
+| [docs/30-核心模块/31-事件系统详细使用说明.md](docs/30-核心模块/31-事件系统详细使用说明.md) | 事件 API 与用法 |
+| [docs/30-核心模块/32-模块系统详细使用说明.md](docs/30-核心模块/32-模块系统详细使用说明.md) | 模块生命周期、运行时依赖 |
+| [docs/30-核心模块/33-Thread_IPC服务使用说明.md](docs/30-核心模块/33-Thread_IPC服务使用说明.md) | Thread IPC 服务 |
+| [docs/30-核心模块/34-Thread_IPC模块集成指南.md](docs/30-核心模块/34-Thread_IPC模块集成指南.md) | 在模块中集成 IPC |
+| [docs/70-发布与产品化/74-OTA与存储扩展指南.md](docs/70-发布与产品化/74-OTA与存储扩展指南.md) | OTA、NVS、低功耗（可选） |
+| [docs/70-发布与产品化/71-版本管理.md](docs/70-发布与产品化/71-版本管理.md) | 版本号与构建信息 |
+| [docs/70-发布与产品化/72-Zephyr版本与CI说明.md](docs/70-发布与产品化/72-Zephyr版本与CI说明.md) | 与 CI 镜像版本对齐 |
+| [docs/70-发布与产品化/73-发布检查清单.md](docs/70-发布与产品化/73-发布检查清单.md) | 发布前检查 |
+| [docs/60-调试与排错/62-常见问题与故障排除.md](docs/60-调试与排错/62-常见问题与故障排除.md) | 构建与环境排错 |
+| [docs/60-调试与排错/61-烧录与调试快速指南.md](docs/60-调试与排错/61-烧录与调试快速指南.md) | 烧录、串口、调试 |
+| [docs/60-调试与排错/63-脚本与工具说明.md](docs/60-调试与排错/63-脚本与工具说明.md) | `scripts/` 脚本说明 |
+| [docs/50-测试与CI/51-单元测试与持续集成说明.md](docs/50-测试与CI/51-单元测试与持续集成说明.md) | ztest 与 CI 概览 |
+| [docs/50-测试与CI/52-CI平台配置保姆级手册.md](docs/50-测试与CI/52-CI平台配置保姆级手册.md) | **GitHub / GitLab** 上启用与维护 CI 的逐步说明 |
+| [docs/30-核心模块/36-系统服务使用说明.md](docs/30-核心模块/36-系统服务使用说明.md) | sys_log / sys_memory / sys_timer / sys_watchdog |
+| [docs/80-贡献与维护/81-参与贡献与代码规范.md](docs/80-贡献与维护/81-参与贡献与代码规范.md) | PR、代码风格与 CI |
+| [docs/70-发布与产品化/75-安全与密钥管理说明.md](docs/70-发布与产品化/75-安全与密钥管理说明.md) | 密钥、Secret、OTA 签名注意 |
 | [tests/README.md](tests/README.md) | 单元测试（详细） |
 | [LICENSE](LICENSE) | GPL v3 全文 |
 | [LICENSE_COMMERCIAL.md](LICENSE_COMMERCIAL.md) | 商业许可证条款 |

@@ -1,5 +1,5 @@
 # GitLab CI — 与 .github/workflows/ci.yml 能力对齐（可选）
-# 保姆级说明：docs/CI平台配置保姆级手册.md
+# 保姆级说明：docs/50-测试与CI/52-CI平台配置保姆级手册.md
 #
 # 要求：GitLab 13.3+（parallel:matrix）；Runner 能访问 gcr.io 与 github.com（west update）
 

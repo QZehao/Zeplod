@@ -1,8 +1,8 @@
 # 单元测试指南
 
-本目录包含 Zephyr 事件驱动项目模板的单元测试（ztest），与主应用共享 `../src/` 下的实现；**不**编译 `app_main` 与示例业务模块。因此**没有**主固件里的 **`SYS_INIT` 启动链**；各用例需自行按依赖调用 `module_manager_init()`、`event_system_init()` 等（与 [模块系统详细使用说明.md](../docs/模块系统详细使用说明.md) 中「注册和使用模块」手写示例一致）。
+本目录包含 Zephyr 事件驱动项目模板的单元测试（ztest），与主应用共享 `../src/` 下的实现；**不**编译 `app_main` 与示例业务模块。因此**没有**主固件里的 **`SYS_INIT` 启动链**；各用例需自行按依赖调用 `module_manager_init()`、`event_system_init()` 等（与 [模块系统详细使用说明.md](../docs/30-核心模块/32-模块系统详细使用说明.md) 中「注册和使用模块」手写示例一致）。
 
-**仓库级概览**（与 CI 的关系、与主应用差异）：见 **[docs/单元测试与持续集成说明.md](../docs/单元测试与持续集成说明.md)**。
+**仓库级概览**（与 CI 的关系、与主应用差异）：见 **[docs/50-测试与CI/51-单元测试与持续集成说明.md](../docs/50-测试与CI/51-单元测试与持续集成说明.md)**。
 
 默认在 `tests/prj.conf` 中 **开启** `CONFIG_THREAD_IPC_SERVICE`，并链接 `ipc_service/ipc_service.c` 与 `test_ipc_service.c`（烟测）；若需关闭 IPC 以缩短构建，可将该项改为 `n` 并从 `tests/CMakeLists.txt` 中移除对应 `if(CONFIG_THREAD_IPC_SERVICE)` 块内的源文件引用。
 

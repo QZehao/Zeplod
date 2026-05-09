@@ -284,7 +284,7 @@ config EXAMPLE_MODULE_GPIO
 	default n
 	help
 	  Builds example_module_gpio. Requires devicetree alias led0; optional sw0 for button.
-	  See boards overlay and docs/模块系统详细使用说明.md.
+	  See boards overlay and docs/30-核心模块/32-模块系统详细使用说明.md.
 
 config EXAMPLE_MODULE_UART
 	bool "Example: UART module (poll TX + IRQ RX ring)"
