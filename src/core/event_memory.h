@@ -164,6 +164,20 @@ struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority);
  */
 struct k_mem_slab* event_memory_select_data_slab(size_t data_len);
 
+/**
+ * @brief 根据数据大小选择数据 Slab 池（带级联回退）
+ *
+ * 与 event_memory_select_data_slab 不同，此函数会检查 Slab 是否有空闲块，
+ * 并在首选 Slab 已满时尝试更大的 Slab 池。
+ *
+ * @param data_len 数据长度（字节）
+ * @return 有可用空间的 Slab 池指针，如果所有池都满或不可用返回 NULL
+ *
+ * @note 级联策略可能导致"内存放大"（如用 4KB 块装 300B 数据）
+ * @note 仅用于 event_create_with_data 等非实时路径，RT 路径仍使用原函数
+ */
+struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len);
+
 /* =============================================================================
  * 运行时状态 API (Runtime Status API)
  * 条件编译：CONFIG_EVENT_RUNTIME_STATUS

@@ -239,24 +239,6 @@ static event_queue_cb_t* event_queue_find_cb(const struct k_msgq* queue) {
     return NULL;
 }
 
-static event_queue_cb_t* event_queue_alloc_cb(struct k_msgq* queue) {
-    k_mutex_lock(&g_queue_cb_lock, K_FOREVER);
-    event_queue_cb_t* free_cb = NULL;
-
-    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
-        if (g_queue_cb[i].msgq == queue) {
-            k_mutex_unlock(&g_queue_cb_lock);
-            return &g_queue_cb[i];
-        }
-        if (g_queue_cb[i].msgq == NULL && free_cb == NULL) {
-            free_cb = &g_queue_cb[i];
-        }
-    }
-
-    k_mutex_unlock(&g_queue_cb_lock);
-    return free_cb;
-}
-
 /* =============================================================================
  * 队列 API 实现 (Queue API Implementation)
  * ============================================================================= */
@@ -274,21 +256,36 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
         return EVENT_ERR_INVALID_ARG;
     }
 
-    /* SIL-2: 检测重复初始化，避免重置可能正被持有的互斥锁 */
-    event_queue_cb_t* existing_cb = event_queue_find_cb(queue);
-    if (existing_cb != NULL) {
-        LOG_WRN("Queue already initialized, skipping");
-        return EVENT_OK;
+    /* SIL-2: HIGH-NEW-2 —— 全程持有 g_queue_cb_lock，确保重复检测、槽位分配、
+     * k_msgq_init 和 cb 初始化构成原子序列。任何中途释放锁的做法都会引入 TOCTOU
+     * 竞态，允许多线程并发执行 k_msgq_init 导致队列等待队列损坏。 */
+    k_mutex_lock(&g_queue_cb_lock, K_FOREVER);
+
+    /* 在持锁状态下完成所有检查与初始化 */
+    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
+        if (g_queue_cb[i].msgq == queue) {
+            k_mutex_unlock(&g_queue_cb_lock);
+            LOG_WRN("Queue already initialized, skipping");
+            return EVENT_OK; /* 已初始化 */
+        }
     }
 
-    k_msgq_init(queue, buffer, sizeof(event_t), capacity);
+    /* 寻找空槽 */
+    event_queue_cb_t* cb = NULL;
+    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
+        if (g_queue_cb[i].msgq == NULL) {
+            cb = &g_queue_cb[i];
+            break;
+        }
+    }
 
-    /* 初始化统计信息 */
-    event_queue_cb_t* cb = event_queue_alloc_cb(queue);
     if (cb == NULL) {
+        k_mutex_unlock(&g_queue_cb_lock);
         LOG_ERR("No available queue control block");
         return EVENT_ERR_NO_MEM;
     }
+
+    k_msgq_init(queue, buffer, sizeof(event_t), capacity);
 
     cb->msgq = queue;
     cb->capacity = capacity;
@@ -303,9 +300,12 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
     cb->drop_lowest_scratch = (event_t*) k_malloc(capacity * sizeof(event_t));
     if (cb->drop_lowest_scratch == NULL) {
         cb->msgq = NULL; /* 回滚标记为未使用 */
+        k_mutex_unlock(&g_queue_cb_lock);
         LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
         return EVENT_ERR_NO_MEM;
     }
+
+    k_mutex_unlock(&g_queue_cb_lock);
 
     LOG_DBG("Event queue initialized: capacity=%d", capacity);
     return EVENT_OK;

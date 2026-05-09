@@ -42,6 +42,26 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** 魔术字，用于验证控制块有效性 ("EVNT") */
 #define EVENT_SYSTEM_MAGIC 0x45564E54
 
+/** SIL-2: 验证事件系统魔术字，检测内存损坏（返回 event_status_t 版本） */
+#define EVENT_SYSTEM_VALIDATE() \
+    do { \
+        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
+            LOG_ERR("Event system magic corruption detected: 0x%08x", \
+                    g_event_system.magic); \
+            return EVENT_ERR_INVALID_ARG; \
+        } \
+    } while (0)
+
+/** SIL-2: 验证事件系统魔术字（返回 void 版本） */
+#define EVENT_SYSTEM_VALIDATE_VOID() \
+    do { \
+        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
+            LOG_ERR("Event system magic corruption detected: 0x%08x", \
+                    g_event_system.magic); \
+            return; \
+        } \
+    } while (0)
+
 /** 初始化保护标志 */
 static atomic_t g_init_lock = ATOMIC_INIT(0);
 
@@ -176,6 +196,7 @@ event_status_t event_system_init(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 未初始化
  */
 event_status_t event_system_start(void) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         LOG_ERR("Event system not initialized");
         return EVENT_ERR_INVALID_ARG;
@@ -197,6 +218,7 @@ event_status_t event_system_start(void) {
  * @return EVENT_OK 成功
  */
 event_status_t event_system_stop(void) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         return EVENT_OK;
     }
@@ -221,6 +243,7 @@ event_status_t event_system_stop(void) {
  * @return EVENT_OK 成功
  */
 event_status_t event_system_shutdown(void) {
+    EVENT_SYSTEM_VALIDATE();
     LOG_INF("Shutting down event system...");
 
     /* SIL-2: 使用 g_init_lock 防止与 init/shutdown 并发执行（NEW-1）。
@@ -299,6 +322,7 @@ bool event_system_is_running(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数
  */
 event_status_t event_register_type(event_type_t type, const char* name) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -341,6 +365,7 @@ event_status_t event_register_type(event_type_t type, const char* name) {
  *         EVENT_ERR_NOT_FOUND 未找到，EVENT_ERR_NO_SUBSCRIBER 仍有订阅者
  */
 event_status_t event_unregister_type(event_type_t type) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -388,6 +413,7 @@ event_status_t event_unregister_type(event_type_t type) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 订阅者已满
  */
 event_status_t event_subscribe(event_type_t type, event_callback_t callback, void* user_data, uint32_t* subscriber_id) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -410,11 +436,13 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
         if (!entry->subscribers[i].is_active) {
             entry->subscribers[i].callback = callback;
             entry->subscribers[i].user_data = user_data;
-            /* SIL-2: 使用原子操作分配全局唯一的订阅者 ID，避免跨类型竞态 */
-            uint32_t new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
-            if (new_id == 0) {
+            /* SIL-2: 使用原子操作分配全局唯一的订阅者 ID，避免跨类型竞态。
+             * HIGH-NEW-1: 使用 do-while 跳过 EVENT_SUBSCRIBER_ID_INVALID(0)，
+             * 防止计数器回绕后重新使用已被占用的 ID。 */
+            uint32_t new_id;
+            do {
                 new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
-            }
+            } while (new_id == EVENT_SUBSCRIBER_ID_INVALID);
             entry->subscribers[i].subscriber_id = new_id;
             entry->subscribers[i].is_active = true;
             entry->subscriber_count++;
@@ -424,7 +452,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             }
 
             k_mutex_unlock(&entry->lock);
-            LOG_DBG("Subscriber %d registered for event type %d", entry->subscribers[i].subscriber_id, type);
+            LOG_DBG("Subscriber %d registered for event type %d", new_id, type);
             return EVENT_OK;
         }
     }
@@ -442,6 +470,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_NOT_FOUND 未找到
  */
 event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -476,6 +505,7 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
  * @param subscriber_id 订阅者 ID
  */
 void event_unsubscribe_all(uint32_t subscriber_id) {
+    EVENT_SYSTEM_VALIDATE_VOID();
     if (!g_event_system.initialized || subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
         return;
     }
@@ -518,6 +548,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
 event_status_t event_publish(const event_t* event) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized || event == NULL) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -545,6 +576,7 @@ event_status_t event_publish(const event_t* event) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
 event_status_t event_publish_from_isr(const event_t* event) {
+    EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized || event == NULL) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -572,6 +604,7 @@ event_status_t event_publish_from_isr(const event_t* event) {
  * @return EVENT_OK 成功，EVENT_ERR_NO_MEM 内存不足
  */
 event_status_t event_publish_copy(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
+    EVENT_SYSTEM_VALIDATE();
     event_t* event = event_create_with_data(type, priority, data, data_len);
     if (event == NULL) {
         return EVENT_ERR_NO_MEM;
@@ -600,6 +633,10 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_rt(event_type_t type, event_priority_t priority) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return NULL;
+    }
     event_t* event = NULL;
 
 #if EVENT_SLAB_ENABLED
@@ -639,6 +676,10 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return NULL;
+    }
     if (data == NULL || data_len == 0) {
         return event_create_rt(type, priority);
     }
@@ -647,20 +688,6 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     if (data_len > 65535) {
         LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
         return NULL;
-    }
-
-    /* 大数据检查 slab 可用性 */
-    if (data_len > CONFIG_EVENT_INLINE_DATA_SIZE) {
-#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-        struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
-        if (data_slab == NULL) {
-            LOG_WRN("Data size %zu exceeds largest slab", data_len);
-            return NULL;
-        }
-#else
-        LOG_WRN("Large data requested but no slab configured");
-        return NULL;
-#endif
     }
 
     event_t* event = event_create_rt(type, priority);
@@ -677,20 +704,27 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return event;
     }
 
-    /* 大数据：从 slab 分配 */
+    /* 大数据：从 slab 分配，首选最优大小，满时级联到更大的池（MED-NEW-2/3） */
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
     struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
-    if (k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) != 0) {
-        event_free(event);
-        LOG_WRN("Data slab exhausted for size %zu", data_len);
-        return NULL;
+    if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
+        memcpy(event->data.ptr, data, data_len);
+        event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+        return event;
     }
-    memcpy(event->data.ptr, data, data_len);
-    /* SIL-2: 标记数据来自 slab，分发器消费时需使用 k_mem_slab_free 释放 */
-    event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-    return event;
+    /* 首选 slab 已满或不可用，尝试级联 fallback */
+    data_slab = event_memory_select_data_slab_with_fallback(data_len);
+    if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
+        memcpy(event->data.ptr, data, data_len);
+        event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+        return event;
+    }
+    event_free(event);
+    LOG_WRN("All data slabs exhausted for size %zu", data_len);
+    return NULL;
 #else
     event_free(event);
+    LOG_WRN("Large data requested but no slab configured");
     return NULL;
 #endif
 }
@@ -705,6 +739,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  */
 event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
+    EVENT_SYSTEM_VALIDATE();
     event_t* event = event_create_with_data_rt(type, priority, data, data_len);
     if (event == NULL) {
         return EVENT_ERR_NO_MEM;
@@ -734,6 +769,9 @@ event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priorit
  */
 event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
                                 const void* data, size_t data_len) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return NULL;
+    }
     return event_create_with_data_rt(type, priority, data, data_len);
 }
 
@@ -749,6 +787,10 @@ event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create(event_type_t type, event_priority_t priority) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return NULL;
+    }
     /* 优先尝试实时安全路径 */
     event_t* event = event_create_rt(type, priority);
     if (event != NULL) {
@@ -784,6 +826,10 @@ event_t* event_create(event_type_t type, event_priority_t priority) {
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_with_data(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return NULL;
+    }
     if (data == NULL || data_len == 0) {
         return event_create(type, priority);
     }
@@ -806,7 +852,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
         return event;
     }
 
-    /* 大数据：尝试 slab */
+    /* 大数据：尝试 slab，首选最优大小，满时级联到更大的池（MED-NEW-3） */
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
     struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
     if (data_slab != NULL) {
@@ -818,7 +864,16 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
                 event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
                 return event;
             }
-            /* slab 满，继续回退 */
+            /* 首选 slab 已满，尝试级联 fallback */
+            struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
+            if (fallback_slab != NULL && fallback_slab != data_slab &&
+                k_mem_slab_alloc(fallback_slab, &event->data.ptr, K_NO_WAIT) == 0) {
+                memcpy(event->data.ptr, data, data_len);
+                event->data_len = (uint32_t) data_len;
+                event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+                return event;
+            }
+            /* slab 全满，回退到 k_malloc */
             event_free(event);
         }
     }
@@ -856,6 +911,10 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
  * @param event 要释放数据的事件
  */
 void event_free_data(event_t* event) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return;
+    }
     if (event == NULL) {
         return;
     }
@@ -883,6 +942,10 @@ void event_free_data(event_t* event) {
  * @param event 要释放的事件
  */
 void event_free(event_t* event) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return;
+    }
     if (event == NULL) {
         return;
     }
@@ -921,6 +984,9 @@ void event_free(event_t* event) {
  * @return 事件类型名称字符串
  */
 const char* event_get_type_name(event_type_t type) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return "CORRUPTED";
+    }
     if (!g_event_system.initialized || type >= MAX_EVENT_TYPES) {
         return "UNKNOWN";
     }
@@ -936,6 +1002,9 @@ const char* event_get_type_name(event_type_t type) {
  * @return 活跃订阅者数量
  */
 uint32_t event_get_subscriber_count(event_type_t type) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return 0;
+    }
     if (!g_event_system.initialized || type >= MAX_EVENT_TYPES) {
         return 0;
     }
@@ -956,6 +1025,9 @@ uint32_t event_get_subscriber_count(event_type_t type) {
  * @param dropped_events 输出：被丢弃的事件数量
  */
 void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_t* dropped_events) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return;
+    }
     if (!g_event_system.initialized) {
         return;
     }
@@ -982,6 +1054,9 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
  * 由 event_system_compat.c 的 event_compat_reset_statistics() 调用。
  */
 void event_system_reset_statistics(void) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return;
+    }
     if (!g_event_system.initialized) {
         return;
     }
@@ -1010,6 +1085,10 @@ void event_system_reset_statistics(void) {
  *         EVENT_ERR_NO_SUBSCRIBER 无订阅者
  */
 event_status_t event_notify_subscribers(const event_t* event) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected");
+        return EVENT_ERR_INVALID_ARG;
+    }
     if (event == NULL || event->type >= MAX_EVENT_TYPES) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -1071,6 +1150,9 @@ event_status_t event_notify_subscribers(const event_t* event) {
  * @return 指向全局事件队列的指针，未初始化时返回 NULL
  */
 struct k_msgq* event_system_get_queue(void) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        return NULL;
+    }
     if (!g_event_system.initialized) {
         return NULL;
     }

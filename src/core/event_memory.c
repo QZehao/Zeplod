@@ -172,6 +172,34 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
     return NULL;
 }
 
+struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
+{
+    if (data_len == 0) {
+        return NULL;
+    }
+
+    /* MED-NEW-3: 级联策略 —— 首选最优大小，若满则尝试更大的池 */
+#if EVENT_SLAB_256_AVAILABLE
+    if (data_len <= 256 && k_mem_slab_num_free_get(&event_slab_data_256) > 0) {
+        return &event_slab_data_256;
+    }
+#endif
+
+#if EVENT_SLAB_1K_AVAILABLE
+    if (data_len <= 1024 && k_mem_slab_num_free_get(&event_slab_data_1k) > 0) {
+        return &event_slab_data_1k;
+    }
+#endif
+
+#if EVENT_SLAB_4K_AVAILABLE
+    if (data_len <= 4096 && k_mem_slab_num_free_get(&event_slab_data_4k) > 0) {
+        return &event_slab_data_4k;
+    }
+#endif
+
+    return NULL;
+}
+
 /* =============================================================================
  * 运行时状态 API 实现 (Runtime Status API Implementation)
  * 条件编译：CONFIG_EVENT_RUNTIME_STATUS

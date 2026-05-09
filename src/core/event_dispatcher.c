@@ -141,6 +141,10 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
         }
 
         g_dispatcher.config = *config;
+        if (config->thread_name == NULL) {
+            g_dispatcher.config.thread_name = "event_disp";
+            LOG_WRN("Thread name is NULL, using default 'event_disp'");
+        }
     } else {
         g_dispatcher.config.stack_size = DEFAULT_STACK_SIZE;
         g_dispatcher.config.priority = DEFAULT_PRIORITY;
@@ -616,12 +620,13 @@ static void process_event(const event_t* event) {
         }
 
         /* SIL-2: 指数移动平均 (EMA) 计算延迟，alpha = 1/8。
-         * 相比算术平均，EMA 对早期异常值不敏感，响应更快，无需 64 位乘法。 */
+         * 相比算术平均，EMA 对早期异常值不敏感，响应更快。
+         * LOW-NEW-8: 使用 64 位中间值防止 avg_latency_us * 7 溢出。 */
         if (g_dispatcher.stats.events_processed == 1) {
             g_dispatcher.stats.avg_latency_us = latency_us;
         } else {
             g_dispatcher.stats.avg_latency_us =
-                (g_dispatcher.stats.avg_latency_us * 7 + latency_us) / 8;
+                (uint32_t)(((uint64_t)g_dispatcher.stats.avg_latency_us * 7 + latency_us) / 8);
         }
     }
 

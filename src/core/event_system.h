@@ -428,7 +428,7 @@ event_status_t event_publish_from_isr(const event_t* event);
  * @param data_len 数据长度（字节）
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
- * @note 此函数会内部调用 k_malloc 分配内存
+ * @note 内存分配优先尝试 slab 池（若启用），失败时回退到 k_malloc
  * @note 数据副本在事件处理完成后由分发器自动释放
  * @note 适用于栈上数据或临时数据的发布
  */
@@ -512,9 +512,8 @@ event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
  * @param priority 事件优先级
  * @return 指向新事件的指针，失败返回 NULL
  *
- * @note 返回的事件 flags 包含 EVENT_FLAG_DATA_DYNAMIC，必须用 event_free() 释放
- * @note 此函数只分配事件外壳，不分配数据空间
- * @note 使用 event_publish() 发布后，调用者仍需释放此事件对象
+ * @note 返回的事件需用 event_free() 释放；flags 反映 event_t 自身的内存来源
+ * @note 此函数仅分配事件外壳，不分配数据空间；data_len 初始为 0
  */
 event_t* event_create(event_type_t type, event_priority_t priority);
 
