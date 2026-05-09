@@ -110,6 +110,14 @@ static uint32_t calculate_latency_us(uint64_t event_timestamp);
 event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     LOG_INF("Initializing event dispatcher...");
 
+    /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
+     * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
+     * thread_started 在 stop 后会被清零，因此正常重启序列不受限制。 */
+    if (g_dispatcher.thread_started) {
+        LOG_WRN("Dispatcher thread already running, refusing re-init");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     memset(&g_dispatcher, 0, sizeof(g_dispatcher));
 
     /* 设置默认配置或用户提供的配置 */
@@ -332,6 +340,15 @@ dispatcher_state_t event_dispatcher_get_state(void) {
     k_mutex_unlock(&g_dispatcher.lock);
 
     return state;
+}
+
+/**
+ * @brief 检查当前线程是否为分发器线程
+ *
+ * @return true 当前线程是分发器线程，false 不是或未初始化
+ */
+bool event_dispatcher_is_current_thread(void) {
+    return k_current_get() == &g_dispatcher.thread;
 }
 
 /* =============================================================================

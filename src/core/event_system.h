@@ -112,6 +112,12 @@ extern "C" {
 /** 动态数据来自 slab 池（与 EVENT_FLAG_DATA_DYNAMIC 配合使用） */
 #define EVENT_FLAG_DATA_FROM_SLAB 0x08U
 
+/** 数据 slab 大小标记（CRIT-NEW-1：记录实际分配来源，避免级联 fallback 释放时配对错误） */
+#define EVENT_FLAG_SLAB_256       0x10U  /**< 数据来自 256B slab */
+#define EVENT_FLAG_SLAB_1K        0x20U  /**< 数据来自 1KB slab */
+#define EVENT_FLAG_SLAB_4K        0x40U  /**< 数据来自 4KB slab */
+#define EVENT_FLAG_SLAB_MASK      0x70U  /**< slab 标记位掩码 (bits 4-6) */
+
 /* =============================================================================
  * 类型定义 (Type Definitions)
  * ============================================================================= */

@@ -165,10 +165,6 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
 #endif
 
     /* 数据过大，需要使用 k_malloc */
-#if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
-    atomic_inc(&g_fallback_count);
-#endif
-
     return NULL;
 }
 
@@ -198,6 +194,19 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
 #endif
 
     return NULL;
+}
+
+/* =============================================================================
+ * 回退计数 API (Fallback Count API)
+ * ============================================================================= */
+
+void event_memory_inc_fallback_count(void)
+{
+#if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
+    atomic_inc(&g_fallback_count);
+#else
+    /* 无统计功能，空操作 */
+#endif
 }
 
 /* =============================================================================

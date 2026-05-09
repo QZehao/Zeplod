@@ -186,6 +186,15 @@ event_status_t event_dispatcher_resume(void);
  */
 dispatcher_state_t event_dispatcher_get_state(void);
 
+/**
+ * @brief 检查当前线程是否为分发器线程
+ *
+ * @return true 当前线程是分发器线程，false 不是或未初始化
+ *
+ * @note 用于避免从分发器线程内部调用 shutdown 等危险操作
+ */
+bool event_dispatcher_is_current_thread(void);
+
 /* =============================================================================
  * 事件处理 API (Event Processing API)
  * ============================================================================= */

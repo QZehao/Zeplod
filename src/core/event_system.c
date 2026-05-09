@@ -112,7 +112,7 @@ void event_system_inc_dropped_count(void) {
 }
 
 /* =============================================================================
- * 前置声明 (Forward Declarations)
+ * 前置声明与内部辅助 (Forward Declarations & Internal Helpers)
  * ============================================================================= */
 
 /**
@@ -122,6 +122,57 @@ void event_system_inc_dropped_count(void) {
  * @return 指向订阅者条目的指针，未找到返回 NULL
  */
 static subscriber_entry_t* find_subscriber(event_type_entry_t* entry, uint32_t subscriber_id);
+
+/**
+ * @brief CRIT-NEW-1: 在 event flags 中记录实际使用的数据 slab 索引
+ *
+ * 级联 fallback 可能导致数据被分配到比 data_len 对应更大的 slab 池中。
+ * 释放时必须使用实际分配的 slab，否则会造成内存损坏。
+ */
+static inline void event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+#if EVENT_SLAB_256_AVAILABLE
+    if (slab == &event_slab_data_256) {
+        event->flags |= EVENT_FLAG_SLAB_256;
+        return;
+    }
+#endif
+#if EVENT_SLAB_1K_AVAILABLE
+    if (slab == &event_slab_data_1k) {
+        event->flags |= EVENT_FLAG_SLAB_1K;
+        return;
+    }
+#endif
+#if EVENT_SLAB_4K_AVAILABLE
+    if (slab == &event_slab_data_4k) {
+        event->flags |= EVENT_FLAG_SLAB_4K;
+        return;
+    }
+#endif
+#else
+    ARG_UNUSED(slab);
+#endif
+}
+
+/**
+ * @brief HIGH-NEW-4: 检查订阅者 ID 是否已被使用
+ *
+ * 无锁扫描所有事件类型的订阅者表。读取时可能与其他线程的
+ * subscribe/unsubscribe 发生竞态，但最坏结果只是多一次重试循环，
+ * 不会导致错误分配。
+ */
+static bool subscriber_id_in_use(uint32_t id) {
+    for (int t = 0; t < MAX_EVENT_TYPES; t++) {
+        event_type_entry_t* entry = &g_event_system.event_types[t];
+        for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
+            if (entry->subscribers[i].is_active &&
+                entry->subscribers[i].subscriber_id == id) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 /* =============================================================================
  * 核心实现 (Core Implementation)
@@ -244,6 +295,15 @@ event_status_t event_system_stop(void) {
  */
 event_status_t event_system_shutdown(void) {
     EVENT_SYSTEM_VALIDATE();
+
+    /* HIGH-NEW-2: 禁止从分发器线程内部调用 shutdown。
+     * dispatcher 线程调用 stop 时会跳过自 join，导致 shutdown 继续释放队列资源
+     * 而线程仍在运行，引发 use-after-free。 */
+    if (event_dispatcher_is_current_thread()) {
+        LOG_ERR("Cannot shutdown event system from dispatcher thread");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     LOG_INF("Shutting down event system...");
 
     /* SIL-2: 使用 g_init_lock 防止与 init/shutdown 并发执行（NEW-1）。
@@ -437,12 +497,21 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             entry->subscribers[i].callback = callback;
             entry->subscribers[i].user_data = user_data;
             /* SIL-2: 使用原子操作分配全局唯一的订阅者 ID，避免跨类型竞态。
-             * HIGH-NEW-1: 使用 do-while 跳过 EVENT_SUBSCRIBER_ID_INVALID(0)，
-             * 防止计数器回绕后重新使用已被占用的 ID。 */
+             * HIGH-NEW-4: do-while 同时跳过 0 和已存在的 ID，防止计数器回绕后
+             * 与长期未取消的订阅者发生真实碰撞。 */
             uint32_t new_id;
+            uint32_t attempts = 0;
             do {
                 new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
-            } while (new_id == EVENT_SUBSCRIBER_ID_INVALID);
+                if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
+                    continue;
+                }
+                if (++attempts > UINT16_MAX) {
+                    LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
+                    k_mutex_unlock(&entry->lock);
+                    return EVENT_ERR_NO_MEM;
+                }
+            } while (subscriber_id_in_use(new_id));
             entry->subscribers[i].subscriber_id = new_id;
             entry->subscribers[i].is_active = true;
             entry->subscriber_count++;
@@ -710,6 +779,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
         memcpy(event->data.ptr, data, data_len);
         event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+        event_set_slab_marker(event, data_slab);
         return event;
     }
     /* 首选 slab 已满或不可用，尝试级联 fallback */
@@ -717,6 +787,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
         memcpy(event->data.ptr, data, data_len);
         event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+        event_set_slab_marker(event, data_slab);
         return event;
     }
     event_free(event);
@@ -862,6 +933,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
                 memcpy(event->data.ptr, data, data_len);
                 event->data_len = (uint32_t) data_len;
                 event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+                event_set_slab_marker(event, data_slab);
                 return event;
             }
             /* 首选 slab 已满，尝试级联 fallback */
@@ -871,6 +943,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
                 memcpy(event->data.ptr, data, data_len);
                 event->data_len = (uint32_t) data_len;
                 event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+                event_set_slab_marker(event, fallback_slab);
                 return event;
             }
             /* slab 全满，回退到 k_malloc */
@@ -889,6 +962,9 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
         k_free(event);
         return NULL;
     }
+
+    /* LOW-NEW-9: 记录真实回退到 k_malloc 的次数 */
+    event_memory_inc_fallback_count();
 
     event->type = type;
     event->priority = priority;
@@ -922,7 +998,24 @@ void event_free_data(event_t* event) {
     if ((event->flags & EVENT_FLAG_DATA_DYNAMIC) && event->data.ptr != NULL) {
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
         if (event->flags & EVENT_FLAG_DATA_FROM_SLAB) {
-            struct k_mem_slab* slab = event_memory_select_data_slab(event->data_len);
+            /* CRIT-NEW-1: 使用 flags 中记录的 slab 标记，而非按 data_len 重新选择。
+             * 级联 fallback 可能导致数据实际来自比最优更大的 slab 池。 */
+            struct k_mem_slab* slab = NULL;
+            switch (event->flags & EVENT_FLAG_SLAB_MASK) {
+#if EVENT_SLAB_256_AVAILABLE
+                case EVENT_FLAG_SLAB_256: slab = &event_slab_data_256; break;
+#endif
+#if EVENT_SLAB_1K_AVAILABLE
+                case EVENT_FLAG_SLAB_1K:  slab = &event_slab_data_1k;  break;
+#endif
+#if EVENT_SLAB_4K_AVAILABLE
+                case EVENT_FLAG_SLAB_4K:  slab = &event_slab_data_4k;  break;
+#endif
+                default:
+                    LOG_ERR("Unknown slab marker for ptr %p (flags=0x%02x)",
+                            event->data.ptr, event->flags);
+                    break;
+            }
             if (slab != NULL) {
                 k_mem_slab_free(slab, event->data.ptr);
             }
@@ -932,7 +1025,7 @@ void event_free_data(event_t* event) {
             k_free(event->data.ptr);
         }
         event->data.ptr = NULL;
-        event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB);
+        event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
     }
 }
 
@@ -1034,10 +1127,17 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
 
     k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
 
+    /* HIGH-NEW-3: 在锁内重检 initialized 状态，防止 shutdown 在窗口期内
+     * 释放队列后仍访问 g_event_system.event_queue。 */
+    if (!g_event_system.initialized) {
+        k_mutex_unlock(&g_event_system.stats_lock);
+        return;
+    }
+
     if (total_events != NULL) {
         *total_events = g_event_system.total_events;
     }
-    if (queue_depth != NULL) {
+    if (queue_depth != NULL && g_event_system.event_queue != NULL) {
         *queue_depth = k_msgq_num_used_get(g_event_system.event_queue);
     }
     if (dropped_events != NULL) {

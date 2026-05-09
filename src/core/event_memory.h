@@ -178,6 +178,14 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len);
  */
 struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len);
 
+/**
+ * @brief 记录一次回退到 k_malloc 的计数
+ *
+ * LOW-NEW-9: 在 event_create_with_data 等函数实际回退到 k_malloc 时调用，
+ * 使 fallback_count 统计反映真实的 k_malloc 使用次数。
+ */
+void event_memory_inc_fallback_count(void);
+
 /* =============================================================================
  * 运行时状态 API (Runtime Status API)
  * 条件编译：CONFIG_EVENT_RUNTIME_STATUS

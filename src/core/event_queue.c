@@ -326,6 +326,21 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         return EVENT_ERR_INVALID_ARG;
     }
 
+    /* CRIT-NEW-2: ISR 路径不能持有互斥锁。
+     * event_queue_find_cb 内部使用 k_mutex_lock，在 ISR 中会触发内核断言。
+     * ISR 路径直接调用 k_msgq_put（Zephyr 原生支持），跳过 cb 统计。
+     * 统计丢失可接受，安全优先。 */
+    if (k_is_in_isr()) {
+        int ret = k_msgq_put(queue, event, K_NO_WAIT);
+        if (ret == 0) {
+            return EVENT_OK;
+        }
+        if (ret == -ENOMSG) {
+            return EVENT_ERR_QUEUE_FULL;
+        }
+        return EVENT_ERR_TIMEOUT;
+    }
+
     event_queue_cb_t* cb = event_queue_find_cb(queue);
     if (cb == NULL) {
         return EVENT_ERR_INVALID_ARG;
