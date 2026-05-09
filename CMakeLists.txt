@@ -252,70 +252,51 @@ if(CONFIG_MODULE_MANAGER)
     )
 endif()
 
+# Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
+if(CONFIG_THREAD_IPC_SERVICE)
+    add_subdirectory(src/modules/ipc_service)
+endif()
+
 # Example modules (conditionally compiled)
 if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
     target_sources(app PRIVATE
-        src/modules/example_module_a.c
-        src/modules/example_module_a.h
+        src/modules_examples/example_module_a.c
+        src/modules_examples/example_module_a.h
     )
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_B_ENABLE)
     target_sources(app PRIVATE
-        src/modules/example_module_b.c
-        src/modules/example_module_b.h
-    )
-endif()
-
-# Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
-if(CONFIG_THREAD_IPC_SERVICE)
-    target_sources(app PRIVATE
-        src/modules/ipc_service/ipc_service.c
-        src/modules/ipc_service/ipc_service.h
-    )
-    target_include_directories(app PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/modules/ipc_service
-    )
-endif()
-
-if(CONFIG_THREAD_IPC_SERVICE_EXAMPLE)
-    target_sources(app PRIVATE
-        src/modules/ipc_service/ipc_service_example.c
-    )
-endif()
-
-if(CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE)
-    target_sources(app PRIVATE
-        src/modules/ipc_service/ipc_service_event.c
-        src/modules/ipc_service/ipc_service_event.h
+        src/modules_examples/example_module_b.c
+        src/modules_examples/example_module_b.h
     )
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
     target_sources(app PRIVATE
-        src/modules/example_module_ipc.c
-        src/modules/example_module_ipc.h
+        src/modules_examples/example_module_ipc.c
+        src/modules_examples/example_module_ipc.h
     )
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
     target_sources(app PRIVATE
-        src/modules/example_module_multi_dep.c
-        src/modules/example_module_multi_dep.h
+        src/modules_examples/example_module_multi_dep.c
+        src/modules_examples/example_module_multi_dep.h
     )
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_GPIO)
     target_sources(app PRIVATE
-        src/modules/example_module_gpio.c
-        src/modules/example_module_gpio.h
+        src/modules_examples/example_module_gpio.c
+        src/modules_examples/example_module_gpio.h
     )
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_UART)
     target_sources(app PRIVATE
-        src/modules/example_module_uart.c
-        src/modules/example_module_uart.h
+        src/modules_examples/example_module_uart.c
+        src/modules_examples/example_module_uart.h
     )
 endif()
 
@@ -458,6 +439,7 @@ target_include_directories(app PRIVATE
     ${CMAKE_SOURCE_DIR}/src/services
     ${CMAKE_SOURCE_DIR}/src/app
     ${CMAKE_SOURCE_DIR}/src/modules
+    ${CMAKE_SOURCE_DIR}/src/modules_examples
 )
 
 # =============================================================================
