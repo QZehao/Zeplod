@@ -238,12 +238,14 @@ event_status_t event_dispatcher_stop(void) {
         if (jret != 0) {
             LOG_ERR("Dispatcher thread join timeout/failed: %d (timeout=%u ms)", jret,
                     EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS);
-        } else {
-            LOG_INF("Dispatcher thread joined successfully");
+            /* SIL-2: join 失败时线程可能仍在运行，不清理 thread_started，
+             * 防止后续调用 start() 创建第二个线程导致竞态和数据损坏 */
+            return EVENT_ERR_TIMEOUT;
         }
+        LOG_INF("Dispatcher thread joined successfully");
     }
 
-    /* SIL-2: 无论 join 成功与否，都清理状态 */
+    /* SIL-2: join 成功后清理状态 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     g_dispatcher.thread_started = false;
     k_mutex_unlock(&g_dispatcher.lock);
@@ -373,9 +375,8 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     /* 应用过滤器（如果已设置） */
     if (filter != NULL) {
         if (!filter(&event, filter_user_data)) {
-            if ((event.flags & EVENT_FLAG_DATA_DYNAMIC) && event.data.ptr != NULL) {
-                k_free(event.data.ptr);
-            }
+            /* SIL-2: 使用统一接口释放动态数据，正确处理 slab 来源 */
+            event_free_data(&event);
             /* SIL-2: 使用之前捕获的 enable_stats，避免数据竞争 */
             if (enable_stats) {
                 k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
@@ -388,10 +389,8 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
 
     process_event(&event);
 
-    /* 释放动态数据 */
-    if ((event.flags & EVENT_FLAG_DATA_DYNAMIC) && event.data.ptr != NULL) {
-        k_free(event.data.ptr);
-    }
+    /* SIL-2: 使用统一接口释放动态数据，正确处理 slab 来源 */
+    event_free_data(&event);
 
     return EVENT_OK;
 }
@@ -518,9 +517,10 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
         /* SIL-2: 批量处理事件，max_events_per_cycle 限制防止单轮处理时间过长 */
         uint32_t processed = event_dispatcher_process_all(max_events);
 
-        /* SIL-2: 若本周期未处理任何事件，短暂休眠以释放 CPU 并等待新事件 */
+        /* SIL-2: 若本周期未处理任何事件，使用有限超时阻塞等待新事件，
+         * 减少轮询开销同时保留停止响应能力（K_FOREVER 无法响应 STOPPED） */
         if (processed == 0) {
-            k_msleep(1);
+            event_dispatcher_process_one(K_MSEC(10));
         }
     }
 
@@ -573,15 +573,13 @@ static void process_event(const event_t* event) {
             g_dispatcher.stats.max_latency_us = latency_us;
         }
 
-        /* SIL-2: 安全的运行平均延迟计算，避免除零 */
-        if (g_dispatcher.stats.events_processed > 0) {
-            /* 使用增量平均算法避免大数溢出 */
-            uint64_t total =
-                (uint64_t) g_dispatcher.stats.avg_latency_us * (g_dispatcher.stats.events_processed - 1) + latency_us;
-            g_dispatcher.stats.avg_latency_us = (uint32_t) (total / g_dispatcher.stats.events_processed);
-        } else {
-            /* 不应该到达这里，但防御性编程 */
+        /* SIL-2: 指数移动平均 (EMA) 计算延迟，alpha = 1/8。
+         * 相比算术平均，EMA 对早期异常值不敏感，响应更快，无需 64 位乘法。 */
+        if (g_dispatcher.stats.events_processed == 1) {
             g_dispatcher.stats.avg_latency_us = latency_us;
+        } else {
+            g_dispatcher.stats.avg_latency_us =
+                (g_dispatcher.stats.avg_latency_us * 7 + latency_us) / 8;
         }
 
         k_mutex_unlock(&g_dispatcher.lock);

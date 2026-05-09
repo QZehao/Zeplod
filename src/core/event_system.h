@@ -106,6 +106,9 @@ extern "C" {
 /** event_t 来自 slab 池 */
 #define EVENT_FLAG_FROM_SLAB     0x04U
 
+/** 动态数据来自 slab 池（与 EVENT_FLAG_DATA_DYNAMIC 配合使用） */
+#define EVENT_FLAG_DATA_FROM_SLAB 0x08U
+
 /* =============================================================================
  * 类型定义 (Type Definitions)
  * ============================================================================= */
@@ -530,6 +533,20 @@ event_t* event_create(event_type_t type, event_priority_t priority);
  * @note 返回的事件必须用 event_free() 释放
  */
 event_t* event_create_with_data(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
+
+/**
+ * @brief 释放事件的动态数据
+ *
+ * 释放事件中的动态分配数据，不释放事件对象本身。
+ * 正确处理来自 slab 池和 k_malloc 的数据。
+ *
+ * @param event 要释放数据的事件指针
+ *
+ * @note 如果 event->flags 包含 EVENT_FLAG_DATA_FROM_SLAB，使用 k_mem_slab_free 释放
+ * @note 如果 event->flags 仅包含 EVENT_FLAG_DATA_DYNAMIC，使用 k_free 释放
+ * @note 传入 NULL 是安全的
+ */
+void event_free_data(event_t* event);
 
 /**
  * @brief 释放事件对象

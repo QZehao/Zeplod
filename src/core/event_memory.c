@@ -263,8 +263,14 @@ static debug_track_entry_t* g_debug_track_head = NULL;
 /** 调试跟踪链表锁 */
 static struct k_mutex g_debug_track_lock;
 
+/** 调试跟踪池大小（可配置） */
+#ifndef CONFIG_EVENT_DEBUG_TRACK_COUNT
+#define CONFIG_EVENT_DEBUG_TRACK_COUNT 64
+#endif
+
 /** 调试跟踪池 */
-K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t), 64, 4);
+K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t),
+                  CONFIG_EVENT_DEBUG_TRACK_COUNT, 4);
 
 /** 调试模块是否已初始化 */
 static bool g_debug_initialized = false;

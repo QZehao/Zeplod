@@ -106,6 +106,11 @@ int event_compat_shutdown(void) {
     }
     return 0;
 #else
+    int ret = event_system_shutdown();
+    if (ret != EVENT_OK) {
+        LOG_ERR("Failed to shutdown event_system: %d", ret);
+        return -1;
+    }
     return 0;
 #endif
 }

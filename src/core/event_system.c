@@ -213,29 +213,31 @@ event_status_t event_system_shutdown(void) {
         return EVENT_OK;
     }
 
-    /* 停止事件系统（停止会清空队列）*/
+    /* SIL-2: 先停止运行状态，防止新事件入队 */
     atomic_set(&g_event_system.running, 0);
 
-    /* 清理所有事件类型和订阅
-     * 注意：event_type_t 是 uint8_t，需要用 int 避免溢出死循环 */
+    /* SIL-2: 清空队列并释放动态负载，防止内存泄漏 */
+    purge_event_queue_and_free_payload(g_event_system.event_queue);
+
+    /* SIL-2: 无条件清理所有事件类型条目（不以 name!=NULL 为条件），
+     * 避免 name 异常为 NULL 时订阅者数组不被清理 */
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
-
-        /* 只有在名称不为 NULL 时才加锁清理 */
-        if (entry->name != NULL) {
-            k_mutex_lock(&entry->lock, K_FOREVER);
-            entry->name = NULL;
-            entry->subscriber_count = 0;
-            memset(entry->subscribers, 0, sizeof(entry->subscribers));
-            k_mutex_unlock(&entry->lock);
-        }
+        k_mutex_lock(&entry->lock, K_FOREVER);
+        entry->name = NULL;
+        entry->subscriber_count = 0;
+        memset(entry->subscribers, 0, sizeof(entry->subscribers));
+        k_mutex_unlock(&entry->lock);
     }
 
-    /* 重置控制块 */
+    /* SIL-2: 重置消息队列 */
+    k_msgq_purge(&g_event_msgq);
+
+    /* SIL-2: 重置控制块 */
     g_event_system.initialized = false;
     g_event_system.total_events = 0;
     g_event_system.next_subscriber_id = 1;
-    atomic_set(&g_event_system.running, 0);
+    g_event_system.event_queue = NULL;
 
     LOG_INF("Event system shutdown complete");
     return EVENT_OK;
@@ -618,6 +620,12 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return event_create_rt(type, priority);
     }
 
+    /* SIL-2: 统一数据长度验证，与 event_create_with_data 保持一致 */
+    if (data_len > 65535) {
+        LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+        return NULL;
+    }
+
     /* 大数据检查 slab 可用性 */
     if (data_len > CONFIG_EVENT_INLINE_DATA_SIZE) {
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
@@ -655,7 +663,8 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return NULL;
     }
     memcpy(event->data.ptr, data, data_len);
-    event->flags |= EVENT_FLAG_DATA_DYNAMIC;
+    /* SIL-2: 标记数据来自 slab，分发器消费时需使用 k_mem_slab_free 释放 */
+    event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
     return event;
 #else
     event_free(event);
@@ -801,6 +810,36 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
 }
 
 /**
+ * @brief 释放事件的动态数据
+ *
+ * SIL-2: 统一的数据释放接口，正确处理来自 slab 池和 k_malloc 的数据。
+ * 仅释放 data.ptr，不释放 event_t 本身。
+ *
+ * @param event 要释放数据的事件
+ */
+void event_free_data(event_t* event) {
+    if (event == NULL) {
+        return;
+    }
+
+    if ((event->flags & EVENT_FLAG_DATA_DYNAMIC) && event->data.ptr != NULL) {
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+        if (event->flags & EVENT_FLAG_DATA_FROM_SLAB) {
+            struct k_mem_slab* slab = event_memory_select_data_slab(event->data_len);
+            if (slab != NULL) {
+                k_mem_slab_free(slab, event->data.ptr);
+            }
+        } else
+#endif
+        {
+            k_free(event->data.ptr);
+        }
+        event->data.ptr = NULL;
+        event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB);
+    }
+}
+
+/**
  * @brief 释放事件对象
  *
  * @param event 要释放的事件
@@ -810,12 +849,8 @@ void event_free(event_t* event) {
         return;
     }
 
-    /* 释放动态数据 - SIL-2: 增加空指针检查防止悬垂指针 */
-    if ((event->flags & EVENT_FLAG_DATA_DYNAMIC) && event->data.ptr != NULL) {
-        k_free(event->data.ptr);
-        event->data.ptr = NULL;
-        event->flags &= ~EVENT_FLAG_DATA_DYNAMIC;
-    }
+    /* SIL-2: 使用统一接口释放动态数据 */
+    event_free_data(event);
 
     /* 释放 event_t */
     if (event->flags & EVENT_FLAG_FROM_SLAB) {
@@ -999,8 +1034,32 @@ static void purge_event_queue_and_free_payload(struct k_msgq* queue) {
     event_t ev;
 
     while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
-        if (ev.flags & EVENT_FLAG_DATA_DYNAMIC) {
-            k_free(ev.data.ptr);
-        }
+        event_free_data(&ev);
     }
 }
+
+/* =============================================================================
+ * 自动初始化 (Auto-initialization)
+ * ============================================================================= */
+
+#include <zephyr/init.h>
+#include "app_config.h"
+
+/**
+ * @brief 事件系统自动初始化入口
+ *
+ * SIL-2: 标准版独立 SYS_INIT，解除对兼容层的初始化依赖。
+ * 与 event_system_compat.c 中的 event_compat_auto_init 共存时，
+ * event_system_init() 的幂等性保证多次调用安全。
+ */
+static int event_system_auto_init(void) {
+    event_status_t ret = event_system_init();
+    if (ret != EVENT_OK) {
+        LOG_ERR("event_system_init failed: %d", ret);
+        return -EIO;
+    }
+    LOG_INF("Event system auto-initialized");
+    return 0;
+}
+
+SYS_INIT(event_system_auto_init, POST_KERNEL, APP_INIT_PRIO_EVENT_SYS);
