@@ -15,6 +15,8 @@
 
 #include "event_memory.h"
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(event_memory, CONFIG_SYS_LOG_LEVEL);
 
@@ -118,6 +120,8 @@ static inline void notify_slab_exhausted(event_priority_t priority, const char* 
  * 内部分配函数实现 (Internal Allocation Functions Implementation)
  * ============================================================================= */
 
+#if EVENT_SLAB_ENABLED
+
 struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority)
 {
     switch (priority) {
@@ -196,6 +200,32 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
     return NULL;
 }
 
+#else /* !EVENT_SLAB_ENABLED */
+
+struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority)
+{
+    ARG_UNUSED(priority);
+    return NULL;
+}
+
+struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
+{
+    if (data_len == 0) {
+        return NULL;
+    }
+    return NULL;
+}
+
+struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
+{
+    if (data_len == 0) {
+        return NULL;
+    }
+    return NULL;
+}
+
+#endif /* EVENT_SLAB_ENABLED */
+
 /* =============================================================================
  * 回退计数 API (Fallback Count API)
  * ============================================================================= */
@@ -247,6 +277,8 @@ void event_get_slab_stats(event_slab_stats_t* stats)
     /* 清零结构体 */
     memset(stats, 0, sizeof(event_slab_stats_t));
 
+#if EVENT_SLAB_ENABLED
+
 #if EVENT_SLAB_CRITICAL_AVAILABLE
     stats->critical_used = k_mem_slab_num_used_get(&event_slab_critical);
     stats->critical_total = CONFIG_EVENT_SLAB_CRITICAL_COUNT;
@@ -274,6 +306,8 @@ void event_get_slab_stats(event_slab_stats_t* stats)
     stats->data_4k_used = k_mem_slab_num_used_get(&event_slab_data_4k);
     stats->data_4k_total = CONFIG_EVENT_SLAB_LARGE_4K_COUNT;
 #endif
+
+#endif /* EVENT_SLAB_ENABLED */
 
     stats->fallback_count = atomic_get(&g_fallback_count);
 }

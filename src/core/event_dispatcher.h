@@ -257,9 +257,14 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats);
 void event_dispatcher_reset_stats(void);
 
 /**
- * @brief 获取当前事件延迟
+ * @brief 获取距上次事件处理完成后的空闲时间（微秒）
  *
- * @return 延迟时间（微秒）
+ * 实现语义为「自上一次 process_event 结束以来经过的时间」，不是
+ * 单条事件从创建到分发的排队延迟；后者应使用 event->timestamp 等字段。
+ *
+ * @return 空闲时间（微秒），与 dispatcher_stats 中基于处理耗时的延迟统计含义不同
+ *
+ * @note 保留 API 名称 event_dispatcher_get_current_latency 以保持向后兼容
  */
 uint32_t event_dispatcher_get_current_latency(void);
 

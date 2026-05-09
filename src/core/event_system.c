@@ -42,9 +42,15 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** 魔术字，用于验证控制块有效性 ("EVNT") */
 #define EVENT_SYSTEM_MAGIC 0x45564E54
 
-/** SIL-2: 验证事件系统魔术字，检测内存损坏（返回 event_status_t 版本） */
+/** 未初始化或已完成 shutdown（与 BSS 初值一致），非损坏状态 */
+#define EVENT_SYSTEM_MAGIC_IDLE 0U
+
+/** SIL-2: 验证事件系统魔术字（返回 event_status_t 版本） */
 #define EVENT_SYSTEM_VALIDATE() \
     do { \
+        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) { \
+            return EVENT_ERR_INVALID_ARG; \
+        } \
         if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
             LOG_ERR("Event system magic corruption detected: 0x%08x", \
                     g_event_system.magic); \
@@ -55,9 +61,36 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** SIL-2: 验证事件系统魔术字（返回 void 版本） */
 #define EVENT_SYSTEM_VALIDATE_VOID() \
     do { \
+        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) { \
+            return; \
+        } \
         if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
             LOG_ERR("Event system magic corruption detected: 0x%08x", \
                     g_event_system.magic); \
+            return; \
+        } \
+    } while (0)
+
+/** 分配类 API：空闲态静默失败，非法 magic 记录损坏 */
+#define EVENT_SYSTEM_CHECK_MAGIC_ALLOC() \
+    do { \
+        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) { \
+            return NULL; \
+        } \
+        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
+            LOG_ERR("Event system magic corruption detected"); \
+            return NULL; \
+        } \
+    } while (0)
+
+/** 释放类 API：空闲态静默返回 */
+#define EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID() \
+    do { \
+        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) { \
+            return; \
+        } \
+        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) { \
+            LOG_ERR("Event system magic corruption detected"); \
             return; \
         } \
     } while (0)
@@ -103,6 +136,18 @@ static char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)] __ali
  * 使用 Zephyr atomic_t 避免在 event_publish_from_isr 中使用互斥锁
  */
 static atomic_t g_event_dropped_count;
+
+/**
+ * 正在执行 event_publish / event_publish_from_isr 入队路径的调用数（ISR 安全）。
+ * stop/shutdown 在 purge/deinit 前等待其归零，避免 running 检查后仍向队列投递。
+ */
+static atomic_t g_publish_in_flight;
+
+static void event_publish_in_flight_wait_zero(void) {
+    while (atomic_get(&g_publish_in_flight) != 0) {
+        k_yield();
+    }
+}
 
 /**
  * @brief 增加全局丢弃计数器（内部接口，供 event_queue.c 调用）
@@ -209,6 +254,7 @@ event_status_t event_system_init(void) {
     /* 初始化控制块 */
     memset(&g_event_system, 0, sizeof(g_event_system));
     g_event_system.magic = EVENT_SYSTEM_MAGIC;
+    atomic_set(&g_publish_in_flight, 0);
 
     /* 初始化互斥锁 */
     k_mutex_init(&g_event_system.stats_lock);
@@ -280,6 +326,9 @@ event_status_t event_system_stop(void) {
 
     atomic_set(&g_event_system.running, 0);
 
+    /* 等待进行中的 publish 完成后再 purge，避免 stop 返回后仍有事件入队 */
+    event_publish_in_flight_wait_zero();
+
     event_queue_purge(g_event_system.event_queue);
 
     LOG_INF("Event system stopped");
@@ -323,6 +372,9 @@ event_status_t event_system_shutdown(void) {
     /* SIL-2: 先停止运行状态，防止新事件入队 */
     atomic_set(&g_event_system.running, 0);
 
+    /* 等待进行中的 publish 完成后再停 dispatcher / deinit 队列 */
+    event_publish_in_flight_wait_zero();
+
     /* SIL-2: 主动停止 dispatcher 而非仅做防御性检查（HIGH-1）。
      * event_dispatcher_stop 内部 join 线程，返回后线程已退出，
      * 之后释放队列资源不会与悬挂线程产生竞态。 */
@@ -358,6 +410,8 @@ event_status_t event_system_shutdown(void) {
     g_event_system.total_events = 0;
     atomic_set(&g_event_system.next_subscriber_id, 1);
     g_event_system.event_queue = NULL;
+    /* 与未初始化态一致，避免将 shutdown 误判为 magic 损坏 */
+    g_event_system.magic = EVENT_SYSTEM_MAGIC_IDLE;
 
     atomic_clear_bit(&g_init_lock, 0);
     LOG_INF("Event system shutdown complete");
@@ -625,20 +679,33 @@ event_status_t event_publish(const event_t* event) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    (void) atomic_inc(&g_publish_in_flight);
+
     if (atomic_get(&g_event_system.running) == 0) {
+        atomic_dec(&g_publish_in_flight);
         LOG_WRN("Event system not running, event dropped");
         return EVENT_ERR_NOT_RUNNING;
+    }
+
+    if (event->type >= MAX_EVENT_TYPES) {
+        atomic_dec(&g_publish_in_flight);
+        LOG_WRN("Invalid event type id %u (max %d)", (unsigned int) event->type, MAX_EVENT_TYPES);
+        return EVENT_ERR_INVALID_ARG;
     }
 
     /* SIL-2: 拒绝向未注册类型发布事件，避免占用队列槽位（MED-1）。
      * name 读取无锁，与 unregister 的最坏情况是少量边缘事件仍允许入队，
      * 分发时 notify_subscribers 返回 NO_SUBSCRIBER，不会泄漏事件数据。 */
     if (g_event_system.event_types[event->type].name == NULL) {
+        atomic_dec(&g_publish_in_flight);
         LOG_WRN("Publishing to unregistered event type: %d", event->type);
         return EVENT_ERR_NOT_FOUND;
     }
 
-    return event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    event_status_t st =
+        event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    atomic_dec(&g_publish_in_flight);
+    return st;
 }
 
 /**
@@ -653,17 +720,29 @@ event_status_t event_publish_from_isr(const event_t* event) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    (void) atomic_inc(&g_publish_in_flight);
+
     if (atomic_get(&g_event_system.running) == 0) {
+        atomic_dec(&g_publish_in_flight);
         return EVENT_ERR_NOT_RUNNING;
+    }
+
+    if (event->type >= MAX_EVENT_TYPES) {
+        atomic_dec(&g_publish_in_flight);
+        return EVENT_ERR_INVALID_ARG;
     }
 
     /* SIL-2: 拒绝向未注册类型发布事件（MED-1，ISR 路径同步处理）。
      * ISR 中不打印日志，但仍返回错误使调用方可感知；name 无锁读取的考量同非 ISR 路径。 */
     if (g_event_system.event_types[event->type].name == NULL) {
+        atomic_dec(&g_publish_in_flight);
         return EVENT_ERR_NOT_FOUND;
     }
 
-    return event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    event_status_t st =
+        event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    atomic_dec(&g_publish_in_flight);
+    return st;
 }
 
 /**
@@ -705,10 +784,7 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_rt(event_type_t type, event_priority_t priority) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return NULL;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_ALLOC();
     event_t* event = NULL;
 
 #if EVENT_SLAB_ENABLED
@@ -748,10 +824,7 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return NULL;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_ALLOC();
     if (data == NULL || data_len == 0) {
         return event_create_rt(type, priority);
     }
@@ -843,6 +916,9 @@ event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priorit
  */
 event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
                                 const void* data, size_t data_len) {
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+        return NULL;
+    }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         return NULL;
     }
@@ -861,10 +937,7 @@ event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create(event_type_t type, event_priority_t priority) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return NULL;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_ALLOC();
     /* 优先尝试实时安全路径 */
     event_t* event = event_create_rt(type, priority);
     if (event != NULL) {
@@ -900,10 +973,7 @@ event_t* event_create(event_type_t type, event_priority_t priority) {
  * @return 指向新事件的指针，失败返回 NULL
  */
 event_t* event_create_with_data(event_type_t type, event_priority_t priority, const void* data, size_t data_len) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return NULL;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_ALLOC();
     if (data == NULL || data_len == 0) {
         return event_create(type, priority);
     }
@@ -990,10 +1060,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
  * @param event 要释放数据的事件
  */
 void event_free_data(event_t* event) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID();
     if (event == NULL) {
         return;
     }
@@ -1038,10 +1105,7 @@ void event_free_data(event_t* event) {
  * @param event 要释放的事件
  */
 void event_free(event_t* event) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected");
-        return;
-    }
+    EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID();
     if (event == NULL) {
         return;
     }
@@ -1080,6 +1144,9 @@ void event_free(event_t* event) {
  * @return 事件类型名称字符串
  */
 const char* event_get_type_name(event_type_t type) {
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+        return "UNKNOWN";
+    }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         return "CORRUPTED";
     }
@@ -1168,6 +1235,9 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
  * 由 event_system_compat.c 的 event_compat_reset_statistics() 调用。
  */
 void event_system_reset_statistics(void) {
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+        return;
+    }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         return;
     }
@@ -1199,6 +1269,9 @@ void event_system_reset_statistics(void) {
  *         EVENT_ERR_NO_SUBSCRIBER 无订阅者
  */
 event_status_t event_notify_subscribers(const event_t* event) {
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+        return EVENT_ERR_INVALID_ARG;
+    }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         LOG_ERR("Event system magic corruption detected");
         return EVENT_ERR_INVALID_ARG;

@@ -354,6 +354,7 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
             return EVENT_OK;
         }
         if (ret == -ENOMSG) {
+            event_system_inc_dropped_count();
             return EVENT_ERR_QUEUE_FULL;
         }
         return EVENT_ERR_TIMEOUT;

@@ -372,6 +372,9 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
  *
  * @note 取消订阅后，该订阅者不再接收此类型的事件
  * @note 如果订阅者 ID 不存在，返回 EVENT_ERR_NOT_FOUND
+ * @note 本函数立即从订阅表移除条目；若分发器线程已拍下回调快照，
+ *       仍可能在返回后短暂执行旧回调。请勿在返回后立即释放 user_data，
+ *       除非能证明无并发分发（例如已停止 dispatcher 或事件系统）。
  */
 event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id);
 
@@ -384,6 +387,7 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id);
  *
  * @note 用于模块卸载或清理时批量取消订阅
  * @note 此函数会锁定所有事件类型，可能耗时较长
+ * @note 与 event_unsubscribe 相同：不等待已拍下快照的回调执行完毕
  */
 void event_unsubscribe_all(uint32_t subscriber_id);
 
@@ -404,6 +408,7 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  * @note 如果队列已满，事件将被丢弃并返回 EVENT_ERR_QUEUE_FULL
  * @note event 指向的内容会被复制到队列，调用者可安全释放
  * @note 如果 event->flags 包含 EVENT_FLAG_DATA_DYNAMIC，调用者仍需负责释放 event->data.ptr
+ * @note event->type 必须小于 CONFIG_EVENT_MAX_TYPES，否则返回 EVENT_ERR_INVALID_ARG
  */
 event_status_t event_publish(const event_t* event);
 

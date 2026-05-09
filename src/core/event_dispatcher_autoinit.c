@@ -18,12 +18,15 @@
 #include <zephyr/logging/log.h>
 #include "app_config.h"
 #include "event_dispatcher.h"
+#include "event_system_compat.h"
 
 LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
  * SYS_INIT 自动初始化
  * ============================================================================= */
+
+#if !EVENT_COMPAT_USE_PRO
 
 static int event_dispatcher_auto_init(void) {
     /* 如果事件系统尚未初始化，先自初始化 */
@@ -60,3 +63,5 @@ static int event_dispatcher_auto_init(void) {
 }
 
 SYS_INIT(event_dispatcher_auto_init, POST_KERNEL, APP_INIT_PRIO_DISPATCHER);
+
+#endif /* !EVENT_COMPAT_USE_PRO */
