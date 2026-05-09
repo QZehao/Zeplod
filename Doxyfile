@@ -6,9 +6,9 @@
 # 项目设置
 # ===========================================================================
 
-PROJECT_NAME           = "Zephyr 事件驱动项目模板"
+PROJECT_NAME           = "Zephyr Framework"
 PROJECT_NUMBER         = "1.0.0"
-PROJECT_BRIEF          = "基于 Zephyr RTOS 的高性能事件驱动应用模板"
+PROJECT_BRIEF          = "Based on Zephyr RTOS, provides a high-performance event-driven application template"
 PROJECT_LOGO         = ""
 
 OUTPUT_DIRECTORY       = docs/api
