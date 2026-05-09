@@ -45,6 +45,12 @@ int event_compat_init(const event_compat_config_t* config) {
     LOG_INF("Event system PRO initialized");
     return 0;
 #else
+    /* SIL-2: 检测配置请求了专业版功能，但在标准版下被静默忽略 */
+    if (config != NULL && (config->enable_playback || config->enable_persist ||
+                           config->enable_profiling || config->enable_security ||
+                           config->enable_rate_limit || config->enable_batch)) {
+        LOG_WRN("Config requests pro features, falling back to standard implementation");
+    }
     event_status_t ret = event_system_init();
     if (ret != EVENT_OK) {
         LOG_ERR("Failed to init event_system: %d", ret);

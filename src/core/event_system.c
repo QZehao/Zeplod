@@ -27,6 +27,7 @@
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
 #include <stdatomic.h>
+#include "event_dispatcher.h"
 #include "event_memory.h"
 #include "event_queue.h"
 
@@ -62,7 +63,7 @@ typedef struct {
     event_type_entry_t event_types[MAX_EVENT_TYPES]; /**< 事件类型表 */
     uint32_t           total_events;                 /**< 已处理的事件总数 */
     struct k_mutex     stats_lock;                   /**< 保护统计信息的互斥锁 */
-    uint32_t           next_subscriber_id;           /**< 下一个可用的订阅者 ID */
+    atomic_t           next_subscriber_id;           /**< 下一个可用的订阅者 ID (原子操作保护) */
 } event_system_cb_t;
 
 /* =============================================================================
@@ -76,13 +77,20 @@ static event_system_cb_t g_event_system;
 static struct k_msgq g_event_msgq;
 
 /** 事件消息队列缓冲区 */
-static char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)];
+static char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)] __aligned(__alignof__(event_t));
 
 /**
  * ISR 安全的丢弃计数器
  * 使用 Zephyr atomic_t 避免在 event_publish_from_isr 中使用互斥锁
  */
 static atomic_t g_event_dropped_count;
+
+/**
+ * @brief 增加全局丢弃计数器（内部接口，供 event_queue.c 调用）
+ */
+void event_system_inc_dropped_count(void) {
+    atomic_inc(&g_event_dropped_count);
+}
 
 /* =============================================================================
  * 前置声明 (Forward Declarations)
@@ -152,7 +160,7 @@ event_status_t event_system_init(void) {
         return qret;
     }
 
-    g_event_system.next_subscriber_id = 1;
+    atomic_set(&g_event_system.next_subscriber_id, 1);
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
 
@@ -220,6 +228,12 @@ event_status_t event_system_shutdown(void) {
         return EVENT_OK;
     }
 
+    /* SIL-2: 防御性检查：分发器必须先停止，避免线程悬挂访问已释放资源 */
+    if (event_dispatcher_get_state() != DISPATCHER_STOPPED) {
+        LOG_ERR("Dispatcher must be stopped before event_system_shutdown");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     /* SIL-2: 先停止运行状态，防止新事件入队 */
     atomic_set(&g_event_system.running, 0);
 
@@ -243,7 +257,7 @@ event_status_t event_system_shutdown(void) {
     /* SIL-2: 重置控制块 */
     g_event_system.initialized = false;
     g_event_system.total_events = 0;
-    g_event_system.next_subscriber_id = 1;
+    atomic_set(&g_event_system.next_subscriber_id, 1);
     g_event_system.event_queue = NULL;
 
     LOG_INF("Event system shutdown complete");
@@ -277,6 +291,11 @@ event_status_t event_register_type(event_type_t type, const char* name) {
 
     if (type >= MAX_EVENT_TYPES) {
         LOG_ERR("Invalid event type: %d", type);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (name == NULL) {
+        LOG_ERR("event_register_type: name cannot be NULL");
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -377,19 +396,17 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
         if (!entry->subscribers[i].is_active) {
             entry->subscribers[i].callback = callback;
             entry->subscribers[i].user_data = user_data;
-            entry->subscribers[i].subscriber_id = g_event_system.next_subscriber_id;
+            /* SIL-2: 使用原子操作分配全局唯一的订阅者 ID，避免跨类型竞态 */
+            uint32_t new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
+            if (new_id == 0) {
+                new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
+            }
+            entry->subscribers[i].subscriber_id = new_id;
             entry->subscribers[i].is_active = true;
             entry->subscriber_count++;
 
             if (subscriber_id != NULL) {
-                *subscriber_id = entry->subscribers[i].subscriber_id;
-            }
-
-            /* SIL-2: 防止订阅者 ID 溢出 */
-            g_event_system.next_subscriber_id++;
-            if (g_event_system.next_subscriber_id == 0) {
-                g_event_system.next_subscriber_id = 1;
-                LOG_WRN("Subscriber ID wrapped around, resetting to 1");
+                *subscriber_id = new_id;
             }
 
             k_mutex_unlock(&entry->lock);
@@ -490,7 +507,7 @@ event_status_t event_publish(const event_t* event) {
 
     if (atomic_get(&g_event_system.running) == 0) {
         LOG_WRN("Event system not running, event dropped");
-        return EVENT_ERR_INVALID_ARG;
+        return EVENT_ERR_NOT_RUNNING;
     }
 
     /* 验证事件类型 */
@@ -570,7 +587,7 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
 
     event->flags = EVENT_FLAG_FROM_SLAB;
 #else
-    LOG_ERR("event_create_rt called but slab not enabled");
+    LOG_DBG("event_create_rt: slab not enabled, returning NULL");
     return NULL;
 #endif
 
@@ -756,7 +773,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
             if (k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
                 memcpy(event->data.ptr, data, data_len);
                 event->data_len = (uint32_t) data_len;
-                event->flags |= EVENT_FLAG_DATA_DYNAMIC;
+                event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
                 return event;
             }
             /* slab 满，继续回退 */

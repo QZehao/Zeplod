@@ -27,6 +27,9 @@
 
 LOG_MODULE_REGISTER(event_queue, CONFIG_SYS_LOG_LEVEL);
 
+/* 外部声明：来自 event_system.c 的全局丢弃计数器递增函数 */
+extern void event_system_inc_dropped_count(void);
+
 /* =============================================================================
  * 内部数据结构 (Internal Data Structures)
  * ============================================================================= */
@@ -135,7 +138,14 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
 
     for (uint32_t i = 0; i < n; i++) {
         if (k_msgq_get(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT) != 0) {
-            LOG_ERR("DROP_LOWEST drain failed at %u", i);
+            LOG_ERR("DROP_LOWEST drain failed at %u, restoring %u events", i, i);
+            /* SIL-2: 回灌已出队的事件，避免事件丢失和内存泄漏 */
+            for (uint32_t j = 0; j < i; j++) {
+                if (k_msgq_put(queue, &cb->drop_lowest_scratch[j], K_NO_WAIT) != 0) {
+                    /* 队列在我们持有 reorder_lock 时变满，理论不应发生 */
+                    event_free_queued_payload(&cb->drop_lowest_scratch[j]);
+                }
+            }
             k_mutex_unlock(&cb->reorder_lock);
             return EVENT_ERR_QUEUE_FULL;
         }
@@ -157,6 +167,7 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         k_mutex_lock(&cb->stats_lock, K_FOREVER);
         cb->stats.drop_count++;
         k_mutex_unlock(&cb->stats_lock);
+        event_system_inc_dropped_count();
         LOG_DBG("Queue full, incoming lower than worst queued; drop newest");
         return EVENT_ERR_QUEUE_FULL;
     }
@@ -166,6 +177,7 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
     k_mutex_lock(&cb->stats_lock, K_FOREVER);
     cb->stats.drop_count++;
     k_mutex_unlock(&cb->stats_lock);
+    event_system_inc_dropped_count();
 
     for (uint32_t i = 0; i < n; i++) {
         if (i != worst) {
@@ -255,6 +267,13 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
         return EVENT_ERR_INVALID_ARG;
     }
 
+    /* SIL-2: 检测重复初始化，避免重置可能正被持有的互斥锁 */
+    event_queue_cb_t* existing_cb = event_queue_find_cb(queue);
+    if (existing_cb != NULL) {
+        LOG_WRN("Queue already initialized, skipping");
+        return EVENT_OK;
+    }
+
     k_msgq_init(queue, buffer, sizeof(event_t), capacity);
 
     /* 初始化统计信息 */
@@ -327,6 +346,7 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         k_mutex_lock(&cb->stats_lock, K_FOREVER);
         cb->stats.overflow_count++;
         k_mutex_unlock(&cb->stats_lock);
+        event_system_inc_dropped_count();
     }
 
     /* 区分超时和队列满 */
@@ -475,12 +495,21 @@ void event_queue_purge(struct k_msgq* queue) {
     event_t           ev;
     uint32_t          purged = 0U;
 
+    /* SIL-2: 获取 reorder_lock，与 enqueue_drop_lowest 互斥，防止 drain-refill 窗口竞态 */
+    if (cb != NULL) {
+        k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    }
+
     while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
         event_free_queued_payload(&ev);
         purged++;
     }
     /* SIL-2: 不移除 k_msgq_purge；此时 k_msgq_get 循环已清空队列。
      * 若此处再调用 k_msgq_purge，两次操作之间新入队的事件的动态负载将无法释放。 */
+
+    if (cb != NULL) {
+        k_mutex_unlock(&cb->reorder_lock);
+    }
 
     if (cb != NULL && purged > 0U) {
         k_mutex_lock(&cb->stats_lock, K_FOREVER);

@@ -383,6 +383,15 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
         return EVENT_ERR_QUEUE_EMPTY;
     }
 
+    /* SIL-2: 阻塞期间状态可能已改变（如 stop() 被调用），重新检查 */
+    k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
+    state = g_dispatcher.state;
+    k_mutex_unlock(&g_dispatcher.lock);
+    if (state != DISPATCHER_RUNNING) {
+        event_free_data(&event);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     /* 应用过滤器（如果已设置） */
     if (filter != NULL) {
         if (!filter(&event, filter_user_data)) {
@@ -561,10 +570,11 @@ static void process_event(const event_t* event) {
     event_status_t status = event_notify_subscribers(event);
 
     uint64_t end_time = k_cycle_get_64();
-    /* SIL-2: 使用安全的除法计算延迟，避免溢出 */
+    /* SIL-2: 使用安全的除法计算延迟，避免溢出；防御极端情况下的 cycle counter 回绕 */
     uint32_t latency_us;
     if (sys_clock_hw_cycles_per_sec() != 0) {
-        latency_us = (uint32_t) ((end_time - start_time) * 1000000ULL / sys_clock_hw_cycles_per_sec());
+        uint64_t delta = (end_time >= start_time) ? (end_time - start_time) : 0;
+        latency_us = (uint32_t) (delta * 1000000ULL / sys_clock_hw_cycles_per_sec());
     } else {
         latency_us = 0;
         LOG_ERR("sys_clock_hw_cycles_per_sec() returned 0");

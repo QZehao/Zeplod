@@ -155,7 +155,8 @@ typedef enum {
     EVENT_ERR_INVALID_ARG = -4,   /**< 无效参数 */
     EVENT_ERR_NOT_FOUND = -5,     /**< 未找到 */
     EVENT_ERR_NO_SUBSCRIBER = -6, /**< 无订阅者 */
-    EVENT_ERR_TIMEOUT = -7        /**< 操作超时 */
+    EVENT_ERR_TIMEOUT = -7,       /**< 操作超时 */
+    EVENT_ERR_NOT_RUNNING = -8    /**< 事件系统未运行 */
 } event_status_t;
 
 /**

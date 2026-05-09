@@ -28,37 +28,37 @@ LOG_MODULE_REGISTER(event_memory, CONFIG_SYS_LOG_LEVEL);
 #if EVENT_SLAB_CRITICAL_AVAILABLE
 /** CRITICAL 优先级事件 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_critical, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_CRITICAL_COUNT, 4);
+                  CONFIG_EVENT_SLAB_CRITICAL_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_HIGH_AVAILABLE
 /** HIGH 优先级事件 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_high, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_HIGH_COUNT, 4);
+                  CONFIG_EVENT_SLAB_HIGH_COUNT, sizeof(void*));
 #endif
 
 /** NORMAL/LOW 优先级事件 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_normal, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_NORMAL_COUNT, 4);
+                  CONFIG_EVENT_SLAB_NORMAL_COUNT, sizeof(void*));
 
 #if EVENT_SLAB_LARGE_AVAILABLE
 
 #if EVENT_SLAB_256_AVAILABLE
 /** 256 字节数据块 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_data_256, 256,
-                  CONFIG_EVENT_SLAB_LARGE_256_COUNT, 4);
+                  CONFIG_EVENT_SLAB_LARGE_256_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_1K_AVAILABLE
 /** 1KB 数据块 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_data_1k, 1024,
-                  CONFIG_EVENT_SLAB_LARGE_1K_COUNT, 4);
+                  CONFIG_EVENT_SLAB_LARGE_1K_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_4K_AVAILABLE
 /** 4KB 数据块 Slab 池定义 */
 K_MEM_SLAB_DEFINE(event_slab_data_4k, 4096,
-                  CONFIG_EVENT_SLAB_LARGE_4K_COUNT, 4);
+                  CONFIG_EVENT_SLAB_LARGE_4K_COUNT, sizeof(void*));
 #endif
 
 #endif /* EVENT_SLAB_LARGE_AVAILABLE */
@@ -270,7 +270,7 @@ static struct k_mutex g_debug_track_lock;
 
 /** 调试跟踪池 */
 K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t),
-                  CONFIG_EVENT_DEBUG_TRACK_COUNT, 4);
+                  CONFIG_EVENT_DEBUG_TRACK_COUNT, sizeof(void*));
 
 /** 调试模块是否已初始化 */
 static bool g_debug_initialized = false;
