@@ -35,3 +35,23 @@ def test_ignores_external_urls(tmp_path: Path) -> None:
     )
     issues = lint_docs.check_md_links([tmp_path])
     assert not issues
+
+
+def test_finds_missing_config(tmp_path: Path) -> None:
+    """Lint must flag a CONFIG_* not present in any Kconfig file."""
+    kconfig = tmp_path / "Kconfig"
+    kconfig.write_text("config FOO\n\tbool\n", encoding="utf-8")
+    md = tmp_path / "doc.md"
+    md.write_text("Use `CONFIG_BAR` to enable.\n", encoding="utf-8")
+    issues = lint_docs.check_config_macros([tmp_path], [kconfig])
+    assert any("CONFIG_BAR" in i.message for i in issues)
+
+
+def test_passes_when_config_exists(tmp_path: Path) -> None:
+    """Lint must not flag CONFIG_* present in Kconfig."""
+    kconfig = tmp_path / "Kconfig"
+    kconfig.write_text("config FOO\n\tbool\n", encoding="utf-8")
+    md = tmp_path / "doc.md"
+    md.write_text("Use `CONFIG_FOO` to enable.\n", encoding="utf-8")
+    issues = lint_docs.check_config_macros([tmp_path], [kconfig])
+    assert not any("CONFIG_FOO" in i.message for i in issues)
