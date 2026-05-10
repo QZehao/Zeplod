@@ -83,3 +83,54 @@ def test_exclude_skips_directory(tmp_path: Path) -> None:
     issues = lint_docs.check_md_links([tmp_path], excludes=[skip])
     assert any("a.md" in str(i.file) for i in issues)
     assert not any("b.md" in str(i.file) for i in issues)
+
+
+def test_finds_missing_en_counterpart(tmp_path: Path) -> None:
+    """zh-CN file with no matching en/ file should be flagged."""
+    zh_dir = tmp_path / "zh-CN" / "00-入门"
+    en_dir = tmp_path / "en" / "00-getting-started"
+    zh_dir.mkdir(parents=True)
+    en_dir.mkdir(parents=True)
+    (zh_dir / "01-5分钟快速体验.md").write_text("# zh\n", encoding="utf-8")
+    issues = lint_docs.check_bilingual_parity(
+        tmp_path / "zh-CN", tmp_path / "en",
+        mapping={"00-入门/01-5分钟快速体验.md": "00-getting-started/01-quick-start.md"},
+    )
+    assert any("01-quick-start.md" in i.message for i in issues)
+
+
+def test_passes_when_en_counterpart_exists(tmp_path: Path) -> None:
+    """No issue if both files exist for a mapping entry."""
+    zh_dir = tmp_path / "zh-CN" / "00-入门"
+    en_dir = tmp_path / "en" / "00-getting-started"
+    zh_dir.mkdir(parents=True)
+    en_dir.mkdir(parents=True)
+    (zh_dir / "01-5分钟快速体验.md").write_text("# zh\n", encoding="utf-8")
+    (en_dir / "01-quick-start.md").write_text("# en\n", encoding="utf-8")
+    issues = lint_docs.check_bilingual_parity(
+        tmp_path / "zh-CN", tmp_path / "en",
+        mapping={"00-入门/01-5分钟快速体验.md": "00-getting-started/01-quick-start.md"},
+    )
+    assert not issues
+
+
+def test_finds_residual_chinese_in_en(tmp_path: Path) -> None:
+    """English doc containing CJK chars (outside code blocks) is flagged."""
+    en_file = tmp_path / "doc.md"
+    en_file.write_text(
+        "# Title\n\nThis is mostly English, but 这里有中文 still.\n",
+        encoding="utf-8",
+    )
+    issues = lint_docs.check_residual_chinese([tmp_path])
+    assert any("doc.md" in str(i.file) for i in issues)
+
+
+def test_residual_chinese_ignores_code_blocks(tmp_path: Path) -> None:
+    """Code-block-only Chinese is OK (translator notes, etc.)."""
+    en_file = tmp_path / "doc.md"
+    en_file.write_text(
+        "# Title\n\n```\n// 中文注释 in code is OK\n```\n",
+        encoding="utf-8",
+    )
+    issues = lint_docs.check_residual_chinese([tmp_path])
+    assert not issues
