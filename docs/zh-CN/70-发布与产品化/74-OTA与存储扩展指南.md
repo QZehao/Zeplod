@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/70-release-productization/74-ota-storage-guide.md)
+
 # OTA 与存储扩展指南（可选）
 
 本文档说明如何在**产品化阶段**引入 **OTA（MCUboot）**、**非易失配置（NVS / Settings）** 与 **低功耗（PM）** 等能力。内容为 **可选** 集成指引，不绑定具体板卡；实现前请对照目标 SoC、Flash 分区与 Zephyr 版本阅读官方文档。
