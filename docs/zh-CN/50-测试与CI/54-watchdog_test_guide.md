@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/50-testing-ci/54-watchdog-test-guide.md)
+
 # 硬件看门狗测试指南
 
 ## 问题诊断
