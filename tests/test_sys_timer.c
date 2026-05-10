@@ -57,4 +57,48 @@ ZTEST(sys_timer, test_delete_null) {
     zassert_equal(sys_timer_delete(NULL), -EINVAL, "NULL handle 应失败");
 }
 
+ZTEST(sys_timer, test_stop_then_start) {
+    sys_timer_config_t cfg = {
+        .mode = SYS_TIMER_PERIODIC,
+        .delay_ms = 50U,
+        .period_ms = 50U,
+        .callback = timer_cb,
+        .user_data = NULL,
+        .name = "st",
+        .priority = 5,
+    };
+    sys_timer_handle_t t;
+
+    zassert_equal(sys_timer_init(), 0, NULL);
+    t = sys_timer_create(&cfg);
+    zassert_not_null(t, NULL);
+    zassert_equal(sys_timer_start(t), 0, NULL);
+    zassert_equal(sys_timer_stop(t), 0, NULL);
+    zassert_equal(sys_timer_start(t), 0, "stop 后应能再次 start");
+    zassert_equal(sys_timer_stop(t), 0, NULL);
+    zassert_equal(sys_timer_delete(t), 0, NULL);
+}
+
+ZTEST(sys_timer, test_pause_resume) {
+    sys_timer_config_t cfg = {
+        .mode = SYS_TIMER_PERIODIC,
+        .delay_ms = 50U,
+        .period_ms = 50U,
+        .callback = timer_cb,
+        .user_data = NULL,
+        .name = "pr",
+        .priority = 5,
+    };
+    sys_timer_handle_t t;
+
+    zassert_equal(sys_timer_init(), 0, NULL);
+    t = sys_timer_create(&cfg);
+    zassert_not_null(t, NULL);
+    zassert_equal(sys_timer_start(t), 0, NULL);
+    zassert_equal(sys_timer_pause(t), 0, NULL);
+    zassert_equal(sys_timer_resume(t), 0, NULL);
+    zassert_equal(sys_timer_stop(t), 0, NULL);
+    zassert_equal(sys_timer_delete(t), 0, NULL);
+}
+
 ZTEST_SUITE(sys_timer, NULL, NULL, NULL, NULL, NULL);

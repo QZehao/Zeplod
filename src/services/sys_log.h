@@ -73,6 +73,7 @@ typedef struct {
     bool                enable_timestamp;
     bool                enable_colors;
     bool                enable_module_name;
+    /** 环形内存日志区字节数，用于推导实际使用的条目数（不超过静态缓冲上限） */
     uint32_t            memory_buffer_size;
 } sys_log_config_t;
 
@@ -151,8 +152,9 @@ uint32_t sys_log_get_entries(sys_log_entry_t* entries, uint32_t count, bool olde
 void sys_log_clear_buffer(void);
 
 /**
- * @brief Get number of messages stored in the memory ring (since init)
- * @return Total message count recorded in ring buffer
+ * @brief 获取当前环形缓冲中的日志条数（非累计写入次数）
+ *
+ * @return 当前环内有效条目数（与 sys_log_clear_buffer 后归零的 count 一致）
  */
 uint32_t sys_log_get_count(void);
 

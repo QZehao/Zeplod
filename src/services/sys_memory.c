@@ -89,15 +89,18 @@ typedef struct mem_pool {
 } mem_pool_t;
 
 /**
- * @brief 内存跟踪器结构（环形缓冲区）
+ * @brief 内存跟踪器结构（环形写入 + 按槽有效位）
+ *
+ * 每条记录独立 slot_active[i]，移除时不清尾紧凑，避免与 head 游标冲突。
  */
 typedef struct mem_tracker {
     sys_mem_alloc_info_t records[MAX_ALLOCATIONS]; ///< 记录数组
-    uint32_t             head;                     ///< 写入位置（环形）
-    uint32_t             count;                    ///< 当前记录数
-    uint32_t             max_records;              ///< 最大记录数
-    bool                 tracking_enabled;         ///< 跟踪是否启用
-    struct k_mutex       lock;                     ///< 跟踪器互斥锁
+    bool                 slot_active[MAX_ALLOCATIONS]; ///< 槽位是否表示当前有效分配
+    uint32_t             head;                       ///< 下次写入位置（环形）
+    uint32_t             count;                      ///< slot_active 为 true 的槽位数
+    uint32_t             max_records;                ///< 最大记录数
+    bool                 tracking_enabled;           ///< 跟踪是否启用
+    struct k_mutex       lock;                       ///< 跟踪器互斥锁
 } mem_tracker_t;
 
 /**
@@ -259,26 +262,31 @@ static void tracker_add(void* ptr, size_t size, const char* module, uint32_t lin
 
     k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
 
-    uint32_t              idx = g_sys_mem.tracker.head;
+    const uint32_t        max_r = g_sys_mem.tracker.max_records;
+    uint32_t              idx = g_sys_mem.tracker.head % max_r;
+    const bool            had_active = g_sys_mem.tracker.slot_active[idx];
     sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[idx];
+
     info->ptr = ptr;
     info->size = size;
     info->timestamp = k_uptime_get_32();
     info->module = module;
     info->line = line;
 
-    if (g_sys_mem.tracker.count < g_sys_mem.tracker.max_records) {
+    g_sys_mem.tracker.slot_active[idx] = true;
+    if (!had_active) {
         g_sys_mem.tracker.count++;
     } else {
-        LOG_WRN("Tracker full, overwriting oldest record");
+        LOG_WRN("Tracker slot overwrite at ring index %u (ring full)", idx);
     }
-    g_sys_mem.tracker.head = (idx + 1) % g_sys_mem.tracker.max_records;
+
+    g_sys_mem.tracker.head = (idx + 1U) % max_r;
 
     k_mutex_unlock(&g_sys_mem.tracker.lock);
 }
 
 /**
- * @brief 从跟踪器移除分配记录（线性查找）
+ * @brief 从跟踪器移除分配记录（全表扫描有效槽，不做尾交换紧凑）
  */
 static void tracker_remove(void* ptr) {
     if (!g_sys_mem.tracker.tracking_enabled || ptr == NULL) {
@@ -287,12 +295,15 @@ static void tracker_remove(void* ptr) {
 
     k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
 
-    /* 线性查找指针 */
-    for (uint32_t i = 0; i < g_sys_mem.tracker.count; i++) {
-        if (g_sys_mem.tracker.records[i].ptr == ptr) {
-            /* 将最后一个元素移到当前位置，保持紧凑 */
-            g_sys_mem.tracker.records[i] = g_sys_mem.tracker.records[g_sys_mem.tracker.count - 1];
-            g_sys_mem.tracker.count--;
+    const uint32_t max_r = g_sys_mem.tracker.max_records;
+
+    for (uint32_t i = 0; i < max_r; i++) {
+        if (g_sys_mem.tracker.slot_active[i] && g_sys_mem.tracker.records[i].ptr == ptr) {
+            g_sys_mem.tracker.slot_active[i] = false;
+            memset(&g_sys_mem.tracker.records[i], 0, sizeof(g_sys_mem.tracker.records[i]));
+            if (g_sys_mem.tracker.count > 0U) {
+                g_sys_mem.tracker.count--;
+            }
             break;
         }
     }
@@ -464,7 +475,10 @@ static void pool_free_locked(mem_pool_t* pool, void* ptr, alloc_header_t* header
     free_block_t* new_free = (free_block_t*) header;
     new_free->size = sizeof(alloc_header_t) + header->aligned_size;
     /* 确保大小对齐 */
-    align_up_size(new_free->size, MEMORY_ALIGN_BYTES, &new_free->size);
+    if (!align_up_size(new_free->size, MEMORY_ALIGN_BYTES, &new_free->size)) {
+        LOG_ERR("align_up_size failed for freed block");
+        new_free->size = sizeof(alloc_header_t) + header->aligned_size;
+    }
 
     /* 插入到空闲链表（保持地址顺序，便于合并） */
     free_block_t* prev = NULL;
@@ -794,7 +808,11 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type) {
         k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
         if (g_sys_mem.tracker.count > 0) {
             printk("Active Allocations:\n");
-            for (uint32_t i = 0; i < g_sys_mem.tracker.count; i++) {
+            const uint32_t max_r = g_sys_mem.tracker.max_records;
+            for (uint32_t i = 0; i < max_r; i++) {
+                if (!g_sys_mem.tracker.slot_active[i]) {
+                    continue;
+                }
                 sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[i];
                 alloc_header_t*       header = get_alloc_header(info->ptr);
                 if (header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
@@ -821,13 +839,25 @@ uint32_t sys_mem_check_leaks(sys_mem_pool_type_t type) {
 
     k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
 
+    const uint32_t max_r = g_sys_mem.tracker.max_records;
+
     if (type >= SYS_MEM_POOL_COUNT) {
-        /* 所有池 */
-        leaks = g_sys_mem.tracker.count;
-    } else {
-        for (uint32_t i = 0; i < g_sys_mem.tracker.count; i++) {
+        for (uint32_t i = 0; i < max_r; i++) {
+            if (!g_sys_mem.tracker.slot_active[i]) {
+                continue;
+            }
             alloc_header_t* header = get_alloc_header(g_sys_mem.tracker.records[i].ptr);
-            if (header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
+            if (header != NULL && header->magic == MEMORY_MAGIC) {
+                leaks++;
+            }
+        }
+    } else {
+        for (uint32_t i = 0; i < max_r; i++) {
+            if (!g_sys_mem.tracker.slot_active[i]) {
+                continue;
+            }
+            alloc_header_t* header = get_alloc_header(g_sys_mem.tracker.records[i].ptr);
+            if (header != NULL && header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
                 leaks++;
             }
         }

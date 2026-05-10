@@ -118,7 +118,7 @@ int sys_timer_start(sys_timer_handle_t timer);
 int sys_timer_stop(sys_timer_handle_t timer);
 
 /**
- * @brief Restart a timer (stop then start)
+ * @brief Restart a timer (stop then start with fresh delay; worker thread stays parked, no join)
  * @param timer Timer handle
  * @return 0 on success, negative error code on failure
  */

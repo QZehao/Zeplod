@@ -21,6 +21,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(sys_watchdog, CONFIG_SYS_LOG_LEVEL);
@@ -434,70 +435,80 @@ static void wdt_monitor_thread(void* p1, void* p2, void* p3) {
 
     LOG_INF("Watchdog monitor thread started");
 
-    while (g_wdt.status == WDT_STATUS_RUNNING) {
+    for (;;) {
+        k_mutex_lock(&g_wdt.lock, K_FOREVER);
+        if (g_wdt.status != WDT_STATUS_RUNNING) {
+            k_mutex_unlock(&g_wdt.lock);
+            break;
+        }
+
         uint32_t now = k_uptime_get_32();
         uint32_t time_since_feed = now - g_wdt.last_feed_time;
+        uint32_t timeout_ms = g_wdt.config.timeout_ms;
+        uint32_t feed_margin_ms = g_wdt.config.feed_margin_ms;
+        uint32_t feed_threshold = timeout_ms / 2U;
+        uint32_t expire_threshold =
+            (timeout_ms > feed_margin_ms) ? (timeout_ms - feed_margin_ms) : timeout_ms;
+        sys_wdt_user_cb_t pre_cb = g_wdt.config.pre_expire_callback;
+        void*             cb_ud = g_wdt.config.callback_user_data;
 
-        /* SIL-2: 计算安全喂狗窗口
-         * 喂狗条件: 已过一半超时时间 且 距离超时还有至少feed_margin_ms
-         * 避免过早喂狗(掩盖故障)或过晚喂狗(导致复位)
-         */
-        uint32_t feed_threshold = g_wdt.config.timeout_ms / 2;
-        uint32_t expire_threshold = (g_wdt.config.timeout_ms > g_wdt.config.feed_margin_ms)
-                                        ? (g_wdt.config.timeout_ms - g_wdt.config.feed_margin_ms)
-                                        : g_wdt.config.timeout_ms;
-
-        /* SIL-2: 检查是否即将超时,触发预警 */
         if (time_since_feed >= expire_threshold) {
-            LOG_ERR("Watchdog critical: %ums since last feed (expire at %ums)", time_since_feed,
-                    g_wdt.config.timeout_ms);
-
-            k_mutex_lock(&g_wdt.lock, K_FOREVER);
             g_wdt.stats.warning_count++;
             k_mutex_unlock(&g_wdt.lock);
 
-            /* Call pre-expire callback if set */
-            if (g_wdt.config.pre_expire_callback != NULL) {
-                g_wdt.config.pre_expire_callback(g_wdt.config.callback_user_data);
+            LOG_ERR("Watchdog critical: %ums since last feed (expire at %ums)", time_since_feed, timeout_ms);
+
+            if (pre_cb != NULL) {
+                pre_cb(cb_ud);
             }
 
-            /* SIL-2: 在安全窗口内立即喂狗 */
-            if (time_since_feed < g_wdt.config.timeout_ms) {
+            k_mutex_lock(&g_wdt.lock, K_FOREVER);
+            if (g_wdt.status == WDT_STATUS_RUNNING) {
+                now = k_uptime_get_32();
+                time_since_feed = now - g_wdt.last_feed_time;
+                if (time_since_feed >= timeout_ms) {
+                    k_mutex_unlock(&g_wdt.lock);
+                    wdt_expire_handler();
+                    break;
+                }
                 wdt_feed_internal();
-            } else {
-                /* SIL-2: 已超时,触发过期处理 */
-                wdt_expire_handler();
-                break;
             }
+            k_mutex_unlock(&g_wdt.lock);
         } else if (time_since_feed >= feed_threshold) {
-            /* SIL-2: 正常喂狗窗口,安全喂狗 */
             wdt_feed_internal();
+            k_mutex_unlock(&g_wdt.lock);
+        } else {
+            k_mutex_unlock(&g_wdt.lock);
         }
 
-        /* Check monitored threads */
-        for (uint32_t i = 0; i < MAX_MONITORED_THREADS; i++) {
-            if (!g_wdt.threads[i].is_monitored) {
-                continue;
-            }
-
-            uint32_t idle_time = now - g_wdt.threads[i].last_alive_time;
-            if (idle_time > g_wdt.threads[i].max_idle_ms) {
-                LOG_ERR("Thread '%s' appears stuck: idle for %ums (max: %ums)", g_wdt.threads[i].name, idle_time,
-                        g_wdt.threads[i].max_idle_ms);
-
-                k_mutex_lock(&g_wdt.lock, K_FOREVER);
-                g_wdt.stats.expire_count++;
-                k_mutex_unlock(&g_wdt.lock);
+        k_mutex_lock(&g_wdt.lock, K_FOREVER);
+        if (g_wdt.status == WDT_STATUS_RUNNING) {
+            now = k_uptime_get_32();
+            for (uint32_t i = 0; i < MAX_MONITORED_THREADS; i++) {
+                if (!g_wdt.threads[i].is_monitored) {
+                    continue;
+                }
+                uint32_t idle_time = now - g_wdt.threads[i].last_alive_time;
+                if (idle_time > g_wdt.threads[i].max_idle_ms) {
+                    LOG_ERR("Thread '%s' appears stuck: idle for %ums (max: %ums)", g_wdt.threads[i].name, idle_time,
+                            g_wdt.threads[i].max_idle_ms);
+                    g_wdt.stats.expire_count++;
+                }
             }
         }
+        k_mutex_unlock(&g_wdt.lock);
 
-        /* Sleep for monitoring interval */
         k_msleep(SYS_WDT_MONITOR_INTERVAL_MS);
     }
 
     LOG_INF("Watchdog monitor thread stopped");
 }
 
+/**
+ * @brief 喂狗内部实现
+ *
+ * 调用方必须已持有 g_wdt.lock（与 sys_wdt_feed、监控线程路径一致）。
+ */
 static void wdt_feed_internal(void) {
     uint32_t now = k_uptime_get_32();
     uint32_t interval = now - g_wdt.last_feed_time;
@@ -540,21 +551,18 @@ static void wdt_expire_handler(void) {
     k_mutex_unlock(&g_wdt.lock);
 
     /* SIL-2: 看门狗超时后必须执行系统复位
-     * 这是安全关键功能,不可跳过
-     * CONFIG_SYS_WATCHDOG_FORCE_RESET 仅控制开发/生产模式
-     * 生产模式(CONFIG_NDEBUG)下强制执行复位
+     * CONFIG_SYS_WATCHDOG_FORCE_RESET 为 y 时无条件复位。
+     * 否则由 reset_on_expire 与 CONFIG_DEBUG 共同决定（见下方分支）。
      */
 #if !defined(CONFIG_SYS_WATCHDOG_FORCE_RESET)
     /* 开发模式: 允许通过配置选择是否复位,但发出严重警告 */
     if (g_wdt.config.reset_on_expire) {
         LOG_ERR("Watchdog expiration - executing system reset");
-#if defined(NDEBUG)
-        /* 生产构建: 强制复位 */
+#if !IS_ENABLED(CONFIG_DEBUG)
+        /* 非调试构建: 复位 */
         sys_reboot(SYS_REBOOT_COLD);
 #else
-        /* 开发构建: 记录严重错误,仅在明确启用时复位 */
-        LOG_ERR("SECURITY WARNING: Skipping reset in development mode - NOT SAFE FOR PRODUCTION");
-        /* 允许开发调试,但生产固件不应到达此处 */
+        LOG_ERR("SECURITY WARNING: CONFIG_DEBUG=y — skipping reset (not for production)");
 #endif
     } else {
         LOG_ERR("Watchdog expiration with reset disabled - CRITICAL SAFETY ISSUE");

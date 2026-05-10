@@ -78,11 +78,11 @@ typedef struct {
     uint32_t         read_idx;
     uint32_t         count;
     uint32_t         total_count;
+    uint32_t         log_cap; /* 环形缓冲实际使用的条目数，<= MAX_LOG_ENTRIES */
     struct k_mutex   lock;
-    sys_log_level_t  module_levels[16]; /* Per-module levels */
+    sys_log_level_t  module_levels[16]; /* 与 module_names 槽位一一对应 */
     bool             destinations_enabled[4];
-    char             module_names[16][SYS_LOG_MAX_MODULE_NAME_LEN]; /* SIL-2: 存储模块名称副本 */
-    uint32_t         module_name_count;
+    char             module_names[16][SYS_LOG_MAX_MODULE_NAME_LEN]; /* 已注册模块名，空槽表示未使用 */
 } sys_log_cb_t;
 
 /* =============================================================================
@@ -146,9 +146,28 @@ static void apply_destinations_mask(uint32_t mask) {
     }
 }
 
+/** 调用方须已持有 g_sys_log.lock */
+static sys_log_level_t effective_level_for_module_locked(const char* module) {
+    if (module == NULL || module[0] == '\0') {
+        return g_sys_log.config.default_level;
+    }
+
+    for (int i = 0; i < 16; i++) {
+        if (g_sys_log.module_names[i][0] == '\0') {
+            continue;
+        }
+        if (strncmp(g_sys_log.module_names[i], module, SYS_LOG_MAX_MODULE_NAME_LEN) == 0) {
+            return g_sys_log.module_levels[i];
+        }
+    }
+
+    return g_sys_log.config.default_level;
+}
+
 static void add_entry(sys_log_level_t level, const char* module, const char* msg, uint32_t timestamp) {
     k_mutex_lock(&g_sys_log.lock, K_FOREVER);
 
+    const uint32_t cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
     sys_log_entry_t* entry = &g_sys_log.buffer[g_sys_log.write_idx];
 
     entry->timestamp = timestamp;
@@ -166,13 +185,13 @@ static void add_entry(sys_log_level_t level, const char* module, const char* msg
     strncpy(entry->message, msg, SYS_LOG_MSG_MAX_LEN - 1);
     entry->message[SYS_LOG_MSG_MAX_LEN - 1] = '\0';
 
-    g_sys_log.write_idx = (g_sys_log.write_idx + 1) % MAX_LOG_ENTRIES;
+    g_sys_log.write_idx = (g_sys_log.write_idx + 1U) % cap;
 
-    if (g_sys_log.count < MAX_LOG_ENTRIES) {
+    if (g_sys_log.count < cap) {
         g_sys_log.count++;
     } else {
         /* Buffer full, advance read index */
-        g_sys_log.read_idx = (g_sys_log.read_idx + 1) % MAX_LOG_ENTRIES;
+        g_sys_log.read_idx = (g_sys_log.read_idx + 1U) % cap;
     }
 
     g_sys_log.total_count++;
@@ -255,18 +274,37 @@ int sys_log_init(const sys_log_config_t* config) {
         g_sys_log.config.memory_buffer_size = CONFIG_SYS_MEMORY_POOL_SIZE;
     }
 
-    /* SIL-2: 验证MAX_LOG_ENTRIES合理性 */
-    if (MAX_LOG_ENTRIES < SYS_LOG_MIN_BUFFER_SIZE || MAX_LOG_ENTRIES > SYS_LOG_MAX_BUFFER_SIZE) {
-        LOG_WRN("MAX_LOG_ENTRIES %u outside reasonable range [%u, %u]", MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE,
-                SYS_LOG_MAX_BUFFER_SIZE);
-    }
-
     /* Initialize buffer */
     g_sys_log.buffer = g_log_buffer_static;
     g_sys_log.write_idx = 0;
     g_sys_log.read_idx = 0;
     g_sys_log.count = 0;
     g_sys_log.total_count = 0;
+
+    {
+        size_t ring_bytes = (size_t)g_sys_log.config.memory_buffer_size;
+        if (ring_bytes < sizeof(sys_log_entry_t)) {
+            ring_bytes = (size_t)sizeof(sys_log_entry_t) * SYS_LOG_MIN_BUFFER_SIZE;
+        }
+        uint32_t cap = (uint32_t)(ring_bytes / sizeof(sys_log_entry_t));
+        if (cap > (uint32_t)MAX_LOG_ENTRIES) {
+            cap = (uint32_t)MAX_LOG_ENTRIES;
+        }
+        if (cap < SYS_LOG_MIN_BUFFER_SIZE) {
+            cap = MIN((uint32_t)MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE);
+        }
+        if (cap == 0U) {
+            cap = 1U;
+        }
+        g_sys_log.log_cap = cap;
+    }
+
+    /* SIL-2: 验证编译期环形容量与配置合理性 */
+    if (MAX_LOG_ENTRIES < SYS_LOG_MIN_BUFFER_SIZE || MAX_LOG_ENTRIES > SYS_LOG_MAX_BUFFER_SIZE) {
+        LOG_WRN("MAX_LOG_ENTRIES %u outside reasonable range [%u, %u]", MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE,
+                SYS_LOG_MAX_BUFFER_SIZE);
+    }
+    LOG_INF("System log ring capacity: %u entries (static max %u)", g_sys_log.log_cap, (uint32_t)MAX_LOG_ENTRIES);
 
     k_mutex_init(&g_sys_log.lock);
 
@@ -282,17 +320,50 @@ int sys_log_init(const sys_log_config_t* config) {
 }
 
 void sys_log_set_level(const char* module, sys_log_level_t level) {
-    /* For simplicity, set global level */
-    g_sys_log.config.default_level = level;
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
 
-    /* Set all module levels */
-    for (int i = 0; i < 16; i++) {
-        g_sys_log.module_levels[i] = level;
+    if (module == NULL || module[0] == '\0') {
+        g_sys_log.config.default_level = level;
+        for (int i = 0; i < 16; i++) {
+            g_sys_log.module_levels[i] = level;
+        }
+        memset(g_sys_log.module_names, 0, sizeof(g_sys_log.module_names));
+        k_mutex_unlock(&g_sys_log.lock);
+        return;
     }
+
+    int slot = -1;
+    for (int i = 0; i < 16; i++) {
+        if (g_sys_log.module_names[i][0] != '\0' &&
+            strncmp(g_sys_log.module_names[i], module, SYS_LOG_MAX_MODULE_NAME_LEN) == 0) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < 16; i++) {
+            if (g_sys_log.module_names[i][0] == '\0') {
+                slot = i;
+                break;
+            }
+        }
+    }
+    if (slot >= 0) {
+        strncpy(g_sys_log.module_names[slot], module, SYS_LOG_MAX_MODULE_NAME_LEN);
+        g_sys_log.module_names[slot][SYS_LOG_MAX_MODULE_NAME_LEN - 1] = '\0';
+        g_sys_log.module_levels[slot] = level;
+    } else {
+        LOG_WRN("sys_log_set_level: module table full (max 16), ignoring '%s'", module);
+    }
+
+    k_mutex_unlock(&g_sys_log.lock);
 }
 
 sys_log_level_t sys_log_get_level(const char* module) {
-    return g_sys_log.config.default_level;
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    sys_log_level_t lv = effective_level_for_module_locked(module);
+    k_mutex_unlock(&g_sys_log.lock);
+    return lv;
 }
 
 void sys_log_set_destination(sys_log_dest_mask_t dest, bool enable) {
@@ -310,7 +381,11 @@ void sys_log_set_destination(sys_log_dest_mask_t dest, bool enable) {
 }
 
 void sys_log_print(sys_log_level_t level, const char* module, const char* format, ...) {
-    if (level > g_sys_log.config.default_level) {
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    sys_log_level_t thresh = effective_level_for_module_locked(module);
+    k_mutex_unlock(&g_sys_log.lock);
+
+    if (level > thresh) {
         return;
     }
 
@@ -326,7 +401,11 @@ void sys_log_print(sys_log_level_t level, const char* module, const char* format
 }
 
 void sys_log_print_ts(sys_log_level_t level, const char* module, const char* format, ...) {
-    if (level > g_sys_log.config.default_level) {
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    sys_log_level_t thresh = effective_level_for_module_locked(module);
+    k_mutex_unlock(&g_sys_log.lock);
+
+    if (level > thresh) {
         return;
     }
 
@@ -342,7 +421,11 @@ void sys_log_print_ts(sys_log_level_t level, const char* module, const char* for
 }
 
 void sys_log_hexdump(sys_log_level_t level, const char* module, const void* data, size_t len, bool ascii) {
-    if (level > g_sys_log.config.default_level) {
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    sys_log_level_t thresh = effective_level_for_module_locked(module);
+    k_mutex_unlock(&g_sys_log.lock);
+
+    if (level > thresh) {
         return;
     }
 
@@ -391,6 +474,7 @@ uint32_t sys_log_get_entries(sys_log_entry_t* entries, uint32_t count, bool olde
 
     uint32_t available = g_sys_log.count;
     uint32_t to_read = MIN(count, available);
+    const uint32_t cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
 
     if (to_read == 0) {
         k_mutex_unlock(&g_sys_log.lock);
@@ -400,15 +484,16 @@ uint32_t sys_log_get_entries(sys_log_entry_t* entries, uint32_t count, bool olde
     if (oldest_first) {
         /* Start from read index */
         for (uint32_t i = 0; i < to_read; i++) {
-            uint32_t idx = (g_sys_log.read_idx + i) % MAX_LOG_ENTRIES;
+            uint32_t idx = (g_sys_log.read_idx + i) % cap;
             entries[i] = g_sys_log.buffer[idx];
         }
     } else {
         /* Start from write index - 1 (newest first) */
         for (uint32_t i = 0; i < to_read; i++) {
-            int32_t idx = (int32_t) g_sys_log.write_idx - 1 - i;
-            if (idx < 0)
-                idx += MAX_LOG_ENTRIES;
+            int32_t idx = (int32_t) g_sys_log.write_idx - 1 - (int32_t) i;
+            if (idx < 0) {
+                idx += (int32_t) cap;
+            }
             entries[i] = g_sys_log.buffer[(uint32_t) idx];
         }
     }
@@ -426,7 +511,10 @@ void sys_log_clear_buffer(void) {
 }
 
 uint32_t sys_log_get_count(void) {
-    return g_sys_log.total_count;
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    uint32_t c = g_sys_log.count;
+    k_mutex_unlock(&g_sys_log.lock);
+    return c;
 }
 
 void sys_log_dump(sys_log_level_t level_filter) {
@@ -436,7 +524,11 @@ void sys_log_dump(sys_log_level_t level_filter) {
 
     sys_log_entry_t entries[32];
     uint32_t        retrieved;
-    uint32_t        max_iterations = (MAX_LOG_ENTRIES + 31) / 32; /* SIL-2: 防止无限循环 */
+    uint32_t        cap_snapshot;
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    cap_snapshot = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
+    k_mutex_unlock(&g_sys_log.lock);
+    uint32_t max_iterations = (cap_snapshot + 31U) / 32U; /* SIL-2: 防止无限循环 */
     uint32_t        iterations = 0;
 
     printk("\n=== Log Dump (min level: %d) ===\n", level_filter);

@@ -137,9 +137,7 @@ int sys_mem_init(const sys_mem_config_t* config);
  * @param size 请求的大小（字节）
  * @return 成功时返回分配的内存指针，失败时返回 NULL
  *
- * @note 内存按 @ref MEMORY_ALIGN_BYTES 字节对齐
- * @note 如指定池不可用，自动回退到通用池
- * @note 返回的内存包含头部开销（sizeof(mem_alloc_header_t)）
+ * @note 内存按 8 字节对齐；如指定池不可用，自动回退到通用池
  */
 void* sys_mem_alloc(sys_mem_pool_type_t type, size_t size);
 
