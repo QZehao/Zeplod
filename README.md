@@ -12,14 +12,14 @@ A high-performance, real-time, event-driven application template based on Zephyr
 
 | I want to... | Read | Time |
 |--------------|------|------|
-| **Try it in 5 minutes** | [docs/zh-CN/00-入门/01-5分钟快速体验.md](docs/zh-CN/00-入门/01-5分钟快速体验.md) | 5 min |
-| **Set up the environment** | [docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md](docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md) | 1-2 hrs |
-| **Start coding** | [docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md) | 1 hr |
-| **Control hardware (LED)** | [docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md) | 30 min |
-| **Look up terminology** | [docs/zh-CN/00-入门/03-术语速查卡片.md](docs/zh-CN/00-入门/03-术语速查卡片.md) | Anytime |
-| **Browse all docs** | [docs/zh-CN/00-入门/02-文档索引.md](docs/zh-CN/00-入门/02-文档索引.md) | - |
+| **Try it in 5 minutes** | [docs/en/00-getting-started/01-quick-start.md](docs/en/00-getting-started/01-quick-start.md) | 5 min |
+| **Set up the environment** | [docs/en/10-environment-build/11-environment-setup.md](docs/en/10-environment-build/11-environment-setup.md) | 1-2 hrs |
+| **Start coding** | [docs/en/00-getting-started/04-developer-guide.md](docs/en/00-getting-started/04-developer-guide.md) | 1 hr |
+| **Control hardware (LED)** | [docs/en/00-getting-started/04-developer-guide.md](docs/en/00-getting-started/04-developer-guide.md) | 30 min |
+| **Look up terminology** | [docs/en/00-getting-started/03-glossary.md](docs/en/00-getting-started/03-glossary.md) | Anytime |
+| **Browse all docs** | [docs/en/00-getting-started/02-doc-index.md](docs/en/00-getting-started/02-doc-index.md) | - |
 
-> **Tip**: First time here? Start with **[5-Minute Quick Start](docs/zh-CN/00-入门/01-5分钟快速体验.md)** — no dev board needed, runs on PC!
+> **Tip**: First time here? Start with **[5-Minute Quick Start](docs/en/00-getting-started/01-quick-start.md)** — no dev board needed, runs on PC!
 
 ---
 
@@ -33,7 +33,7 @@ A high-performance, real-time, event-driven application template based on Zephyr
 - **Thread Safety**: Full thread-safe operations with proper synchronization
 - **Shell Commands**: Built-in shell commands for debugging and monitoring
 - **Version Tracking**: Complete software version tracking with Git info and build time
-- **Thread IPC (In-App)**: Optional worker + dispatcher threads, request/response queues, and event system bridge (see `docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md`)
+- **Thread IPC (In-App)**: Optional worker + dispatcher threads, request/response queues, and event system bridge (see `docs/en/30-core-modules/33-thread-ipc-service-guide.md`)
 
 ## Use Cases
 
@@ -148,7 +148,7 @@ This framework is **less suitable** for:
 - Products extremely sensitive to Flash/RAM footprint
 - Standalone functional devices without inter-module communication
 
-> **32KB SRAM Solution**: Using `prj_tiny.conf` extreme config, framework footprint is **< 10KB**, leaving **> 22KB** for APP modules. See [Configuration Comparison Guide](docs/zh-CN/40-应用开发/43-配置方案对比指南.md).
+> **32KB SRAM Solution**: Using `prj_tiny.conf` extreme config, framework footprint is **< 10KB**, leaving **> 22KB** for APP modules. See [Configuration Comparison Guide](docs/en/40-app-development/43-config-comparison-guide.md).
 
 ### Memory Configuration Options
 
@@ -218,7 +218,7 @@ zephyr_framework/
 │   ├── test_example_module_gpio.c
 │   ├── test_example_module_uart.c
 │   └── test_example_module_multi_dep.c
-├── docs/                             # Documentation (index at docs/zh-CN/00-入门/02-文档索引.md)
+├── docs/                             # Documentation (index at docs/en/00-getting-started/02-doc-index.md)
 │   ├── 00-入门/                       # Quick start, doc index, glossary, dev guide
 │   ├── 10-环境与构建/                 # Environment setup, freestanding build
 │   ├── 20-架构设计/                   # Modular design methodology, core implementation
@@ -271,7 +271,7 @@ zephyr_framework/
 
 ## Initialize New Project from This Template (Checklist)
 
-After copying or forking this repo, complete the following steps in order for easy deployment on any product (more details in **[docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md#从模板复制后的检查清单)**).
+After copying or forking this repo, complete the following steps in order for easy deployment on any product (more details in **[docs/en/00-getting-started/04-developer-guide.md](docs/en/00-getting-started/04-developer-guide.md#从模板复制后的检查清单)**).
 
 | Step | Content |
 |------|---------|
@@ -282,7 +282,7 @@ After copying or forking this repo, complete the following steps in order for ea
 | 5 | **Board & CI**: In `prj.conf`, **`.github/workflows/ci.yml`** / **`.gitlab-ci.yml`**, make ARM matrix `board` match target hardware or trim as needed. |
 | 6 | **Example Code**: `src/modules_examples/example_*` can be deleted or replaced; sync `CMakeLists.txt`, Kconfig, and each module's **`.c` `SYS_INIT` registration** and **`app_config.h` `APP_INIT_PRIO_*`**. |
 
-> **Board examples in docs and CI**: Getting started docs may mention `nucleo_l4r5zi` and other example boards; CI is currently fixed to some Nucleo/Disco boards. **Use your actual `BOARD` and CI matrix as the source of truth**; for RAM/link issues, see **[docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md](docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md)**.
+> **Board examples in docs and CI**: Getting started docs may mention `nucleo_l4r5zi` and other example boards; CI is currently fixed to some Nucleo/Disco boards. **Use your actual `BOARD` and CI matrix as the source of truth**; for RAM/link issues, see **[docs/en/40-app-development/44-devicetree-memory-config.md](docs/en/40-app-development/44-devicetree-memory-config.md)**.
 
 ## Quick Start
 
@@ -487,7 +487,7 @@ CONFIG_EVENT_DISPATCHER_PRIORITY=5
 # Module Manager
 CONFIG_MODULE_MANAGER=y
 CONFIG_MAX_MODULES=16
-# Optional: runtime topological start / reverse-order stop by depends_on (see docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md)
+# Optional: runtime topological start / reverse-order stop by depends_on (see docs/en/30-core-modules/32-module-system-guide.md)
 # CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES=y
 # CONFIG_MODULE_MANAGER_DEPENDS_LIST_MAX=16
 # CONFIG_MODULE_MANAGER_START_ALL_ABORT_ON_FAILURE=y
@@ -605,7 +605,7 @@ static int my_module_auto_register(void) {
 SYS_INIT(my_module_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MINE);
 ```
 
-For multi-module dependencies, `depends_on` syntax, and Kconfig switch descriptions, see **docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md** "Application Boot and Init Order (Zephyr SYS_INIT)", "Runtime Dependencies" and "Configuration Options"; multi-dependency example source is `src/modules_examples/example_module_multi_dep.c`.
+For multi-module dependencies, `depends_on` syntax, and Kconfig switch descriptions, see **docs/en/30-core-modules/32-module-system-guide.md** "Application Boot and Init Order (Zephyr SYS_INIT)", "Runtime Dependencies" and "Configuration Options"; multi-dependency example source is `src/modules_examples/example_module_multi_dep.c`.
 
 ## Event Flow
 
@@ -736,7 +736,7 @@ git commit -m "update code"     # No information
 git commit -m "fix bug"         # Doesn't specify what was fixed
 ```
 
-More details in **[docs/zh-CN/80-贡献与维护/81-参与贡献与代码规范.md](docs/zh-CN/80-贡献与维护/81-参与贡献与代码规范.md)**.
+More details in **[docs/en/80-contributing/81-contributing-code-style.md](docs/en/80-contributing/81-contributing-code-style.md)**.
 
 ## Support
 
@@ -750,33 +750,33 @@ For questions and feature requests, please submit an Issue in the project reposi
 
 ## Documentation Index
 
-**Main Index (recommended reading order, glossary, old filename cross-reference)**: [docs/zh-CN/00-入门/02-文档索引.md](docs/zh-CN/00-入门/02-文档索引.md)
+**Main Index (recommended reading order, glossary, old filename cross-reference)**: [docs/en/00-getting-started/02-doc-index.md](docs/en/00-getting-started/02-doc-index.md)
 
 | Document | Description |
 |----------|-------------|
-| [docs/zh-CN/00-入门/02-文档索引.md](docs/zh-CN/00-入门/02-文档索引.md) | **Main Entry**: Learning path, full manual list |
-| [docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md](docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md) | Toolchain, paths, verification build |
-| [docs/zh-CN/10-环境与构建/12-独立应用构建说明.md](docs/zh-CN/10-环境与构建/12-独立应用构建说明.md) | Freestanding app, `ZEPHYR_BASE`, overlay |
-| [docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md) | Daily development, testing, debugging |
-| [docs/zh-CN/40-应用开发/41-Zephyr应用开发与服务指南.md](docs/zh-CN/40-应用开发/41-Zephyr应用开发与服务指南.md) | Zephyr general technology and service development guide |
-| [docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md](docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md) | Devicetree, SRAM, `app.overlay` |
-| [docs/zh-CN/40-应用开发/42-项目配置项说明.md](docs/zh-CN/40-应用开发/42-项目配置项说明.md) | **Kconfig and application config items** |
-| [docs/zh-CN/30-核心模块/31-事件系统详细使用说明.md](docs/zh-CN/30-核心模块/31-事件系统详细使用说明.md) | Event API and usage |
-| [docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md](docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md) | Module lifecycle, runtime dependencies |
-| [docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md](docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md) | Thread IPC service |
-| [docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md](docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md) | Integrating IPC in modules |
-| [docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md](docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md) | OTA, NVS, low power (optional) |
-| [docs/zh-CN/70-发布与产品化/71-版本管理.md](docs/zh-CN/70-发布与产品化/71-版本管理.md) | Version number and build info |
-| [docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md](docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md) | Aligning with CI image version |
-| [docs/zh-CN/70-发布与产品化/73-发布检查清单.md](docs/zh-CN/70-发布与产品化/73-发布检查清单.md) | Pre-release checklist |
-| [docs/zh-CN/60-调试与排错/62-常见问题与故障排除.md](docs/zh-CN/60-调试与排错/62-常见问题与故障排除.md) | Build and environment troubleshooting |
-| [docs/zh-CN/60-调试与排错/61-烧录与调试快速指南.md](docs/zh-CN/60-调试与排错/61-烧录与调试快速指南.md) | Flashing, serial, debugging |
-| [docs/zh-CN/60-调试与排错/63-脚本与工具说明.md](docs/zh-CN/60-调试与排错/63-脚本与工具说明.md) | `scripts/` tool descriptions |
-| [docs/zh-CN/50-测试与CI/51-单元测试与持续集成说明.md](docs/zh-CN/50-测试与CI/51-单元测试与持续集成说明.md) | ztest and CI overview |
-| [docs/zh-CN/50-测试与CI/52-CI平台配置保姆级手册.md](docs/zh-CN/50-测试与CI/52-CI平台配置保姆级手册.md) | **GitHub / GitLab** CI enablement and maintenance |
-| [docs/zh-CN/30-核心模块/36-系统服务使用说明.md](docs/zh-CN/30-核心模块/36-系统服务使用说明.md) | sys_log / sys_memory / sys_timer / sys_watchdog |
-| [docs/zh-CN/80-贡献与维护/81-参与贡献与代码规范.md](docs/zh-CN/80-贡献与维护/81-参与贡献与代码规范.md) | PR, code style and CI |
-| [docs/zh-CN/70-发布与产品化/75-安全与密钥管理说明.md](docs/zh-CN/70-发布与产品化/75-安全与密钥管理说明.md) | Keys, secrets, OTA signing notes |
+| [docs/en/00-getting-started/02-doc-index.md](docs/en/00-getting-started/02-doc-index.md) | **Main Entry**: Learning path, full manual list |
+| [docs/en/10-environment-build/11-environment-setup.md](docs/en/10-environment-build/11-environment-setup.md) | Toolchain, paths, verification build |
+| [docs/en/10-environment-build/12-freestanding-app-build.md](docs/en/10-environment-build/12-freestanding-app-build.md) | Freestanding app, `ZEPHYR_BASE`, overlay |
+| [docs/en/00-getting-started/04-developer-guide.md](docs/en/00-getting-started/04-developer-guide.md) | Daily development, testing, debugging |
+| [docs/en/40-app-development/41-zephyr-app-development.md](docs/en/40-app-development/41-zephyr-app-development.md) | Zephyr general technology and service development guide |
+| [docs/en/40-app-development/44-devicetree-memory-config.md](docs/en/40-app-development/44-devicetree-memory-config.md) | Devicetree, SRAM, `app.overlay` |
+| [docs/en/40-app-development/42-config-options.md](docs/en/40-app-development/42-config-options.md) | **Kconfig and application config items** |
+| [docs/en/30-core-modules/31-event-system-guide.md](docs/en/30-core-modules/31-event-system-guide.md) | Event API and usage |
+| [docs/en/30-core-modules/32-module-system-guide.md](docs/en/30-core-modules/32-module-system-guide.md) | Module lifecycle, runtime dependencies |
+| [docs/en/30-core-modules/33-thread-ipc-service-guide.md](docs/en/30-core-modules/33-thread-ipc-service-guide.md) | Thread IPC service |
+| [docs/en/30-core-modules/34-thread-ipc-integration-guide.md](docs/en/30-core-modules/34-thread-ipc-integration-guide.md) | Integrating IPC in modules |
+| [docs/en/70-release-productization/74-ota-storage-guide.md](docs/en/70-release-productization/74-ota-storage-guide.md) | OTA, NVS, low power (optional) |
+| [docs/en/70-release-productization/71-version-management.md](docs/en/70-release-productization/71-version-management.md) | Version number and build info |
+| [docs/en/70-release-productization/72-zephyr-version-ci.md](docs/en/70-release-productization/72-zephyr-version-ci.md) | Aligning with CI image version |
+| [docs/en/70-release-productization/73-release-checklist.md](docs/en/70-release-productization/73-release-checklist.md) | Pre-release checklist |
+| [docs/en/60-debugging/62-troubleshooting.md](docs/en/60-debugging/62-troubleshooting.md) | Build and environment troubleshooting |
+| [docs/en/60-debugging/61-flash-debug-quickstart.md](docs/en/60-debugging/61-flash-debug-quickstart.md) | Flashing, serial, debugging |
+| [docs/en/60-debugging/63-scripts-and-tools.md](docs/en/60-debugging/63-scripts-and-tools.md) | `scripts/` tool descriptions |
+| [docs/en/50-testing-ci/51-unit-testing-ci.md](docs/en/50-testing-ci/51-unit-testing-ci.md) | ztest and CI overview |
+| [docs/en/50-testing-ci/52-ci-platform-setup.md](docs/en/50-testing-ci/52-ci-platform-setup.md) | **GitHub / GitLab** CI enablement and maintenance |
+| [docs/en/30-core-modules/36-system-services-guide.md](docs/en/30-core-modules/36-system-services-guide.md) | sys_log / sys_memory / sys_timer / sys_watchdog |
+| [docs/en/80-contributing/81-contributing-code-style.md](docs/en/80-contributing/81-contributing-code-style.md) | PR, code style and CI |
+| [docs/en/70-release-productization/75-security-key-management.md](docs/en/70-release-productization/75-security-key-management.md) | Keys, secrets, OTA signing notes |
 | [tests/README.md](tests/README.md) | Unit tests (detailed) |
 | [LICENSE](LICENSE) | Full GPL v3 text |
 | [LICENSE_COMMERCIAL.md](LICENSE_COMMERCIAL.md) | Commercial license terms |
