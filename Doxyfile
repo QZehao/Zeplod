@@ -30,21 +30,21 @@ RECURSIVE              = YES
 EXCLUDE                = build \
                          .git \
                          docs/api \
-                         docs/30-核心模块/31-事件系统详细使用说明.md \
-                         docs/30-核心模块/32-模块系统详细使用说明.md \
-                         docs/40-应用开发/42-项目配置项说明.md \
-                         docs/30-核心模块/34-Thread_IPC模块集成指南.md \
-                         docs/30-核心模块/33-Thread_IPC服务使用说明.md \
-                         docs/40-应用开发/44-设备树与内存配置手册.md \
-                         docs/00-入门/02-文档索引.md \
-                         docs/60-调试与排错/62-常见问题与故障排除.md \
-                         docs/60-调试与排错/61-烧录与调试快速指南.md \
-                         docs/60-调试与排错/63-脚本与工具说明.md \
-                         docs/50-测试与CI/51-单元测试与持续集成说明.md \
-                         docs/30-核心模块/36-系统服务使用说明.md \
-                         docs/80-贡献与维护/81-参与贡献与代码规范.md \
-                         docs/70-发布与产品化/75-安全与密钥管理说明.md \
-                         docs/40-应用开发/41-Zephyr应用开发与服务指南.md
+                         docs/zh-CN/30-核心模块/31-事件系统详细使用说明.md \
+                         docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md \
+                         docs/zh-CN/40-应用开发/42-项目配置项说明.md \
+                         docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md \
+                         docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md \
+                         docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md \
+                         docs/zh-CN/00-入门/02-文档索引.md \
+                         docs/zh-CN/60-调试与排错/62-常见问题与故障排除.md \
+                         docs/zh-CN/60-调试与排错/61-烧录与调试快速指南.md \
+                         docs/zh-CN/60-调试与排错/63-脚本与工具说明.md \
+                         docs/zh-CN/50-测试与CI/51-单元测试与持续集成说明.md \
+                         docs/zh-CN/30-核心模块/36-系统服务使用说明.md \
+                         docs/zh-CN/80-贡献与维护/81-参与贡献与代码规范.md \
+                         docs/zh-CN/70-发布与产品化/75-安全与密钥管理说明.md \
+                         docs/zh-CN/40-应用开发/41-Zephyr应用开发与服务指南.md
 
 EXCLUDE_SYMLINKS       = NO
 
