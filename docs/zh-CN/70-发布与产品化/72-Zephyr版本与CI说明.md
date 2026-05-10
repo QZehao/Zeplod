@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/70-release-productization/72-zephyr-version-ci.md)
+
 # Zephyr 版本与 CI 说明
 
 为减少「本地能编、CI 失败」或反之的差异，建议将 **本地环境** 与 **持续集成** 对齐到同一主线。
