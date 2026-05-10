@@ -55,3 +55,31 @@ def test_passes_when_config_exists(tmp_path: Path) -> None:
     md.write_text("Use `CONFIG_FOO` to enable.\n", encoding="utf-8")
     issues = lint_docs.check_config_macros([tmp_path], [kconfig])
     assert not any("CONFIG_FOO" in i.message for i in issues)
+
+
+def test_kconfig_recursion_follows_rsource(tmp_path: Path) -> None:
+    """_collect_kconfig_symbols must follow rsource directives."""
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "Kconfig").write_text("config DEEP\n\tbool\n", encoding="utf-8")
+    root_k = tmp_path / "Kconfig"
+    root_k.write_text(
+        "config TOP\n\tbool\nrsource \"sub/Kconfig\"\n", encoding="utf-8"
+    )
+    md = tmp_path / "doc.md"
+    md.write_text("Use `CONFIG_DEEP`.\n", encoding="utf-8")
+    issues = lint_docs.check_config_macros([tmp_path], [root_k])
+    assert not any("CONFIG_DEEP" in i.message for i in issues)
+
+
+def test_exclude_skips_directory(tmp_path: Path) -> None:
+    """--exclude must filter out matching directories from md scan."""
+    keep = tmp_path / "keep"
+    keep.mkdir()
+    (keep / "a.md").write_text("[x](missing.md)\n", encoding="utf-8")
+    skip = tmp_path / "skip"
+    skip.mkdir()
+    (skip / "b.md").write_text("[y](missing.md)\n", encoding="utf-8")
+    issues = lint_docs.check_md_links([tmp_path], excludes=[skip])
+    assert any("a.md" in str(i.file) for i in issues)
+    assert not any("b.md" in str(i.file) for i in issues)

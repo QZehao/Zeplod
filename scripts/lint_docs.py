@@ -3,7 +3,9 @@
 
 Checks:
 1. Markdown links in *.md files - target file must exist.
-2. CONFIG_* references - macro must exist in Kconfig*.
+2. CONFIG_* references — macro must exist in `Kconfig` or `Kconfig_proprietary`
+   (or files passed via `--kconfig`); `source`/`rsource`/`osource` directives are
+   followed transitively.
 
 Usage:
     python scripts/lint_docs.py
@@ -42,10 +44,15 @@ def _iter_md_files(roots: list[Path]) -> list[Path]:
     return files
 
 
-def check_md_links(roots: list[Path]) -> list[Issue]:
+def check_md_links(
+    roots: list[Path], excludes: list[Path] | None = None
+) -> list[Issue]:
     """Find broken markdown links pointing at local files."""
+    excludes = excludes or []
     issues: list[Issue] = []
     for md in _iter_md_files(roots):
+        if _is_excluded(md, excludes):
+            continue
         try:
             text = md.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -69,32 +76,67 @@ def check_md_links(roots: list[Path]) -> list[Issue]:
     return issues
 
 
+def _is_excluded(path: Path, excludes: list[Path]) -> bool:
+    if not excludes:
+        return False
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    for ex in excludes:
+        try:
+            resolved.relative_to(ex.resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
 CONFIG_RE = re.compile(r"\bCONFIG_[A-Z0-9_]+")
 KCONFIG_DECL_RE = re.compile(r"^\s*(?:config|menuconfig)\s+([A-Z0-9_]+)")
+SOURCE_RE = re.compile(r'^\s*([or]?source)\s+"([^"]+)"')
 
 
 def _collect_kconfig_symbols(kconfig_files: list[Path]) -> set[str]:
     symbols: set[str] = set()
-    for kfile in kconfig_files:
-        if not kfile.exists():
-            continue
+    seen: set[Path] = set()
+    queue: list[Path] = [Path(p) for p in kconfig_files]
+    while queue:
+        kfile = queue.pop()
         try:
-            for line in kfile.read_text(encoding="utf-8").splitlines():
-                m = KCONFIG_DECL_RE.match(line)
-                if m:
-                    symbols.add(f"CONFIG_{m.group(1)}")
+            kfile = kfile.resolve()
+        except OSError:
+            continue
+        if kfile in seen or not kfile.exists():
+            continue
+        seen.add(kfile)
+        try:
+            text = kfile.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
+        for line in text.splitlines():
+            m = KCONFIG_DECL_RE.match(line)
+            if m:
+                symbols.add(f"CONFIG_{m.group(1)}")
+                continue
+            sm = SOURCE_RE.match(line)
+            if sm and "$" not in sm.group(2):
+                queue.extend(kfile.parent.glob(sm.group(2)))
     return symbols
 
 
 def check_config_macros(
-    roots: list[Path], kconfig_files: list[Path]
+    roots: list[Path],
+    kconfig_files: list[Path],
+    excludes: list[Path] | None = None,
 ) -> list[Issue]:
     """Flag CONFIG_* macros referenced in *.md but not defined in any Kconfig."""
+    excludes = excludes or []
     defined = _collect_kconfig_symbols(kconfig_files)
     issues: list[Issue] = []
     for md in _iter_md_files(roots):
+        if _is_excluded(md, excludes):
+            continue
         try:
             text = md.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -134,15 +176,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip CONFIG_* macro existence check",
     )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=None,
+        help="Path prefix to skip (repeatable; e.g. --exclude docs/superpowers)",
+    )
     args = parser.parse_args(argv)
     roots = [Path(p) for p in args.roots]
 
-    issues = check_md_links(roots)
+    excludes = [Path(p) for p in (args.exclude or [])]
+    issues = check_md_links(roots, excludes=excludes)
     if not args.skip_config_check:
         kconfig_files = [Path(p) for p in (args.kconfig or [
             "Kconfig", "Kconfig_proprietary"
         ])]
-        issues += check_config_macros(roots, kconfig_files)
+        issues += check_config_macros(roots, kconfig_files, excludes=excludes)
     for issue in issues:
         print(f"{issue.file}:{issue.line}: [{issue.kind}] {issue.message}")
     if args.report:
