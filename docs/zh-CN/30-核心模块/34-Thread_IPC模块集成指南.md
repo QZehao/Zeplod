@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/30-core-modules/34-thread-ipc-integration-guide.md)
+
 # 模块开发中集成 Thread IPC Service 指南
 
 本文说明如何在 **业务模块**（配合本工程的 **`module_manager`**）中嵌入 **Thread IPC Service**，实现模块内「请求—响应」式服务，并与 **事件系统**、**事件桥** 可选联动。

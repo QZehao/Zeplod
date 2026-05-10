@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/30-core-modules/33-thread-ipc-service-guide.md)
+
 # Thread IPC Service 模块详细使用说明
 
 ## 目录

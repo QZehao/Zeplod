@@ -1,3 +1,5 @@
+> 语言: **中文** | [English](../../en/30-core-modules/35-ipc-service-roadmap.md)
+
 # IPC 服务扩展特性规划
 
 本文档记录 IPC 服务框架的扩展特性规划，供后续开发参考。
