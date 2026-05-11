@@ -1,6 +1,6 @@
 /**
  * @file app_main.h
- * @brief
+ * @brief 应用入口 API 与配置类型（版本信息见 app_version.h）
  * @author zeh (china_qzh@163.com)
  * @version 1.0
  * @date 2026-04-01
@@ -17,21 +17,12 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "app_config.h"
+#include "app_version.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* =============================================================================
- * Application Version
- * ============================================================================= */
-
-#define APP_VERSION_MAJOR  1
-#define APP_VERSION_MINOR  0
-#define APP_VERSION_PATCH  0
-#define APP_VERSION_STRING "1.0.0"
 
 /* =============================================================================
  * Application Configuration
@@ -56,14 +47,14 @@ typedef struct {
 int app_init(const app_config_t* config);
 
 /**
- * @brief Start application
- * @return 0 on success, negative error code on failure
+ * @brief 启动应用
+ * @return APP_OK 成功，否则为 APP_ERR_*（见 app_config.h）
  */
 int app_start(void);
 
 /**
- * @brief Stop application
- * @return 0 on success, negative error code on failure
+ * @brief 停止应用
+ * @return APP_OK 成功，否则为 APP_ERR_*
  */
 int app_stop(void);
 

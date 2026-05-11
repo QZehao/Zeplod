@@ -14,11 +14,14 @@
  *
  */
 
-#include "app_version.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "app_config.h"
+#include "app_version.h"
 
 LOG_MODULE_REGISTER(app_version, CONFIG_SYS_LOG_LEVEL);
 
@@ -60,24 +63,30 @@ static const app_version_info_t g_version_info = {.major = PROJECT_VERSION_MAJOR
 
 int app_version_get_string(char* buffer, size_t size) {
     if (buffer == NULL || size < VERSION_STRING_MAX_LEN) {
-        return -1;
+        return APP_ERR_INVALID_PARAM;
     }
 
-    snprintf(buffer, size, "%d.%d.%d", g_version_info.major, g_version_info.minor, g_version_info.patch);
+    int n = snprintf(buffer, size, "%d.%d.%d", g_version_info.major, g_version_info.minor, g_version_info.patch);
+    if (n < 0 || (size_t) n >= size) {
+        return APP_ERR_INVALID_PARAM;
+    }
 
-    return 0;
+    return APP_OK;
 }
 
 int app_version_get_info_string(char* buffer, size_t size) {
     if (buffer == NULL || size < VERSION_INFO_STRING_MAX_LEN) {
-        return -1;
+        return APP_ERR_INVALID_PARAM;
     }
 
-    snprintf(buffer, size, "v%d.%d.%d (%s) [%s] %s - %s", g_version_info.major, g_version_info.minor,
-             g_version_info.patch, g_version_info.git_commit, g_version_info.build_type, g_version_info.build_timestamp,
-             g_version_info.build_target);
+    int n = snprintf(buffer, size, "v%d.%d.%d (%s) [%s] %s - %s", g_version_info.major, g_version_info.minor,
+                     g_version_info.patch, g_version_info.git_commit, g_version_info.build_type,
+                     g_version_info.build_timestamp, g_version_info.build_target);
+    if (n < 0 || (size_t) n >= size) {
+        return APP_ERR_INVALID_PARAM;
+    }
 
-    return 0;
+    return APP_OK;
 }
 
 uint32_t app_version_get_code(void) {
@@ -120,8 +129,11 @@ void app_version_print(void) {
     char version_str[VERSION_STRING_MAX_LEN];
     char info_str[VERSION_INFO_STRING_MAX_LEN];
 
-    app_version_get_string(version_str, sizeof(version_str));
-    app_version_get_info_string(info_str, sizeof(info_str));
+    if (app_version_get_string(version_str, sizeof(version_str)) != APP_OK ||
+        app_version_get_info_string(info_str, sizeof(info_str)) != APP_OK) {
+        LOG_WRN("app_version: buffer/format error building version strings");
+        return;
+    }
 
     LOG_INF("========================================");
     LOG_INF("  Application Version Information");
@@ -147,11 +159,16 @@ void app_version_print(void) {
 #include <zephyr/shell/shell.h>
 
 static int cmd_version(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     char version_str[VERSION_STRING_MAX_LEN];
     char info_str[VERSION_INFO_STRING_MAX_LEN];
 
-    app_version_get_string(version_str, sizeof(version_str));
-    app_version_get_info_string(info_str, sizeof(info_str));
+    if (app_version_get_string(version_str, sizeof(version_str)) != APP_OK ||
+        app_version_get_info_string(info_str, sizeof(info_str)) != APP_OK) {
+        shell_print(shell, "version string error");
+        return -EIO;
+    }
 
     shell_print(shell, "Version: %s", version_str);
     shell_print(shell, "Info: %s", info_str);

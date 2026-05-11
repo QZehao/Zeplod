@@ -1,6 +1,10 @@
 /**
  * @file app_version_config.h.in
- * @brief
+ * @brief CMake configure_file 输入模板（非由本仓库脚本在每次构建时从零生成）
+ *
+ * @note 构建目录下的 `generated/app_version_config.h` 才是 configure_file 的**自动生成产物**。
+ *       占位符必须为紧邻形式 `@VAR@`（@ONLY 模式），中间不可插入空格。
+ *
  * @author zeh (china_qzh@163.com)
  * @version 1.0
  * @date 2026-04-01
@@ -18,16 +22,16 @@
 #define APP_VERSION_CONFIG_H
 
 /* Version numbers */
-#define PROJECT_VERSION_MAJOR @PROJECT_VERSION_MAJOR @
-#define PROJECT_VERSION_MINOR @PROJECT_VERSION_MINOR @
-#define PROJECT_VERSION_PATCH @PROJECT_VERSION_PATCH @
+#define PROJECT_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define PROJECT_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define PROJECT_VERSION_PATCH @PROJECT_VERSION_PATCH@
 #define PROJECT_VERSION       "@PROJECT_VERSION@"
 
 /* Git information */
 #define GIT_COMMIT_HASH       "@GIT_COMMIT_HASH@"
 #define GIT_BRANCH            "@GIT_BRANCH@"
 #define GIT_TAG               "@GIT_TAG@"
-#define GIT_DIRTY             @GIT_DIRTY @
+#define GIT_DIRTY             @GIT_DIRTY@
 
 /* Build information */
 #define BUILD_TIMESTAMP       "@BUILD_TIMESTAMP@"

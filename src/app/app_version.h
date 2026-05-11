@@ -47,6 +47,12 @@ extern "C" {
 #define PROJECT_VERSION "1.0.0"
 #endif
 
+/** 与 PROJECT_VERSION_* / PROJECT_VERSION 同源，供应用与模块统一引用 */
+#define APP_VERSION_MAJOR  PROJECT_VERSION_MAJOR
+#define APP_VERSION_MINOR  PROJECT_VERSION_MINOR
+#define APP_VERSION_PATCH  PROJECT_VERSION_PATCH
+#define APP_VERSION_STRING PROJECT_VERSION
+
 /* Git information (auto-generated) */
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "unknown"
@@ -131,17 +137,17 @@ extern "C" {
 
 /**
  * @brief Get version string
- * @param buffer Output buffer (at least VERSION_STRING_MAX_LEN bytes)
- * @param size Buffer size
- * @return 0 on success, negative error code on failure
+ * @param buffer 输出缓冲，建议至少 VERSION_STRING_MAX_LEN 字节（小于该值将失败）
+ * @param size buffer 大小
+ * @return APP_OK 成功；参数非法或缓冲过小为 APP_ERR_INVALID_PARAM（见 app_config.h）
  */
 int app_version_get_string(char* buffer, size_t size);
 
 /**
  * @brief Get full version information string
- * @param buffer Output buffer (at least VERSION_INFO_STRING_MAX_LEN bytes)
- * @param size Buffer size
- * @return 0 on success, negative error code on failure
+ * @param buffer 输出缓冲，建议至少 VERSION_INFO_STRING_MAX_LEN 字节
+ * @param size buffer 大小
+ * @return APP_OK 成功；参数非法或缓冲过小为 APP_ERR_INVALID_PARAM
  */
 int app_version_get_info_string(char* buffer, size_t size);
 

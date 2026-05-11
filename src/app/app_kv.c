@@ -42,13 +42,13 @@ typedef struct {
     bool in_use;
 } app_kv_slot_t;
 
-static struct k_mutex s_kv_lock;
-static app_kv_slot_t  s_kv[APP_KV_MAX_ENTRIES];
-static bool           s_kv_ready;
+static struct k_mutex g_kv_lock;
+static app_kv_slot_t  g_kv[APP_KV_MAX_ENTRIES];
+static bool           g_kv_ready;
 
 static int find_key_locked(const char* key) {
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (s_kv[i].in_use && strcmp(s_kv[i].key, key) == 0) {
+        if (g_kv[i].in_use && strcmp(g_kv[i].key, key) == 0) {
             return i;
         }
     }
@@ -57,7 +57,7 @@ static int find_key_locked(const char* key) {
 
 static int find_free_locked(void) {
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (!s_kv[i].in_use) {
+        if (!g_kv[i].in_use) {
             return i;
         }
     }
@@ -87,7 +87,7 @@ static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
         return APP_ERR_INVALID_PARAM;
     }
 
-    memset(s_kv, 0, sizeof(s_kv));
+    memset(g_kv, 0, sizeof(g_kv));
     size_t off = 8U;
 
     for (uint16_t n = 0U; n < count; n++) {
@@ -121,10 +121,10 @@ static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
             if (idx < 0) {
                 return APP_ERR_KV_FULL;
             }
-            memcpy(s_kv[idx].key, tmp_key, sizeof(tmp_key));
+            memcpy(g_kv[idx].key, tmp_key, sizeof(tmp_key));
         }
-        memcpy(s_kv[idx].value, tmp_val, sizeof(tmp_val));
-        s_kv[idx].in_use = true;
+        memcpy(g_kv[idx].value, tmp_val, sizeof(tmp_val));
+        g_kv[idx].in_use = true;
     }
 
     if (off != len) {
@@ -140,7 +140,7 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
 
     uint16_t nused = 0U;
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (s_kv[i].in_use) {
+        if (g_kv[i].in_use) {
             nused++;
         }
     }
@@ -154,11 +154,11 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
     off += 2U;
 
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (!s_kv[i].in_use) {
+        if (!g_kv[i].in_use) {
             continue;
         }
-        size_t klen = strlen(s_kv[i].key);
-        size_t vlen = strlen(s_kv[i].value);
+        size_t klen = strlen(g_kv[i].key);
+        size_t vlen = strlen(g_kv[i].value);
         if (klen == 0U || klen >= (size_t) APP_KV_KEY_MAX_LEN || vlen >= (size_t) APP_KV_VALUE_MAX_LEN) {
             return APP_ERR_INVALID_PARAM;
         }
@@ -167,9 +167,9 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
         }
         buf[off++] = (uint8_t) klen;
         buf[off++] = (uint8_t) vlen;
-        memcpy(buf + off, s_kv[i].key, klen + 1U);
+        memcpy(buf + off, g_kv[i].key, klen + 1U);
         off += klen + 1U;
-        memcpy(buf + off, s_kv[i].value, vlen + 1U);
+        memcpy(buf + off, g_kv[i].value, vlen + 1U);
         off += vlen + 1U;
     }
 
@@ -186,11 +186,11 @@ static void kv_autosave_if_enabled(void) {
 #endif /* CONFIG_APP_KV_PERSIST */
 
 void app_kv_init(void) {
-    if (s_kv_ready) {
+    if (g_kv_ready) {
         return;
     }
-    k_mutex_init(&s_kv_lock);
-    memset(s_kv, 0, sizeof(s_kv));
+    k_mutex_init(&g_kv_lock);
+    memset(g_kv, 0, sizeof(g_kv));
 
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
     if (settings_subsys_init() != 0) {
@@ -201,24 +201,24 @@ void app_kv_init(void) {
         if (n < 0 && n != -ENOENT) {
             LOG_WRN("settings_load_one(%s) failed: %zd", KV_SETTINGS_KEY, n);
         } else if (n > 0) {
-            k_mutex_lock(&s_kv_lock, K_FOREVER);
+            k_mutex_lock(&g_kv_lock, K_FOREVER);
             int d = kv_decode_into_slots(blob, (size_t) n);
-            k_mutex_unlock(&s_kv_lock);
+            k_mutex_unlock(&g_kv_lock);
             if (d != APP_OK) {
                 LOG_WRN("app_kv flash blob invalid or corrupt (err=%d), cleared RAM table", d);
-                k_mutex_lock(&s_kv_lock, K_FOREVER);
-                memset(s_kv, 0, sizeof(s_kv));
-                k_mutex_unlock(&s_kv_lock);
+                k_mutex_lock(&g_kv_lock, K_FOREVER);
+                memset(g_kv, 0, sizeof(g_kv));
+                k_mutex_unlock(&g_kv_lock);
             }
         }
     }
 #endif
 
-    s_kv_ready = true;
+    g_kv_ready = true;
 }
 
 int app_kv_set(const char* key, const char* value) {
-    if (!s_kv_ready || key == NULL || value == NULL) {
+    if (!g_kv_ready || key == NULL || value == NULL) {
         return APP_ERR_INVALID_PARAM;
     }
     if (key[0] == '\0') {
@@ -228,24 +228,24 @@ int app_kv_set(const char* key, const char* value) {
         return APP_ERR_INVALID_PARAM;
     }
 
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
 
     int idx = find_key_locked(key);
     if (idx < 0) {
         idx = find_free_locked();
         if (idx < 0) {
-            k_mutex_unlock(&s_kv_lock);
+            k_mutex_unlock(&g_kv_lock);
             return APP_ERR_KV_FULL;
         }
     }
 
-    (void) strncpy(s_kv[idx].key, key, APP_KV_KEY_MAX_LEN - 1);
-    s_kv[idx].key[APP_KV_KEY_MAX_LEN - 1] = '\0';
-    (void) strncpy(s_kv[idx].value, value, APP_KV_VALUE_MAX_LEN - 1);
-    s_kv[idx].value[APP_KV_VALUE_MAX_LEN - 1] = '\0';
-    s_kv[idx].in_use = true;
+    (void) strncpy(g_kv[idx].key, key, APP_KV_KEY_MAX_LEN - 1);
+    g_kv[idx].key[APP_KV_KEY_MAX_LEN - 1] = '\0';
+    (void) strncpy(g_kv[idx].value, value, APP_KV_VALUE_MAX_LEN - 1);
+    g_kv[idx].value[APP_KV_VALUE_MAX_LEN - 1] = '\0';
+    g_kv[idx].in_use = true;
 
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
     kv_autosave_if_enabled();
 #endif
@@ -253,45 +253,45 @@ int app_kv_set(const char* key, const char* value) {
 }
 
 int app_kv_get(const char* key, char* out, size_t out_len) {
-    if (!s_kv_ready || key == NULL || out == NULL || out_len == 0U) {
+    if (!g_kv_ready || key == NULL || out == NULL || out_len == 0U) {
         return APP_ERR_INVALID_PARAM;
     }
 
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int idx = find_key_locked(key);
     if (idx < 0) {
-        k_mutex_unlock(&s_kv_lock);
+        k_mutex_unlock(&g_kv_lock);
         return APP_ERR_NOT_FOUND;
     }
-    (void) strncpy(out, s_kv[idx].value, out_len - 1U);
+    (void) strncpy(out, g_kv[idx].value, out_len - 1U);
     out[out_len - 1U] = '\0';
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     return APP_OK;
 }
 
 bool app_kv_has(const char* key) {
-    if (!s_kv_ready || key == NULL) {
+    if (!g_kv_ready || key == NULL) {
         return false;
     }
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int idx = find_key_locked(key);
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     return idx >= 0;
 }
 
 int app_kv_remove(const char* key) {
-    if (!s_kv_ready || key == NULL) {
+    if (!g_kv_ready || key == NULL) {
         return APP_ERR_INVALID_PARAM;
     }
 
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int idx = find_key_locked(key);
     if (idx < 0) {
-        k_mutex_unlock(&s_kv_lock);
+        k_mutex_unlock(&g_kv_lock);
         return APP_ERR_NOT_FOUND;
     }
-    memset(&s_kv[idx], 0, sizeof(s_kv[idx]));
-    k_mutex_unlock(&s_kv_lock);
+    memset(&g_kv[idx], 0, sizeof(g_kv[idx]));
+    k_mutex_unlock(&g_kv_lock);
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
     kv_autosave_if_enabled();
 #endif
@@ -299,49 +299,49 @@ int app_kv_remove(const char* key) {
 }
 
 void app_kv_clear(void) {
-    if (!s_kv_ready) {
+    if (!g_kv_ready) {
         return;
     }
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
-    memset(s_kv, 0, sizeof(s_kv));
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    memset(g_kv, 0, sizeof(g_kv));
+    k_mutex_unlock(&g_kv_lock);
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
     kv_autosave_if_enabled();
 #endif
 }
 
 size_t app_kv_count(void) {
-    if (!s_kv_ready) {
+    if (!g_kv_ready) {
         return 0U;
     }
     size_t n = 0U;
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (s_kv[i].in_use) {
+        if (g_kv[i].in_use) {
             n++;
         }
     }
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     return n;
 }
 
 int app_kv_foreach(app_kv_visit_fn fn, void* user) {
-    if (!s_kv_ready || fn == NULL) {
+    if (!g_kv_ready || fn == NULL) {
         return APP_ERR_INVALID_PARAM;
     }
 
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
-        if (!s_kv[i].in_use) {
+        if (!g_kv[i].in_use) {
             continue;
         }
-        int r = fn(s_kv[i].key, s_kv[i].value, user);
+        int r = fn(g_kv[i].key, g_kv[i].value, user);
         if (r != 0) {
-            k_mutex_unlock(&s_kv_lock);
+            k_mutex_unlock(&g_kv_lock);
             return r;
         }
     }
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     return 0;
 }
 
@@ -377,14 +377,14 @@ int app_kv_save(void) {
 #if !IS_ENABLED(CONFIG_APP_KV_PERSIST)
     return APP_ERR_DISABLED;
 #else
-    if (!s_kv_ready) {
+    if (!g_kv_ready) {
         return APP_ERR_INIT;
     }
     uint8_t blob[APP_KV_PERSIST_BLOB_MAX];
     size_t  len = 0U;
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int enc = kv_encode_blob_locked(blob, sizeof(blob), &len);
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     if (enc != APP_OK) {
         return enc;
     }
@@ -400,7 +400,7 @@ int app_kv_load(void) {
 #if !IS_ENABLED(CONFIG_APP_KV_PERSIST)
     return APP_ERR_DISABLED;
 #else
-    if (!s_kv_ready) {
+    if (!g_kv_ready) {
         return APP_ERR_INIT;
     }
     if (settings_subsys_init() != 0) {
@@ -410,19 +410,19 @@ int app_kv_load(void) {
     ssize_t n = settings_load_one(KV_SETTINGS_KEY, blob, sizeof(blob));
     if (n < 0) {
         if (n == -ENOENT) {
-            k_mutex_lock(&s_kv_lock, K_FOREVER);
-            memset(s_kv, 0, sizeof(s_kv));
-            k_mutex_unlock(&s_kv_lock);
+            k_mutex_lock(&g_kv_lock, K_FOREVER);
+            memset(g_kv, 0, sizeof(g_kv));
+            k_mutex_unlock(&g_kv_lock);
             return APP_OK;
         }
         return APP_ERR_IO;
     }
-    k_mutex_lock(&s_kv_lock, K_FOREVER);
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int d = kv_decode_into_slots(blob, (size_t) n);
     if (d != APP_OK) {
-        memset(s_kv, 0, sizeof(s_kv));
+        memset(g_kv, 0, sizeof(g_kv));
     }
-    k_mutex_unlock(&s_kv_lock);
+    k_mutex_unlock(&g_kv_lock);
     return d == APP_OK ? APP_OK : APP_ERR_INVALID_PARAM;
 #endif
 }

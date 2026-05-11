@@ -15,9 +15,7 @@
  */
 
 #include "app_main.h"
-#include "app_config.h"
 #include "app_kv.h"
-#include "app_version.h"
 #include "event_dispatcher.h"
 #include "event_system.h"
 #include "event_system_compat.h"
@@ -248,11 +246,16 @@ static int cmd_app_kv_load(const struct shell* shell, size_t argc, char** argv) 
 }
 
 static int cmd_app_status(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     char version_str[VERSION_STRING_MAX_LEN];
     char info_str[VERSION_INFO_STRING_MAX_LEN];
 
-    app_version_get_string(version_str, sizeof(version_str));
-    app_version_get_info_string(info_str, sizeof(info_str));
+    if (app_version_get_string(version_str, sizeof(version_str)) != APP_OK ||
+        app_version_get_info_string(info_str, sizeof(info_str)) != APP_OK) {
+        shell_print(shell, "version string error");
+        return -EIO;
+    }
 
     shell_print(shell, "Application Status:");
     shell_print(shell, "  Version: %s", version_str);
@@ -265,6 +268,8 @@ static int cmd_app_status(const struct shell* shell, size_t argc, char** argv) {
 }
 
 static int cmd_app_modules(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     shell_print(shell, "Registered Modules:");
     module_compat_dump_info();
 
@@ -279,6 +284,8 @@ static int cmd_app_modules(const struct shell* shell, size_t argc, char** argv) 
 }
 
 static int cmd_app_events(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     event_compat_stats_t stats;
     event_compat_get_statistics(&stats);
 
@@ -302,6 +309,8 @@ static int cmd_app_events(const struct shell* shell, size_t argc, char** argv) {
 }
 
 static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     shell_print(shell, "Memory Statistics:");
     shell_print(shell, "  Heap Size: %d bytes", sys_mem_get_heap_size());
     shell_print(shell, "  Free: %d bytes", sys_mem_get_free_size());
@@ -312,7 +321,7 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
 
 static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 #if !APP_CONFIG_ENABLE_LOG_DUMP
-    shell_print(shell, "Log dump disabled (set APP_CONFIG_ENABLE_LOG_DUMP=1 in app_config.h)");
+    shell_print(shell, "Log dump disabled (enable CONFIG_APP_ENABLE_LOG_DUMP in prj.conf or overlay)");
     return 0;
 #else
     if (argc > 1) {
@@ -327,6 +336,8 @@ static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 }
 
 static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
     shell_print(shell, "Available commands:");
     shell_print(shell, "  app status     - Show application status");
     shell_print(shell, "  app modules    - Show module information");
@@ -485,7 +496,9 @@ int app_stop(void) {
     }
 
     /* Stop watchdog */
+#if APP_CONFIG_ENABLE_WATCHDOG
     sys_wdt_stop();
+#endif
 
     LOG_INF("Application stopped");
     return APP_OK;
