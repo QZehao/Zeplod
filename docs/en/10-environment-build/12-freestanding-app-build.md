@@ -83,7 +83,7 @@ cmake --build build
 
 ```bash
 # Use specified Kconfig fragment
-west build -b <board> . -DCONF_FILE=prj.conf
+west build -b <board> . -- -DCONF_FILE=prj.conf
 
 # Combine multiple fragments
 west build -b <board> . -- -DCONF_FILE="prj.conf;prj_extra.conf"

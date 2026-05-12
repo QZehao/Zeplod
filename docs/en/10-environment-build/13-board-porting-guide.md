@@ -297,7 +297,7 @@ cp boards/<old_board>.overlay boards/<new_board>.overlay
         /* Base address, size (hex) */
         reg = <0x<BASE_ADDR> 0x<SIZE_IN_HEX>>;
     };
-    
+
     /* Specify SRAM region used by Zephyr */
     zephyr,sram = &sram0;
 };
@@ -513,7 +513,7 @@ CONFIG_EVENT_DISPATCHER_STACK_SIZE=2048
         /* H743ZI: 1MB = 0x100000 */
         reg = <0x24000000 0x100000>;
     };
-    
+
     zephyr,sram = &sram0;
 };
 ```
@@ -539,7 +539,7 @@ CONFIG_EVENT_DISPATCHER_STACK_SIZE=8192
         /* 256KB = 0x40000 */
         reg = <0x20000000 0x40000>;
     };
-    
+
     zephyr,sram = &sram0;
 };
 ```
@@ -569,7 +569,7 @@ CONFIG_EVENT_DISPATCHER_STACK_SIZE=2048
         /* 20KB = 0x5000 */
         reg = <0x20000000 0x5000>;
     };
-    
+
     zephyr,sram = &sram0;
 };
 ```
@@ -680,7 +680,7 @@ prj_low_ram.conf                # Small RAM board minimal configuration
 Build with:
 
 ```bash
-west build -b <board_name> -DCONF_FILE="prj.conf;prj_<board_name>.conf" .
+west build -b <board_name> . -- -DCONF_FILE="prj.conf;prj_<board_name>.conf"
 ```
 
 ### 5.3 Adjust Module Dependencies
@@ -909,7 +909,7 @@ Edit `boards/nucleo_h743zi.overlay`:
         device_type = "memory";
         reg = <0x24000000 0x100000>;  /* 1MB = 0x100000 */
     };
-    
+
     zephyr,sram = &sram0;
 };
 
@@ -977,8 +977,7 @@ CONFIG_LOG_DEFAULT_LEVEL=4
 west build -t pristine
 
 # Build with new board and configuration
-west build -b nucleo_h743zi \
-    -DCONF_FILE="prj.conf;prj_nucleo_h743zi.conf" .
+west build -b nucleo_h743zi . -- -DCONF_FILE="prj.conf;prj_nucleo_h743zi.conf"
 
 # View memory usage
 arm-none-eabi-size build/zephyr/zephyr.elf
@@ -1014,7 +1013,7 @@ west console
         device_type = "memory";
         reg = <0x20000000 0x40000>;  /* 256KB = 0x40000 */
     };
-    
+
     zephyr,sram = &sram0;
 };
 
@@ -1078,8 +1077,7 @@ CONFIG_SYS_LOG_LEVEL=0
 
 ```bash
 west build -t pristine
-west build -b nrf52840dk_nrf52840 \
-    -DCONF_FILE="prj.conf;prj_nrf52840.conf" .
+west build -b nrf52840dk_nrf52840 . -- -DCONF_FILE="prj.conf;prj_nrf52840.conf"
 
 # Check RAM usage
 arm-none-eabi-size build/zephyr/zephyr.elf

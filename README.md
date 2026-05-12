@@ -366,10 +366,10 @@ west build -b native_posix .
 west build -b native_sim .
 
 # Use specific config files (can merge multiple)
-west build -b <your_board> -DCONF_FILE="prj.conf;prj_example_module_ipc.conf" .
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
 
 # Extreme memory mode build (framework < 10KB)
-west build -b <your_board> -DCONF_FILE="prj.conf;prj_tiny.conf" .
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_tiny.conf"
 
 # Clean and rebuild
 west build -t pristine

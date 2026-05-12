@@ -290,7 +290,7 @@ python scripts/module_config.py disable EXAMPLE_MODULE_GPIO
 python scripts/module_config.py generate --output prj_my_project.conf
 
 # 3. Build with custom configuration
-west build -b nucleo_l4r5zi -DCONF_FILE="prj.conf;prj_my_project.conf" .
+west build -b nucleo_l4r5zi . -- -DCONF_FILE="prj.conf;prj_my_project.conf"
 ```
 
 ### Configuration Notes

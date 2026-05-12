@@ -24,7 +24,7 @@ west build -b <board> .
 west build -b native_posix .
 
 # 使用自定义配置叠加文件构建
-west build -b <board> -DCONF_FILE="prj.conf;prj_example_module_ipc.conf" .
+west build -b <board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
 
 # 清理并重新构建
 west build -t pristine

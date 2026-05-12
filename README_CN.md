@@ -367,7 +367,7 @@ west build -b native_posix .
 west build -b native_sim .
 
 # 使用特定配置文件（可合并多个）
-west build -b <your_board> -DCONF_FILE="prj.conf;prj_example_module_ipc.conf" .
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
 
 # 清理并重新构建
 west build -t pristine
