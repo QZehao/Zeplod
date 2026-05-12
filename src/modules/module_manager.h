@@ -75,6 +75,25 @@ extern "C" {
  * ============================================================================= */
 
 /**
+ * @brief 模块管理器错误码枚举
+ *
+ * 所有模块管理器 API 均返回此枚举值，使用负 errno 风格。
+ */
+typedef enum {
+    MODULE_OK = 0,                          /**< 操作成功 */
+    MODULE_ERR_INVALID_ARG = -EINVAL,       /**< 无效参数 */
+    MODULE_ERR_NO_MEM = -ENOMEM,            /**< 内存不足 */
+    MODULE_ERR_ALREADY_EXISTS = -EALREADY,  /**< 模块已存在 */
+    MODULE_ERR_NOT_FOUND = -ENOENT,         /**< 模块未找到 */
+    MODULE_ERR_NOT_INITIALIZED = -ENOTCONN, /**< 管理器未初始化 */
+    MODULE_ERR_ALREADY_RUNNING = -EALREADY, /**< 管理器已运行 */
+    MODULE_ERR_NOT_RUNNING = -ENOTCONN,     /**< 模块未运行 */
+    MODULE_ERR_TIMEOUT = -ETIMEDOUT,        /**< 操作超时 */
+    MODULE_ERR_IO = -EIO,                   /**< I/O 错误 */
+    MODULE_ERR_BUSY = -EBUSY                /**< 资源忙碌 */
+} module_mgr_result_t;
+
+/**
  * @brief 模块管理器事件类型枚举
  *
  * 用于通知模块状态变化。
