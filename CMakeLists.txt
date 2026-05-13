@@ -7,6 +7,11 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# Application tree rooted at this file's directory. When a product repo uses
+# add_subdirectory(framework), CMAKE_SOURCE_DIR points at the product root;
+# include paths and generated headers must still resolve inside framework/.
+get_filename_component(FW_APP_ROOT "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
+
 # =============================================================================
 # Load Zephyr Configuration
 # =============================================================================
@@ -428,12 +433,12 @@ target_compile_definitions(app PRIVATE
 # =============================================================================
 
 target_include_directories(app PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/core
-    ${CMAKE_SOURCE_DIR}/src/services
-    ${CMAKE_SOURCE_DIR}/src/app
-    ${CMAKE_SOURCE_DIR}/src/modules
-    ${CMAKE_SOURCE_DIR}/src/modules_examples
+    ${FW_APP_ROOT}/src
+    ${FW_APP_ROOT}/src/core
+    ${FW_APP_ROOT}/src/services
+    ${FW_APP_ROOT}/src/app
+    ${FW_APP_ROOT}/src/modules
+    ${FW_APP_ROOT}/src/modules_examples
 )
 
 # =============================================================================
@@ -442,7 +447,7 @@ target_include_directories(app PRIVATE
 
 # Configure a version header file with build-time values
 configure_file(
-    ${CMAKE_SOURCE_DIR}/src/app/app_version_config.h.in
+    ${FW_APP_ROOT}/src/app/app_version_config.h.in
     ${CMAKE_BINARY_DIR}/generated/app_version_config.h
     @ONLY
 )
