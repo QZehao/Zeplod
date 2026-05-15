@@ -1,0 +1,87 @@
+menu "Data Bus (Standard)"
+
+config DATA_BUS
+    bool "Enable Data Bus module"
+    default n
+    help
+      Named-channel, reference-counted stream data sharing.
+      Completely independent from the event system.
+
+config DATA_BUS_CHANNEL_NAME_MAX
+    int "Maximum channel name length (including NUL terminator)"
+    default 16
+    range 8 64
+    depends on DATA_BUS
+    help
+      Name buffer size used in channel creation, lookup, and
+      event bridge notifications.
+      Must match data_bus_event_notification_t::channel_name array size.
+
+config DATA_BUS_MAX_CHANNELS
+    int "Maximum number of channels"
+    default 8
+    depends on DATA_BUS
+
+config DATA_BUS_MAX_CONSUMERS_PER_CHANNEL
+    int "Maximum consumers per channel"
+    default 4
+    depends on DATA_BUS
+
+config DATA_BUS_CHANNEL_QUEUE_DEPTH
+    int "Channel queue depth (block pointer count)"
+    default 16
+    depends on DATA_BUS
+
+config DATA_BUS_MAX_BLOCKS
+    int "Maximum concurrent blocks (data_bus_block_t slab size)"
+    default 32
+    depends on DATA_BUS
+    help
+      Maximum number of data_bus_block_t structures in the system
+      at any time. Should be >= total count of all data slab blocks
+      to cover both slab and k_malloc fallback scenarios.
+
+config DATA_BUS_DISPATCHER_STACK_SIZE
+    int "Dispatcher thread stack size"
+    default 2048
+    depends on DATA_BUS
+
+config DATA_BUS_DISPATCHER_PRIORITY
+    int "Dispatcher thread priority"
+    default 5
+    depends on DATA_BUS
+
+config DATA_BUS_SLAB_ENABLE
+    bool "Enable data bus slab pool"
+    default y
+    depends on DATA_BUS
+
+config DATA_BUS_SLAB_256_COUNT
+    int "256-byte slab block count"
+    default 8
+    depends on DATA_BUS_SLAB_ENABLE
+
+config DATA_BUS_SLAB_1K_COUNT
+    int "1KB slab block count"
+    default 4
+    depends on DATA_BUS_SLAB_ENABLE
+
+config DATA_BUS_SLAB_4K_COUNT
+    int "4KB slab block count"
+    default 2
+    depends on DATA_BUS_SLAB_ENABLE
+
+config DATA_BUS_EVENT_BRIDGE
+    bool "Bridge data bus notifications to event system"
+    default y
+    depends on DATA_BUS && EVENT_SYSTEM
+
+config DATA_BUS_DEBUG_REFCNT
+    bool "Debug: reference count assertions in destroy/deinit"
+    default n
+    depends on DATA_BUS
+    help
+      Check abnormal ref_count during channel_destroy and deinit
+      to help locate unpaired release causing slab exhaustion.
+
+endmenu

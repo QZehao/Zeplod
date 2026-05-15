@@ -123,6 +123,7 @@ extern "C" {
 #define APP_INIT_PRIO_SYS_MEM         30
 #define APP_INIT_PRIO_EVENT_SYS       40
 #define APP_INIT_PRIO_DISPATCHER      45
+#define APP_INIT_PRIO_DATA_BUS        46
 #define APP_INIT_PRIO_SYS_TIMER       50
 #define APP_INIT_PRIO_SYS_WDT         52
 #define APP_INIT_PRIO_MODULE_MGR      54

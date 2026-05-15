@@ -135,6 +135,27 @@ if(CONFIG_THREAD_IPC_SERVICE)
 endif()
 
 # =============================================================================
+# Data Bus 测试
+# =============================================================================
+if(CONFIG_DATA_BUS)
+	target_sources(app PRIVATE
+		${APP_SRC_DIR}/data_bus/data_bus.c
+		${APP_SRC_DIR}/data_bus/data_bus_channel.c
+		${APP_SRC_DIR}/data_bus/data_bus_memory.c
+		${APP_SRC_DIR}/data_bus/data_bus_consumer.c
+		test_data_bus.c
+	)
+	if(CONFIG_DATA_BUS_EVENT_BRIDGE)
+		target_sources(app PRIVATE
+			${APP_SRC_DIR}/data_bus/data_bus_event_bridge.c
+		)
+	endif()
+	target_include_directories(app PRIVATE
+		${APP_SRC_DIR}/data_bus
+	)
+endif()
+
+# =============================================================================
 # 包含路径
 # =============================================================================
 target_include_directories(app PRIVATE
