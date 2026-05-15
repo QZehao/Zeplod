@@ -26,7 +26,7 @@
 
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 
-/* Event type for data bus notifications */
+/* 数据总线通知的事件类型 */
 #ifndef EVENT_TYPE_DATA_BUS_AVAILABLE
 #define EVENT_TYPE_DATA_BUS_AVAILABLE 30U
 #endif
@@ -37,7 +37,7 @@ typedef struct {
 	uint32_t len;
 } data_bus_event_notification_t;
 
-/* Forward declaration from event system */
+/* 来自事件系统的前向声明 */
 event_status_t event_publish_copy(event_type_t type, event_priority_t priority,
 				  const void *data, size_t data_len);
 
@@ -50,7 +50,7 @@ void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t l
 	data_bus_event_notification_t notification;
 	memset(&notification, 0, sizeof(notification));
 
-	/* Safe copy with truncation and NUL termination */
+	/* 安全拷贝，截断并保证 NUL 结尾 */
 	size_t name_len = strlen(ch->name);
 	size_t copy_len = MIN(name_len, CONFIG_DATA_BUS_CHANNEL_NAME_MAX - 1);
 	memcpy(notification.channel_name, ch->name, copy_len);

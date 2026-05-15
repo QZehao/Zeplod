@@ -25,29 +25,29 @@ extern "C" {
 #endif
 
 /**
- * @brief Thread-context allocation (slab preferred, k_malloc fallback)
+ * @brief 线程上下文分配（优先 slab，k_malloc 兜底）
  *
- * Two-step allocation:
- *   1. Allocate data_bus_block_t from data_bus_block_slab
- *   2. Allocate data buffer from data slab (or k_malloc)
+ * 两步分配：
+ *   1. 从 data_bus_block_slab 分配 data_bus_block_t
+ *   2. 从数据 slab 分配数据缓冲区（或 k_malloc）
  *
- * @return Block with ref_count == 0 (not in lifecycle), or NULL on failure
+ * @return ref_count == 0（尚未进入生命周期）的块，失败返回 NULL
  */
 data_bus_block_t* data_bus_mem_alloc(size_t len);
 
 /**
- * @brief ISR-context allocation (slab only, no fallback)
+ * @brief ISR 上下文分配（仅 slab，无兜底）
  *
- * Same as above, but step 2 uses slab only (K_NO_WAIT).
- * Returns NULL if slab exhausted or len exceeds max slab size.
+ * 同上，但步骤 2 仅使用 slab（K_NO_WAIT）。
+ * slab 耗尽或长度超过最大 slab 大小时返回 NULL。
  */
 data_bus_block_t* data_bus_mem_alloc_isr(size_t len);
 
 /**
- * @brief Direct free (only for blocks not yet in ref-count lifecycle)
+ * @brief 直接释放（仅用于尚未进入引用计数生命周期的块）
  *
- * Frees both struct (slab/k_free) and data buffer (slab/k_free).
- * Used for rollback when publish fails before entering queue.
+ * 释放结构体（slab/k_free）和数据缓冲区（slab/k_free）。
+ * 在发布失败、尚未进入队列时用于回滚。
  */
 void data_bus_mem_free(data_bus_block_t* block);
 

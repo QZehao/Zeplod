@@ -24,7 +24,7 @@
 LOG_MODULE_REGISTER(test_data_bus);
 
 /* ============================================================================
- * Test fixtures
+ * 测试夹具
  * ============================================================================ */
 
 static struct k_sem g_test_sem;
@@ -33,7 +33,7 @@ static uint32_t g_recv_seq = 0;
 static data_bus_block_t *g_retained_block = NULL;
 
 /* ============================================================================
- * Consumer callbacks
+ * 消费者回调
  * ============================================================================ */
 
 static void auto_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, void *user_data)
@@ -43,7 +43,7 @@ static void auto_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, vo
 
 	g_call_count++;
 	g_recv_seq = block->seq;
-	/* Framework auto-releases; do NOT call release here */
+	/* 框架自动释放；不要在这里调用 release */
 	k_sem_give(&g_test_sem);
 }
 
@@ -55,13 +55,13 @@ static void retain_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, 
 	g_call_count++;
 	g_recv_seq = block->seq;
 
-	/* Retain for async processing */
+	/* 保留供异步处理 */
 	g_retained_block = data_bus_block_retain(block);
 	k_sem_give(&g_test_sem);
 }
 
 /* ============================================================================
- * Setup / teardown
+ * 设置 / 清理
  * ============================================================================ */
 
 static void data_bus_test_setup(void)
@@ -73,29 +73,29 @@ static void data_bus_test_setup(void)
 }
 
 /* ============================================================================
- * Test cases
+ * 测试用例
  * ============================================================================ */
 
 /**
- * @brief Test data bus init and deinit
+ * @brief 测试 Data Bus 初始化与反初始化
  */
 ZTEST(test_data_bus, test_init_deinit)
 {
 	data_bus_test_setup();
 
 	int ret = data_bus_init();
-	zassert_equal(ret, 0, "data_bus_init failed");
+	zassert_equal(ret, 0, "data_bus_init 失败");
 
-	/* Re-init should succeed (idempotent) */
+	/* 重复初始化应成功（幂等） */
 	ret = data_bus_init();
-	zassert_equal(ret, 0, "re-init should succeed");
+	zassert_equal(ret, 0, "重复初始化应成功");
 
 	ret = data_bus_deinit();
-	zassert_equal(ret, 0, "data_bus_deinit failed");
+	zassert_equal(ret, 0, "data_bus_deinit 失败");
 }
 
 /**
- * @brief Test channel create, find and destroy
+ * @brief 测试通道创建、查找与销毁
  */
 ZTEST(test_data_bus, test_channel_create_destroy)
 {
@@ -104,33 +104,33 @@ ZTEST(test_data_bus, test_channel_create_destroy)
 
 	data_bus_channel_t *ch = NULL;
 
-	/* Create a channel */
+	/* 创建通道 */
 	int ret = data_bus_channel_create("test_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
-	zassert_not_null(ch, "channel should not be NULL");
+	zassert_equal(ret, 0, "通道创建失败");
+	zassert_not_null(ch, "通道不应为 NULL");
 
-	/* Find the channel */
+	/* 查找通道 */
 	data_bus_channel_t *found = data_bus_channel_find("test_ch");
-	zassert_equal(found, ch, "find should return the same channel");
+	zassert_equal(found, ch, "查找应返回同一通道");
 
-	/* Try duplicate name */
+	/* 尝试重复名称 */
 	data_bus_channel_t *ch2 = NULL;
 	ret = data_bus_channel_create("test_ch", &ch2);
-	zassert_equal(ret, -EEXIST, "duplicate name should return -EEXIST");
+	zassert_equal(ret, -EEXIST, "重复名称应返回 -EEXIST");
 
-	/* Destroy */
+	/* 销毁 */
 	ret = data_bus_channel_destroy(ch);
-	zassert_equal(ret, 0, "channel destroy failed");
+	zassert_equal(ret, 0, "通道销毁失败");
 
-	/* Find after destroy */
+	/* 销毁后查找 */
 	found = data_bus_channel_find("test_ch");
-	zassert_is_null(found, "find after destroy should return NULL");
+	zassert_is_null(found, "销毁后查找应返回 NULL");
 
 	data_bus_deinit();
 }
 
 /**
- * @brief Test auto-release publish and consume
+ * @brief 测试自动释放的发布与消费
  */
 ZTEST(test_data_bus, test_publish_auto_release)
 {
@@ -139,9 +139,9 @@ ZTEST(test_data_bus, test_publish_auto_release)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("auto_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Register consumer with manual_release=false (auto-release enabled) */
+	/* 注册 manual_release=false（启用自动释放）的消费者 */
 	data_bus_consumer_cfg_t cfg = {
 		.name = "auto_consumer",
 		.manual_release = false,
@@ -149,25 +149,25 @@ ZTEST(test_data_bus, test_publish_auto_release)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
-	zassert_equal(ret, 0, "consumer register failed");
+	zassert_equal(ret, 0, "消费者注册失败");
 
-	/* Publish data */
+	/* 发布数据 */
 	const uint8_t test_data[] = {0x01, 0x02, 0x03, 0x04};
 	ret = data_bus_publish(ch, test_data, sizeof(test_data));
-	zassert_equal(ret, 0, "publish failed");
+	zassert_equal(ret, 0, "发布失败");
 
-	/* Wait for consumer callback */
+	/* 等待消费者回调 */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_call_count, 1, "consumer should have been called once");
-	zassert_equal(g_recv_seq, 0, "first seq should be 0");
+	zassert_equal(ret, 0, "消费者回调超时");
+	zassert_equal(g_call_count, 1, "消费者应被调用一次");
+	zassert_equal(g_recv_seq, 0, "第一个 seq 应为 0");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
 }
 
 /**
- * @brief Test multiple consumers with auto-release
+ * @brief 测试多消费者自动释放
  */
 ZTEST(test_data_bus, test_multi_consumer)
 {
@@ -176,9 +176,9 @@ ZTEST(test_data_bus, test_multi_consumer)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("multi_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Register two auto-release consumers */
+	/* 注册两个自动释放消费者 */
 	data_bus_consumer_cfg_t cfg1 = {
 		.name = "consumer_a",
 		.manual_release = false,
@@ -186,7 +186,7 @@ ZTEST(test_data_bus, test_multi_consumer)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg1, NULL);
-	zassert_equal(ret, 0, "consumer A register failed");
+	zassert_equal(ret, 0, "消费者 A 注册失败");
 
 	data_bus_consumer_cfg_t cfg2 = {
 		.name = "consumer_b",
@@ -195,27 +195,27 @@ ZTEST(test_data_bus, test_multi_consumer)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg2, NULL);
-	zassert_equal(ret, 0, "consumer B register failed");
+	zassert_equal(ret, 0, "消费者 B 注册失败");
 
-	/* Publish data */
+	/* 发布数据 */
 	const uint8_t test_data[] = {0xAB, 0xCD};
 	ret = data_bus_publish(ch, test_data, sizeof(test_data));
-	zassert_equal(ret, 0, "publish failed");
+	zassert_equal(ret, 0, "发布失败");
 
-	/* Wait for both consumers (2 callbacks) */
+	/* 等待两个消费者（2 次回调） */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "first consumer timeout");
+	zassert_equal(ret, 0, "第一个消费者超时");
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "second consumer timeout");
+	zassert_equal(ret, 0, "第二个消费者超时");
 
-	zassert_equal(g_call_count, 2, "both consumers should be called");
+	zassert_equal(g_call_count, 2, "两个消费者都应被调用");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
 }
 
 /**
- * @brief Test data_bus_block_retain for async ownership
+ * @brief 测试 data_bus_block_retain 异步持有
  */
 ZTEST(test_data_bus, test_retain)
 {
@@ -224,9 +224,9 @@ ZTEST(test_data_bus, test_retain)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("retain_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Register consumer that retains the block */
+	/* 注册 retain 消费者的块 */
 	data_bus_consumer_cfg_t cfg = {
 		.name = "retain_consumer",
 		.manual_release = false,
@@ -234,25 +234,25 @@ ZTEST(test_data_bus, test_retain)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
-	zassert_equal(ret, 0, "consumer register failed");
+	zassert_equal(ret, 0, "消费者注册失败");
 
-	/* Publish data */
+	/* 发布数据 */
 	const char *msg = "retain me";
 	ret = data_bus_publish(ch, msg, strlen(msg) + 1);
-	zassert_equal(ret, 0, "publish failed");
+	zassert_equal(ret, 0, "发布失败");
 
-	/* Wait for callback */
+	/* 等待回调 */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_call_count, 1, "consumer should be called once");
+	zassert_equal(ret, 0, "消费者回调超时");
+	zassert_equal(g_call_count, 1, "消费者应被调用一次");
 
-	/* The retained block should still be valid */
-	zassert_not_null(g_retained_block, "retained block should not be NULL");
-	zassert_equal(g_retained_block->len, strlen(msg) + 1, "retained len mismatch");
+	/* 被 retain 的块应该仍然有效 */
+	zassert_not_null(g_retained_block, "retain 的块不应为 NULL");
+	zassert_equal(g_retained_block->len, strlen(msg) + 1, "retain 长度不匹配");
 	zassert_mem_equal(g_retained_block->ptr, msg, strlen(msg) + 1,
-			  "retained data mismatch");
+			  "retain 数据不匹配");
 
-	/* Release the retained block */
+	/* 释放被 retain 的块 */
 	data_bus_block_release(g_retained_block);
 	g_retained_block = NULL;
 
@@ -261,7 +261,7 @@ ZTEST(test_data_bus, test_retain)
 }
 
 /**
- * @brief Test queue overflow handling
+ * @brief 测试队列溢出处理
  */
 ZTEST(test_data_bus, test_queue_overflow)
 {
@@ -270,9 +270,9 @@ ZTEST(test_data_bus, test_queue_overflow)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("overflow_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Fill the queue (no consumer, so blocks stay in queue) */
+	/* 填满队列（无消费者，块留在队列中） */
 	const uint8_t test_data[] = {0x01};
 	int published = 0;
 
@@ -281,25 +281,25 @@ ZTEST(test_data_bus, test_queue_overflow)
 		if (ret == 0) {
 			published++;
 		} else {
-			zassert_equal(ret, -ENOBUFS, "should return -ENOBUFS when full");
+			zassert_equal(ret, -ENOBUFS, "满时应返回 -ENOBUFS");
 		}
 	}
 
 	zassert_equal(published, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH,
-		      "should publish exactly queue_depth items");
+		      "应恰好发布 queue_depth 个条目");
 
-	/* Check stats */
+	/* 检查统计 */
 	data_bus_stats_t stats;
 	data_bus_channel_get_stats(ch, &stats);
-	zassert_true(stats.drop_count > 0, "drop_count should be > 0");
-	zassert_true(stats.queue_full_count > 0, "queue_full_count should be > 0");
+	zassert_true(stats.drop_count > 0, "drop_count 应 > 0");
+	zassert_true(stats.queue_full_count > 0, "queue_full_count 应 > 0");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
 }
 
 /**
- * @brief Test deinit cleans up pending blocks
+ * @brief 测试反初始化清理挂起块
  */
 ZTEST(test_data_bus, test_deinit_cleanup)
 {
@@ -308,34 +308,34 @@ ZTEST(test_data_bus, test_deinit_cleanup)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("cleanup_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Publish some data (no consumer) */
+	/* 发布一些数据（无消费者） */
 	const uint8_t test_data[] = {0x01, 0x02, 0x03};
 	for (int i = 0; i < 3; i++) {
 		ret = data_bus_publish(ch, test_data, sizeof(test_data));
-		zassert_equal(ret, 0, "publish failed");
+		zassert_equal(ret, 0, "发布失败");
 	}
 
-	/* Deinit should clean up everything without leaking */
+	/* 反初始化应清理一切且不泄漏 */
 	ret = data_bus_deinit();
-	zassert_equal(ret, 0, "deinit failed");
+	zassert_equal(ret, 0, "反初始化失败");
 
-	/* Re-init should work cleanly */
+	/* 重新初始化应干净工作 */
 	ret = data_bus_init();
-	zassert_equal(ret, 0, "re-init after deinit failed");
+	zassert_equal(ret, 0, "反初始化后重新初始化失败");
 
-	/* Create new channel */
+	/* 创建新通道 */
 	data_bus_channel_t *ch2 = NULL;
 	ret = data_bus_channel_create("new_ch", &ch2);
-	zassert_equal(ret, 0, "channel create after re-init failed");
+	zassert_equal(ret, 0, "重新初始化后通道创建失败");
 
 	data_bus_channel_destroy(ch2);
 	data_bus_deinit();
 }
 
 /**
- * @brief Test consumer unregister
+ * @brief 测试消费者注销
  */
 ZTEST(test_data_bus, test_consumer_unregister)
 {
@@ -344,7 +344,7 @@ ZTEST(test_data_bus, test_consumer_unregister)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("unregister_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
 	data_bus_consumer_t *consumer = NULL;
 	data_bus_consumer_cfg_t cfg = {
@@ -354,29 +354,29 @@ ZTEST(test_data_bus, test_consumer_unregister)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, &consumer);
-	zassert_equal(ret, 0, "consumer register failed");
-	zassert_not_null(consumer, "out_consumer should be set");
+	zassert_equal(ret, 0, "消费者注册失败");
+	zassert_not_null(consumer, "out_consumer 应被设置");
 
-	/* Unregister */
+	/* 注销 */
 	ret = data_bus_consumer_unregister(consumer);
-	zassert_equal(ret, 0, "consumer unregister failed");
+	zassert_equal(ret, 0, "消费者注销失败");
 
-	/* Publish after unregister - should not trigger callback */
+	/* 注销后发布 — 不应触发回调 */
 	const uint8_t test_data[] = {0x01};
 	ret = data_bus_publish(ch, test_data, sizeof(test_data));
-	zassert_equal(ret, 0, "publish failed");
+	zassert_equal(ret, 0, "发布失败");
 
-	/* Wait a bit - callback should NOT fire */
+	/* 等待片刻 — 回调不应触发 */
 	ret = k_sem_take(&g_test_sem, K_MSEC(50));
-	zassert_equal(ret, -EAGAIN, "callback should not fire after unregister");
-	zassert_equal(g_call_count, 0, "call count should remain 0");
+	zassert_equal(ret, -EAGAIN, "注销后回调不应触发");
+	zassert_equal(g_call_count, 0, "调用次数应保持为 0");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
 }
 
 /**
- * @brief Test publish_block (zero-copy)
+ * @brief 测试 publish_block（零拷贝）
  */
 ZTEST(test_data_bus, test_publish_block)
 {
@@ -385,9 +385,9 @@ ZTEST(test_data_bus, test_publish_block)
 
 	data_bus_channel_t *ch = NULL;
 	int ret = data_bus_channel_create("block_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
+	zassert_equal(ret, 0, "通道创建失败");
 
-	/* Register auto-release consumer */
+	/* 注册自动释放消费者 */
 	data_bus_consumer_cfg_t cfg = {
 		.name = "block_consumer",
 		.manual_release = false,
@@ -395,31 +395,31 @@ ZTEST(test_data_bus, test_publish_block)
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
-	zassert_equal(ret, 0, "consumer register failed");
+	zassert_equal(ret, 0, "消费者注册失败");
 
-	/* Allocate block and fill data */
+	/* 分配块并填充数据 */
 	const char *msg = "zero-copy message";
 	data_bus_block_t *block = data_bus_mem_alloc(strlen(msg) + 1);
-	zassert_not_null(block, "mem_alloc failed");
+	zassert_not_null(block, "mem_alloc 失败");
 
 	memcpy(block->ptr, msg, strlen(msg) + 1);
 	block->len = strlen(msg) + 1;
 
-	/* Publish block */
+	/* 发布块 */
 	ret = data_bus_publish_block(ch, block);
-	zassert_equal(ret, 0, "publish_block failed");
+	zassert_equal(ret, 0, "publish_block 失败");
 
-	/* Wait for consumer callback */
+	/* 等待消费者回调 */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_call_count, 1, "consumer should be called once");
+	zassert_equal(ret, 0, "消费者回调超时");
+	zassert_equal(g_call_count, 1, "消费者应被调用一次");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
 }
 
 /* ============================================================================
- * Test suite
+ * 测试套件
  * ============================================================================ */
 
 ZTEST_SUITE(test_data_bus, NULL, NULL, NULL, NULL, NULL);

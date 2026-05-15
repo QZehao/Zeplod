@@ -23,14 +23,14 @@
 LOG_MODULE_REGISTER(data_bus_mem, CONFIG_DATA_BUS_LOG_LEVEL);
 
 /* ============================================================================
- * Block struct slab (always enabled)
+ * 块结构体 slab（始终启用）
  * ============================================================================ */
 
 K_MEM_SLAB_DEFINE(data_bus_block_slab, sizeof(data_bus_block_t),
                   CONFIG_DATA_BUS_MAX_BLOCKS, sizeof(void *));
 
 /* ============================================================================
- * Data buffer slabs (conditional)
+ * 数据缓冲区 slab（条件编译）
  * ============================================================================ */
 
 #if CONFIG_DATA_BUS_SLAB_ENABLE
@@ -45,7 +45,7 @@ K_MEM_SLAB_DEFINE(data_bus_slab_4k, 4096,
 #endif /* CONFIG_DATA_BUS_SLAB_ENABLE */
 
 /* ============================================================================
- * Internal helpers
+ * 内部辅助函数
  * ============================================================================ */
 
 static struct k_mem_slab *slab_for_size(size_t len)
@@ -79,7 +79,7 @@ static void free_data_buf(void *ptr, struct k_mem_slab *slab)
 }
 
 /* ============================================================================
- * Two-step allocation
+ * 两步分配
  * ============================================================================ */
 
 static data_bus_block_t *mem_alloc_impl(size_t len, bool isr)
@@ -88,7 +88,7 @@ static data_bus_block_t *mem_alloc_impl(size_t len, bool isr)
 	void *data_ptr = NULL;
 	struct k_mem_slab *slab = NULL;
 
-	/* ---- Step 1: allocate block struct from slab ---- */
+	/* ---- 步骤 1：从 slab 分配块结构体 ---- */
 	int ret = k_mem_slab_alloc(&data_bus_block_slab, (void **)&block, K_NO_WAIT);
 	if (ret != 0) {
 		LOG_ERR("Block struct slab exhausted (max=%u)",
@@ -96,28 +96,28 @@ static data_bus_block_t *mem_alloc_impl(size_t len, bool isr)
 		return NULL;
 	}
 
-	/* ---- Step 2: allocate data buffer ---- */
+	/* ---- 步骤 2：分配数据缓冲区 ---- */
 	slab = slab_for_size(len);
 	if (slab != NULL) {
-		/* Slab path */
+		/* Slab 路径 */
 		data_ptr = alloc_from_slab(slab, isr ? K_NO_WAIT : K_FOREVER);
 	}
 
 	if (data_ptr == NULL && !isr) {
-		/* Thread path: k_malloc fallback (only if slab disabled or exhausted) */
+		/* 线程路径：k_malloc 兜底（仅 slab 禁用或耗尽时） */
 		LOG_WRN("Data slab exhausted, falling back to k_malloc (len=%zu)", len);
 		data_ptr = k_malloc(len);
-		slab = NULL; /* mark as heap-allocated */
+		slab = NULL; /* 标记为堆分配 */
 	}
 
 	if (data_ptr == NULL) {
 		LOG_ERR("Data buffer allocation failed (len=%zu isr=%d)", len, isr);
-		/* Rollback: free block struct and fail */
+		/* 回滚：释放块结构体并失败 */
 		k_mem_slab_free(&data_bus_block_slab, block);
 		return NULL;
 	}
 
-	/* ---- Initialize block ---- */
+	/* ---- 初始化块 ---- */
 	memset(block, 0, sizeof(*block));
 	block->ptr = data_ptr;
 	block->len = len;
@@ -138,7 +138,7 @@ data_bus_block_t *data_bus_mem_alloc_isr(size_t len)
 }
 
 /* ============================================================================
- * Direct free (for rollback before entering ref-count lifecycle)
+ * 直接释放（用于进入引用计数生命周期前的回滚）
  * ============================================================================ */
 
 void data_bus_mem_free(data_bus_block_t *block)
@@ -150,17 +150,17 @@ void data_bus_mem_free(data_bus_block_t *block)
 	__ASSERT(atomic_get(&block->ref_count) == 0,
 		 "data_bus_mem_free called on block with ref_count != 0");
 
-	/* Free data buffer */
+	/* 释放数据缓冲区 */
 	if (block->ptr != NULL) {
 		free_data_buf(block->ptr, block->slab);
 	}
 
-	/* Free block struct (always from slab) */
+	/* 释放块结构体（始终来自 slab） */
 	k_mem_slab_free(&data_bus_block_slab, block);
 }
 
 /* ============================================================================
- * Reference counting (public API)
+ * 引用计数（公共 API）
  * ============================================================================ */
 
 void data_bus_block_acquire(data_bus_block_t *block)
@@ -180,7 +180,7 @@ void data_bus_block_release(data_bus_block_t *block)
 	atomic_val_t prev = atomic_dec(&block->ref_count);
 
 	if (prev == 0) {
-		/* Release on ref_count 0 would underflow; restore and bail */
+		/* 在 ref_count 0 时释放会导致下溢；恢复并退出 */
 		(void)atomic_inc(&block->ref_count);
 #if IS_ENABLED(CONFIG_DATA_BUS_DEBUG_REFCNT)
 		__ASSERT(0, "data_bus_block_release: ref_count underflow");
@@ -189,7 +189,7 @@ void data_bus_block_release(data_bus_block_t *block)
 	}
 
 	if (prev == 1) {
-		/* Last reference: free data buffer and block struct */
+		/* 最后一个引用：释放数据缓冲区和块结构体 */
 		LOG_DBG("Block freed (slab=%s)", block->slab ? "y" : "n");
 		if (block->ptr != NULL) {
 			free_data_buf(block->ptr, block->slab);

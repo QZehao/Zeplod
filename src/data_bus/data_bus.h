@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 /* ============================================================================
- * Forward declarations
+ * 前置声明
  * ============================================================================ */
 
 typedef struct data_bus_block data_bus_block_t;
@@ -41,52 +41,50 @@ typedef struct data_bus_channel data_bus_channel_t;
 typedef struct data_bus_consumer data_bus_consumer_t;
 
 /* ============================================================================
- * Callback types
+ * 回调类型
  * ============================================================================ */
 
 /**
- * @brief Data bus consumer callback
+ * @brief Data Bus 消费者回调
  *
- * @param ch        Channel that produced this block
- * @param block     Data block (shared zero-copy reference)
- * @param user_data User data from registration
+ * @param ch        产生此数据块的通道
+ * @param block     数据块（共享零拷贝引用）
+ * @param user_data 注册时的用户数据
  *
- * @note The framework automatically calls data_bus_block_release() after the
- *       callback returns. If you need to hold the block beyond the callback
- *       (e.g. pass to another thread), call data_bus_block_retain() inside
- *       the callback and release it later when done.
+ * @note 框架在回调返回后自动调用 data_bus_block_release()。
+ *       如需在回调外继续持有数据块（例如传给另一个线程），
+ *       在回调内调用 data_bus_block_retain()，用完后自行 release。
  */
 typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
                                        data_bus_block_t* block,
                                        void* user_data);
 
 /* ============================================================================
- * Consumer configuration
+ * 消费者配置
  * ============================================================================ */
 
 typedef struct {
-    const char*             name;           /**< Consumer name (for debugging); copied on register */
-    bool                    manual_release; /**< Default false (auto-release enabled).
-                                                  Set true if you will call data_bus_block_release()
-                                                  yourself inside the callback. */
-    data_bus_consume_fn_t   callback;       /**< Data arrival callback */
-    void*                   user_data;      /**< Callback user data */
+    const char*             name;           /**< 消费者名称（调试用）；注册时拷贝 */
+    bool                    manual_release; /**< 默认 false（启用自动释放）。
+                                                  若在回调内自行调用 data_bus_block_release() 则设为 true */
+    data_bus_consume_fn_t   callback;       /**< 数据到达回调 */
+    void*                   user_data;      /**< 回调用户数据 */
 } data_bus_consumer_cfg_t;
 
 /* ============================================================================
- * Data block
+ * 数据块
  * ============================================================================ */
 
 struct data_bus_block {
-    void*           ptr;        /**< Data pointer (from slab or k_malloc) */
-    size_t          len;        /**< Data length */
-    atomic_t        ref_count;  /**< Reference count */
-    struct k_mem_slab* slab;    /**< Source slab (NULL = k_malloc) */
-    uint32_t        seq;        /**< Monotonically increasing sequence number */
+    void*           ptr;        /**< 数据指针（来自 slab 或 k_malloc） */
+    size_t          len;        /**< 数据长度 */
+    atomic_t        ref_count;  /**< 引用计数 */
+    struct k_mem_slab* slab;    /**< 来源 slab（NULL = k_malloc） */
+    uint32_t        seq;        /**< 单调递增序列号 */
 };
 
 /* ============================================================================
- * Consumer
+ * 消费者
  * ============================================================================ */
 
 struct data_bus_consumer {
@@ -95,19 +93,19 @@ struct data_bus_consumer {
     bool                    manual_release;
     data_bus_consume_fn_t   callback;
     void*                   user_data;
-    uint32_t                last_seq;       /**< Last consumed sequence number */
-    bool                    active;         /**< Distributor and unregister may race;
-                                                 naturally atomic on 32-bit architectures */
+    uint32_t                last_seq;       /**< 最后消费的序列号 */
+    bool                    active;         /**< 分发器和注销可能竞争；
+                                                 在 32 位架构上天然原子 */
 };
 
 /* ============================================================================
- * Channel
+ * 通道
  * ============================================================================ */
 
 struct data_bus_channel {
     const char*     name;
     char            name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    struct ring_buf queue;              /**< Ring buffer storing data_bus_block_t* */
+    struct ring_buf queue;              /**< 环形缓冲区，存储 data_bus_block_t* */
     uint8_t         queue_buf[CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH * sizeof(void*)];
     struct k_spinlock lock;
     bool            active;
@@ -115,190 +113,188 @@ struct data_bus_channel {
     data_bus_consumer_t consumers[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
     uint32_t        consumer_count;
 
-    uint32_t        next_seq;           /**< Next sequence number (wraps at 2^32) */
+    uint32_t        next_seq;           /**< 下一个序列号（2^32 处回绕） */
     uint32_t        publish_count;
     uint32_t        drop_count;
     uint32_t        queue_full_count;
     uint32_t        alloc_fail_count;
-    uint32_t        peak_queue_usage;   /**< Historical max used slots */
-    uint32_t        queue_used;         /**< Current used slots (protected by lock) */
-    atomic_t        dispatch_hold;      /**< Dispatcher pins channel while dequeuing/dispatching */
+    uint32_t        peak_queue_usage;   /**< 历史最大已用槽位数 */
+    uint32_t        queue_used;         /**< 当前已用槽位（受锁保护） */
+    atomic_t        dispatch_hold;      /**< 分发器在出队/分发期间固定通道 */
 };
 
 /* ============================================================================
- * Statistics
+ * 统计
  * ============================================================================ */
 
 typedef struct {
-    uint32_t publish_count;      /**< Publish count */
-    uint32_t drop_count;         /**< Drop count (ring_buf full) */
-    uint32_t queue_full_count;   /**< Queue full count */
-    uint32_t alloc_fail_count;   /**< Memory allocation failure count */
-    uint32_t consumer_count;     /**< Current consumer count */
-    uint32_t peak_queue_usage;   /**< Historical max queue usage (slots) */
+    uint32_t publish_count;      /**< 发布次数 */
+    uint32_t drop_count;         /**< 丢弃次数（ring_buf 满） */
+    uint32_t queue_full_count;   /**< 队列满次数 */
+    uint32_t alloc_fail_count;   /**< 内存分配失败次数 */
+    uint32_t consumer_count;     /**< 当前消费者数量 */
+    uint32_t peak_queue_usage;   /**< 历史最大队列使用量（槽位） */
 } data_bus_stats_t;
 
 /* ============================================================================
- * Lifecycle
+ * 生命周期
  * ============================================================================ */
 
 /**
- * @brief Initialize the data bus
+ * @brief 初始化 Data Bus
  *
- * Initializes global semaphore, channel table, ring_buf meta-state,
- * and creates/starts the dispatcher thread.
+ * 初始化全局信号量、通道表、ring_buf 元状态，
+ * 并创建/启动分发线程。
  *
- * @return 0 on success, negative errno on failure
+ * @return 成功返回 0，失败返回负 errno
  */
 int data_bus_init(void);
 
 /**
- * @brief Deinitialize the data bus
+ * @brief 反初始化 Data Bus
  *
- * Stops accepting new publishes, drains all channel queues,
- * releases all pending blocks, destroys all channels.
+ * 停止接收新发布，排空所有通道队列，
+ * 释放所有挂起的数据块，销毁所有通道。
  *
- * @warning Cannot reclaim blocks still held by application threads via retain().
- *          Callers must ensure all async consumers have released.
+ * @warning 无法回收应用线程通过 retain() 持有的数据块。
+ *          调用者必须确保所有异步消费者已 release。
  *
- * @return 0 on success
+ * @return 成功返回 0
  */
 int data_bus_deinit(void);
 
 /* ============================================================================
- * Channel management
+ * 通道管理
  * ============================================================================ */
 
 /**
- * @brief Create a named channel
+ * @brief 创建命名通道
  *
- * @param name        Channel name (globally unique, NUL-terminated); copied into the channel
- * @param out_channel Output: channel object pointer
- * @return 0 on success, -EEXIST if name already exists, -EINVAL if name invalid,
- *         -ENOMEM if channel pool exhausted
+ * @param name        通道名称（全局唯一，NUL 结尾）；拷贝到通道内部
+ * @param out_channel 输出：通道对象指针
+ * @return 成功返回 0，-EEXIST 名称已存在，-EINVAL 名称非法，
+ *         -ENOMEM 通道池耗尽
  *
- * @note Queue depth determined by CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH.
- *       queue_buf is an embedded fixed-size array, no dynamic allocation needed.
- * @note Channel object is obtained from an internal pre-allocated pool
- *       (K_MEM_SLAB or static array), does not depend on k_malloc.
+ * @note 队列深度由 CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH 决定。
+ *       queue_buf 是内嵌固定大小数组，无需动态分配。
+ * @note 通道对象来自内部预分配池（K_MEM_SLAB 或静态数组），不依赖 k_malloc。
  */
 int data_bus_channel_create(const char* name,
                             data_bus_channel_t** out_channel);
 
 /**
- * @brief Destroy a channel
+ * @brief 销毁通道
  *
- * Returns -EBUSY if active consumers remain, -EAGAIN if queue not empty or the
- * dispatcher is still delivering a block for this channel (retry later).
- * Caller must unregister all consumers and wait for queue to drain.
+ * 若仍有活跃消费者返回 -EBUSY；
+ * 若队列非空或分发器仍在为此通道投递数据块返回 -EAGAIN（稍后重试）。
+ * 调用者必须先注销所有消费者并等待队列排空。
  *
- * @return 0 on success, negative errno on failure
+ * @return 成功返回 0，失败返回负 errno
  */
 int data_bus_channel_destroy(data_bus_channel_t* ch);
 
 /**
- * @brief Find a channel by name
- * @return Channel pointer, or NULL if not found
+ * @brief 按名称查找通道
+ * @return 通道指针，未找到返回 NULL
  */
 data_bus_channel_t* data_bus_channel_find(const char* name);
 
 /* ============================================================================
- * Publishing (ISR / thread unified interface)
+ * 发布（ISR / 线程统一接口）
  * ============================================================================ */
 
 /**
- * @brief Publish data to a channel (unified ISR / thread interface)
+ * @brief 向通道发布数据（ISR / 线程统一接口）
  *
- * Automatically detects context and adapts internally:
- * - ISR: allocates from slab only (K_NO_WAIT), k_spin_lock protects ring_buf
- * - Thread: allocates from slab (or k_malloc fallback), k_spin_lock protects
+ * 自动检测上下文并内部适配：
+ * - ISR：仅从 slab 分配（K_NO_WAIT），k_spin_lock 保护 ring_buf
+ * - 线程：从 slab 分配（或 k_malloc 兜底），k_spin_lock 保护
  *
- * After enqueuing, signals the dispatcher thread via semaphore.
- * The dispatcher thread delivers data to all registered consumers.
+ * 入队后通过信号量通知分发线程。
+ * 分发线程将数据投递给所有已注册消费者。
  *
- * @param ch    Target channel
- * @param data  Data pointer
- * @param len   Data length (bytes)
- * @return 0 on success, negative errno on failure
+ * @param ch    目标通道
+ * @param data  数据指针
+ * @param len   数据长度（字节）
+ * @return 成功返回 0，失败返回负 errno
  *
- * @note In ISR path, slab exhaustion returns -ENOMEM (no k_malloc fallback)
- * @note Data is copied into an internally managed block
+ * @note ISR 路径中 slab 耗尽返回 -ENOMEM（无 k_malloc 兜底）
+ * @note 数据被拷贝到内部管理的块中
  */
 int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
 
 /**
- * @brief Publish a pre-allocated block (zero-copy)
+ * @brief 发布预分配的数据块（零拷贝）
  *
- * Caller transfers block ownership to the data bus.
- * Block must be allocated via data_bus_mem_alloc() or compatible slab allocation.
+ * 调用者将块所有权转移给 Data Bus。
+ * 块必须通过 data_bus_mem_alloc() 或兼容的 slab 分配。
  *
- * Caller is responsible for: ptr, len, slab (data already filled, slab recorded)
- * publish_block is responsible for: seq (from channel next_seq),
- *                                   ref_count = 1 on successful enqueue
+ * 调用者负责：ptr、len、slab（数据已填充，slab 已记录）
+ * publish_block 负责：seq（来自通道 next_seq），
+ *                      成功入队时 ref_count = 1
  *
- * @pre  Block not yet in any channel queue; typically ref_count == 0
- * @post On success ref_count == 1 (bus holds the reference)
- * @note The bus takes ownership; do not release after publish_block succeeds
+ * @pre  块尚未进入任何通道队列；通常 ref_count == 0
+ * @post 成功时 ref_count == 1（bus 持有引用）
+ * @note bus 接管所有权；publish_block 成功后不要 release
  */
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
 
 /* ============================================================================
- * Consumer management
+ * 消费者管理
  * ============================================================================ */
 
 /**
- * @brief Register a consumer on a channel
+ * @brief 在通道上注册消费者
  *
- * @param ch            Target channel
- * @param cfg           Consumer configuration
- * @param out_consumer  Output: consumer object pointer (optional, may be NULL)
- * @return 0 on success, -EINVAL if cfg invalid, -ENOMEM if consumer table full
+ * @param ch            目标通道
+ * @param cfg           消费者配置
+ * @param out_consumer  输出：消费者对象指针（可选，可为 NULL）
+ * @return 成功返回 0，-EINVAL 配置非法，-ENOMEM 消费者表满
  */
 int data_bus_consumer_register(data_bus_channel_t* ch,
                                 const data_bus_consumer_cfg_t* cfg,
                                 data_bus_consumer_t** out_consumer);
 
 /**
- * @brief Unregister a consumer
+ * @brief 注销消费者
  *
- * Immediately removed from channel consumer list. If consumer is currently
- * processing data in a callback (and has retained the block),
- * subsequent release is unaffected because reference counting is on the block.
+ * 立即从通道消费者列表中移除。若消费者当前正在回调中处理数据
+ *（且已 retain 了数据块），后续 release 不受影响，因为引用计数在块上。
  */
 int data_bus_consumer_unregister(data_bus_consumer_t* consumer);
 
 /* ============================================================================
- * Memory management (reference counting)
+ * 内存管理（引用计数）
  * ============================================================================ */
 
-/** @brief Increment reference count */
+/** @brief 增加引用计数 */
 void data_bus_block_acquire(data_bus_block_t* block);
 
-/** @brief Decrement reference count, free when zero */
+/** @brief 减少引用计数，归零时释放 */
 void data_bus_block_release(data_bus_block_t* block);
 
 /**
- * @brief Retain a block for asynchronous use (beyond callback scope)
+ * @brief 保留数据块供异步使用（超出回调作用域）
  *
- * Call inside a consumer callback to take an extra reference.
- * You must later call data_bus_block_release() when done.
+ * 在消费者回调内调用以获取额外引用。
+ * 稍后必须调用 data_bus_block_release()。
  *
- * @return The retained block (same pointer, ref_count incremented)
+ * @return 被保留的块（同一指针，ref_count 已增加）
  */
 data_bus_block_t* data_bus_block_retain(data_bus_block_t* block);
 
 /* ============================================================================
- * Statistics
+ * 统计
  * ============================================================================ */
 
 /**
- * @brief Get channel statistics
- * @note Best-effort consistency; does not guarantee snapshot matches single block
+ * @brief 获取通道统计
+ * @note 尽力保证一致性；不保证快照与单个块匹配
  */
 void data_bus_channel_get_stats(const data_bus_channel_t* ch,
                                  data_bus_stats_t* stats);
 
-/** @brief Reset channel statistics */
+/** @brief 重置通道统计 */
 void data_bus_reset_stats(data_bus_channel_t* ch);
 
 #ifdef __cplusplus

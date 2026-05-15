@@ -28,7 +28,7 @@
 LOG_MODULE_REGISTER(data_bus, CONFIG_DATA_BUS_LOG_LEVEL);
 
 /* ============================================================================
- * Global state
+ * 全局状态
  * ============================================================================ */
 
 struct k_sem g_dispatcher_sem;
@@ -42,7 +42,7 @@ struct k_thread g_dispatcher_thread_data;
 K_THREAD_STACK_DEFINE(g_dispatcher_stack, CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE);
 
 /* ============================================================================
- * Dispatcher thread
+ * 分发线程
  * ============================================================================ */
 
 static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
@@ -62,7 +62,7 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 			break;
 		}
 
-		/* Snapshot channel pointers and pin each (prevents destroy slab-free vs UAF) */
+		/* 快照通道指针并固定每个（防止 destroy 释放 slab 与 UAF 竞争） */
 		data_bus_channel_t *snap[CONFIG_DATA_BUS_MAX_CHANNELS];
 
 		k_mutex_lock(&g_channels_lock, K_FOREVER);
@@ -98,10 +98,10 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 				LOG_DBG("dispatch ch='%s' seq=%u len=%zu consumers=%u",
 					ch->name, block->seq, block->len, ch->consumer_count);
 
-				/* Dispatch to all consumers */
+				/* 分发给所有消费者 */
 				data_bus_consumer_dispatch(ch, block);
 
-				/* Release bus reference */
+				/* 释放 bus 引用 */
 				data_bus_block_release(block);
 			}
 
@@ -113,28 +113,28 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 }
 
 /* ============================================================================
- * Public API: lifecycle
+ * 公共 API: 生命周期
  * ============================================================================ */
 
 int data_bus_init(void)
 {
 	if (atomic_get(&g_initialized)) {
-		return 0; /* Already initialized */
+		return 0; /* 已初始化 */
 	}
 
-	/* Initialize global semaphore */
+	/* 初始化全局信号量 */
 	k_sem_init(&g_dispatcher_sem, 0, K_SEM_MAX_LIMIT);
 
-	/* Initialize channel table lock */
+	/* 初始化通道表锁 */
 	k_mutex_init(&g_channels_lock);
 
-	/* Clear channel table */
+	/* 清空通道表 */
 	memset(g_channels, 0, sizeof(g_channels));
 	g_channel_count = 0;
 
 	atomic_set(&g_shutting_down, 0);
 
-	/* Create dispatcher thread */
+	/* 创建分发线程 */
 	k_thread_create(&g_dispatcher_thread_data,
 			    g_dispatcher_stack,
 			    K_THREAD_STACK_SIZEOF(g_dispatcher_stack),
@@ -156,32 +156,32 @@ int data_bus_init(void)
 int data_bus_deinit(void)
 {
 	if (!atomic_get(&g_initialized)) {
-		return 0; /* Not initialized */
+		return 0; /* 未初始化 */
 	}
 
-	/* Signal shutdown */
+	/* 发出关闭信号 */
 	atomic_set(&g_shutting_down, 1);
 
-	/* Wake up dispatcher thread so it can exit */
+	/* 唤醒分发线程使其退出 */
 	k_sem_give(&g_dispatcher_sem);
 
-	/* Wait for dispatcher thread to finish */
+	/* 等待分发线程完成 */
 	k_thread_join(&g_dispatcher_thread_data, K_FOREVER);
 
-	/* Lock channel table */
+	/* 锁定通道表 */
 	k_mutex_lock(&g_channels_lock, K_FOREVER);
 
-	/* Destroy all channels (drain queues, release blocks) */
+	/* 销毁所有通道（排空队列，释放块） */
 	while (g_channel_count > 0) {
 		data_bus_channel_t *ch = g_channels[0];
 		if (ch != NULL) {
-			/* Unregister all consumers */
+			/* 注销所有消费者 */
 			for (uint32_t i = 0; i < ch->consumer_count; i++) {
 				ch->consumers[i].active = false;
 			}
 			ch->consumer_count = 0;
 
-			/* Drain queue and release all blocks */
+			/* 排空队列并释放所有块 */
 			data_bus_block_t *block = NULL;
 			while (true) {
 				k_spinlock_key_t key = k_spin_lock(&ch->lock);
@@ -197,12 +197,12 @@ int data_bus_deinit(void)
 				data_bus_block_release(block);
 			}
 
-			/* Reset and free channel object */
+			/* 重置并释放通道对象 */
 			data_bus_channel_obj_reset(ch);
 			k_mem_slab_free(&data_bus_channel_slab, ch);
 		}
 
-		/* Remove from table and compact */
+		/* 从表中移除并压缩 */
 		for (uint32_t j = 0; j < g_channel_count - 1; j++) {
 			g_channels[j] = g_channels[j + 1];
 		}
@@ -218,7 +218,7 @@ int data_bus_deinit(void)
 }
 
 /* ============================================================================
- * Public API: statistics
+ * 公共 API: 统计
  * ============================================================================ */
 
 void data_bus_channel_get_stats(const data_bus_channel_t *ch, data_bus_stats_t *stats)
@@ -227,7 +227,7 @@ void data_bus_channel_get_stats(const data_bus_channel_t *ch, data_bus_stats_t *
 		return;
 	}
 
-	/* Cast away const for lock access - safe because we only read */
+	/* 移除 const 以进行锁访问 — 安全，因为我们只读取 */
 	data_bus_channel_t *ch_rw = (data_bus_channel_t *)ch;
 	k_spinlock_key_t key = k_spin_lock(&ch_rw->lock);
 	stats->publish_count = ch->publish_count;
@@ -255,7 +255,7 @@ void data_bus_reset_stats(data_bus_channel_t *ch)
 }
 
 /* ============================================================================
- * Auto initialization
+ * 自动初始化
  * ============================================================================ */
 
 static int data_bus_auto_init(void)

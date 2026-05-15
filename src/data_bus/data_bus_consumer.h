@@ -25,13 +25,13 @@ extern "C" {
 #endif
 
 /**
- * @brief Dispatch a block to all consumers of a channel
+ * @brief 将数据块分发给通道的所有消费者
  *
- * Called by the dispatcher thread. Handles REF/COPY mode,
- * acquire/release, and COPY stack-temporary safety.
+ * 由分发线程调用。处理引用计数拆分、
+ * acquire/release 和手动释放模式。
  *
- * @param ch    Channel
- * @param block Block to dispatch (bus holds ref_count == 1)
+ * @param ch    通道
+ * @param block 待分发的块（bus 持有 ref_count == 1）
  */
 void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block);
 

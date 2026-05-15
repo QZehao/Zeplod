@@ -27,14 +27,14 @@
 LOG_MODULE_REGISTER(data_bus_channel, CONFIG_DATA_BUS_LOG_LEVEL);
 
 /* ============================================================================
- * Channel object slab
+ * 通道对象 slab
  * ============================================================================ */
 
 K_MEM_SLAB_DEFINE(data_bus_channel_slab, sizeof(data_bus_channel_t),
                   CONFIG_DATA_BUS_MAX_CHANNELS, sizeof(void *));
 
 /* ============================================================================
- * Internal helpers
+ * 内部辅助函数
  * ============================================================================ */
 
 static bool name_valid(const char *name)
@@ -61,7 +61,7 @@ static data_bus_channel_t *find_in_table(const char *name)
 }
 
 /* ============================================================================
- * Channel object init/reset
+ * 通道对象初始化/重置
  * ============================================================================ */
 
 int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name)
@@ -81,7 +81,7 @@ int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name)
 
 	ch->name = ch->name_storage;
 	ring_buf_init(&ch->queue, sizeof(ch->queue_buf), ch->queue_buf);
-	/* k_spinlock zero-initialized is valid */
+	/* k_spinlock 零初始化是有效的 */
 	ch->active = true;
 	ch->next_seq = 0;
 	atomic_set(&ch->dispatch_hold, 0);
@@ -95,7 +95,7 @@ void data_bus_channel_obj_reset(data_bus_channel_t *ch)
 		return;
 	}
 
-	/* Drain any pending blocks */
+	/* 排空所有挂起的块 */
 	data_bus_block_t *block = NULL;
 	while (true) {
 		k_spinlock_key_t key = k_spin_lock(&ch->lock);
@@ -111,7 +111,7 @@ void data_bus_channel_obj_reset(data_bus_channel_t *ch)
 		data_bus_block_release(block);
 	}
 
-	/* Unregister all consumers */
+	/* 注销所有消费者 */
 	for (uint32_t i = 0; i < ch->consumer_count; i++) {
 		ch->consumers[i].active = false;
 	}
@@ -121,7 +121,7 @@ void data_bus_channel_obj_reset(data_bus_channel_t *ch)
 }
 
 /* ============================================================================
- * Public API: channel management
+ * 公共 API: 通道管理
  * ============================================================================ */
 
 int data_bus_channel_create(const char *name, data_bus_channel_t **out_channel)
@@ -135,20 +135,20 @@ int data_bus_channel_create(const char *name, data_bus_channel_t **out_channel)
 
 	k_mutex_lock(&g_channels_lock, K_FOREVER);
 
-	/* Check for duplicate name */
+	/* 检查重复名称 */
 	if (find_in_table(name) != NULL) {
 		LOG_WRN("Channel '%s' already exists", name);
 		k_mutex_unlock(&g_channels_lock);
 		return -EEXIST;
 	}
 
-	/* Find a free slot in the table */
+	/* 在表中找一个空槽 */
 	if (g_channel_count >= CONFIG_DATA_BUS_MAX_CHANNELS) {
 		k_mutex_unlock(&g_channels_lock);
 		return -ENOMEM;
 	}
 
-	/* Allocate channel object from slab */
+	/* 从 slab 分配通道对象 */
 	data_bus_channel_t *ch = NULL;
 	int ret = k_mem_slab_alloc(&data_bus_channel_slab, (void **)&ch, K_NO_WAIT);
 	if (ret != 0) {
@@ -157,7 +157,7 @@ int data_bus_channel_create(const char *name, data_bus_channel_t **out_channel)
 		return -ENOMEM;
 	}
 
-	/* Initialize the channel */
+	/* 初始化通道 */
 	ret = data_bus_channel_obj_init(ch, name);
 	if (ret != 0) {
 		k_mem_slab_free(&data_bus_channel_slab, ch);
@@ -165,7 +165,7 @@ int data_bus_channel_create(const char *name, data_bus_channel_t **out_channel)
 		return ret;
 	}
 
-	/* Add to global table */
+	/* 添加到全局表 */
 	g_channels[g_channel_count++] = ch;
 
 	k_mutex_unlock(&g_channels_lock);
@@ -189,7 +189,7 @@ int data_bus_channel_destroy(data_bus_channel_t *ch)
 		return -EINVAL;
 	}
 
-	/* Check for active consumers */
+	/* 检查活跃消费者 */
 	for (uint32_t i = 0; i < ch->consumer_count; i++) {
 		if (ch->consumers[i].active) {
 			LOG_WRN("Channel '%s' destroy failed: active consumers remain",
@@ -199,7 +199,7 @@ int data_bus_channel_destroy(data_bus_channel_t *ch)
 		}
 	}
 
-	/* Check for pending data */
+	/* 检查挂起的数据 */
 	k_spinlock_key_t key = k_spin_lock(&ch->lock);
 	bool queue_empty = (ch->queue_used == 0);
 	k_spin_unlock(&ch->lock, key);
@@ -214,10 +214,10 @@ int data_bus_channel_destroy(data_bus_channel_t *ch)
 		return -EAGAIN;
 	}
 
-	/* Remove from table */
+	/* 从表中移除 */
 	for (uint32_t i = 0; i < g_channel_count; i++) {
 		if (g_channels[i] == ch) {
-			/* Compact the table by shifting */
+			/* 通过移位压缩表 */
 			for (uint32_t j = i; j < g_channel_count - 1; j++) {
 				g_channels[j] = g_channels[j + 1];
 			}
@@ -228,7 +228,7 @@ int data_bus_channel_destroy(data_bus_channel_t *ch)
 
 	LOG_INF("Channel '%s' destroyed", ch->name);
 
-	/* Reset and free */
+	/* 重置并释放 */
 	data_bus_channel_obj_reset(ch);
 	k_mem_slab_free(&data_bus_channel_slab, ch);
 
@@ -250,7 +250,7 @@ data_bus_channel_t *data_bus_channel_find(const char *name)
 }
 
 /* ============================================================================
- * Public API: publishing
+ * 公共 API: 发布
  * ============================================================================ */
 
 int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
@@ -262,7 +262,7 @@ int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
 		return -EINVAL;
 	}
 
-	/* Check shutdown state */
+	/* 检查关闭状态 */
 	if (atomic_get(&g_shutting_down)) {
 		return -ESHUTDOWN;
 	}
@@ -278,7 +278,7 @@ int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
 	bool in_isr = k_is_in_isr();
 	data_bus_block_t *block = NULL;
 
-	/* Allocate block */
+	/* 分配块 */
 	if (in_isr) {
 		block = data_bus_mem_alloc_isr(len);
 	} else {
@@ -293,12 +293,12 @@ int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
 		return -ENOMEM;
 	}
 
-	/* Copy data */
+	/* 拷贝数据 */
 	memcpy(block->ptr, data, len);
-	/* block->len already set by mem_alloc */
+	/* block->len 已由 mem_alloc 设置 */
 	atomic_set(&block->ref_count, 0);
 
-	/* Enqueue */
+	/* 入队 */
 	skey = k_spin_lock(&ch->lock);
 	int ret = ring_buf_put(&ch->queue, (uint8_t *)&block, sizeof(block));
 	if (ret == sizeof(block)) {
@@ -325,10 +325,10 @@ int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
 
 	LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, block->seq, len);
 
-	/* Signal dispatcher thread */
+	/* 通知分发线程 */
 	k_sem_give(&g_dispatcher_sem);
 
-	/* Event bridge (thread path only) */
+	/* 事件桥接（仅线程路径） */
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
 	if (!in_isr) {
 		data_bus_event_bridge_notify(ch, block->seq, block->len);
@@ -358,7 +358,7 @@ int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block)
 		return -ESHUTDOWN;
 	}
 
-	/* Enqueue */
+	/* 入队 */
 	skey = k_spin_lock(&ch->lock);
 	int ret = ring_buf_put(&ch->queue, (uint8_t *)&block, sizeof(block));
 	if (ret == sizeof(block)) {
@@ -385,7 +385,7 @@ int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block)
 	LOG_DBG("publish_block to '%s' seq=%u len=%zu",
 		ch->name, block->seq, block->len);
 
-	/* Signal dispatcher */
+	/* 通知分发器 */
 	k_sem_give(&g_dispatcher_sem);
 
 	return 0;

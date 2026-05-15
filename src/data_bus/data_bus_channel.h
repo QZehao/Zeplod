@@ -24,14 +24,14 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize a pre-allocated channel object
- * @return 0 on success
+ * @brief 初始化预分配的通道对象
+ * @return 成功返回 0
  */
 int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name);
 
 /**
- * @brief Reset a channel object (clear consumers, drain queue)
- * Does not free the channel object itself.
+ * @brief 重置通道对象（清空消费者，排空队列）
+ * 不释放通道对象本身。
  */
 void data_bus_channel_obj_reset(data_bus_channel_t *ch);
 

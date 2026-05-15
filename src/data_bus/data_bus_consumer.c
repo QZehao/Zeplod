@@ -36,7 +36,7 @@ typedef struct {
 } data_bus_consumer_snap_t;
 
 /* ============================================================================
- * Public API: consumer registration
+ * 公共 API: 消费者注册
  * ============================================================================ */
 
 int data_bus_consumer_register(data_bus_channel_t *ch,
@@ -99,9 +99,9 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 		return -EINVAL;
 	}
 
-	/* Find which channel this consumer belongs to */
-	/* We scan all channels to find the containing channel */
-	/* This is O(N*M) but channels and consumers are typically small */
+	/* 查找该消费者所属的通道 */
+	/* 扫描所有通道以找到包含的通道 */
+	/* 时间复杂度 O(N*M)，但通道和消费者通常很小 */
 
 	k_mutex_lock(&g_channels_lock, K_FOREVER);
 
@@ -133,16 +133,16 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 
 	k_spinlock_key_t key = k_spin_lock(&found_ch->lock);
 
-	/* Mark inactive */
+	/* 标记为非活跃 */
 	consumer->active = false;
 
-	/* Compact the array by shifting remaining consumers */
+	/* 通过移位压缩数组 */
 	for (uint32_t i = found_idx; i < found_ch->consumer_count - 1; i++) {
 		found_ch->consumers[i] = found_ch->consumers[i + 1];
 		found_ch->consumers[i].name = found_ch->consumers[i].name_storage;
 	}
 
-	/* Clear the last slot */
+	/* 清空最后一个槽 */
 	if (found_ch->consumer_count > 0) {
 		memset(&found_ch->consumers[found_ch->consumer_count - 1], 0,
 		       sizeof(data_bus_consumer_t));
@@ -160,7 +160,7 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 }
 
 /* ============================================================================
- * Internal: dispatch block to all consumers
+ * 内部：将块分发给所有消费者
  * ============================================================================ */
 
 void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
@@ -186,7 +186,7 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 	}
 	k_spin_unlock(&ch->lock, key);
 
-	/* Count active consumers for reference splitting */
+	/* 统计活跃消费者以拆分引用 */
 	uint32_t active_count = 0;
 	for (uint32_t i = 0; i < count; i++) {
 		if (snaps[i].active && snaps[i].callback != NULL) {
@@ -199,9 +199,9 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 	}
 
 	/*
-	 * Split bus reference: ref_count was 1 (bus owns).
-	 * Add active_count so total references = 1 + active_count.
-	 * Each consumer gets an implicit reference.
+	 * 拆分 bus 引用：ref_count 原为 1（bus 持有）。
+	 * 增加 active_count 使总引用数 = 1 + active_count。
+	 * 每个消费者获得一份隐式引用。
 	 */
 	LOG_DBG("Dispatch ch='%s' seq=%u ref+%u=%d", ch->name, block->seq,
 		active_count, atomic_get(&block->ref_count));
@@ -218,9 +218,7 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 
 		snaps[i].callback(ch, block, snaps[i].user_data);
 
-		/* Framework automatically releases the implicit reference
-		 * unless consumer opts into manual release.
-		 */
+		/* 框架自动释放隐式引用，除非消费者选择手动释放 */
 		if (!snaps[i].manual_release) {
 			data_bus_block_release(block);
 		}
