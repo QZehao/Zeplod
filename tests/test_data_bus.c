@@ -6,6 +6,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 #include <zephyr/kernel.h>
+#include <string.h>
 #include "data_bus.h"
 
 LOG_MODULE_REGISTER(test_data_bus);
@@ -15,36 +16,35 @@ LOG_MODULE_REGISTER(test_data_bus);
  * ============================================================================ */
 
 static struct k_sem g_test_sem;
-static int g_ref_count = 0;
-static uint8_t g_copy_buf[128];
-static size_t g_copy_len = 0;
+static int g_call_count = 0;
 static uint32_t g_recv_seq = 0;
+static data_bus_block_t *g_retained_block = NULL;
 
 /* ============================================================================
  * Consumer callbacks
  * ============================================================================ */
 
-static void ref_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, void *user_data)
+static void auto_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, void *user_data)
 {
 	ARG_UNUSED(ch);
 	ARG_UNUSED(user_data);
 
-	g_ref_count++;
+	g_call_count++;
 	g_recv_seq = block->seq;
-	data_bus_block_release(block);
+	/* Framework auto-releases; do NOT call release here */
 	k_sem_give(&g_test_sem);
 }
 
-static void copy_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, void *user_data)
+static void retain_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, void *user_data)
 {
 	ARG_UNUSED(ch);
 	ARG_UNUSED(user_data);
 
-	g_copy_len = block->len;
-	if (block->len <= sizeof(g_copy_buf)) {
-		memcpy(g_copy_buf, block->ptr, block->len);
-	}
-	/* No release needed for COPY mode */
+	g_call_count++;
+	g_recv_seq = block->seq;
+
+	/* Retain for async processing */
+	g_retained_block = data_bus_block_retain(block);
 	k_sem_give(&g_test_sem);
 }
 
@@ -55,10 +55,9 @@ static void copy_consumer_cb(data_bus_channel_t *ch, data_bus_block_t *block, vo
 static void data_bus_test_setup(void)
 {
 	k_sem_init(&g_test_sem, 0, K_SEM_MAX_LIMIT);
-	g_ref_count = 0;
-	g_copy_len = 0;
+	g_call_count = 0;
 	g_recv_seq = 0;
-	memset(g_copy_buf, 0, sizeof(g_copy_buf));
+	g_retained_block = NULL;
 }
 
 /* ============================================================================
@@ -119,22 +118,22 @@ ZTEST(test_data_bus, test_channel_create_destroy)
 }
 
 /**
- * @brief Test REF mode publish and consume
+ * @brief Test auto-release publish and consume
  */
-ZTEST(test_data_bus, test_publish_ref)
+ZTEST(test_data_bus, test_publish_auto_release)
 {
 	data_bus_test_setup();
 	data_bus_init();
 
 	data_bus_channel_t *ch = NULL;
-	int ret = data_bus_channel_create("ref_ch", &ch);
+	int ret = data_bus_channel_create("auto_ch", &ch);
 	zassert_equal(ret, 0, "channel create failed");
 
-	/* Register REF consumer */
+	/* Register consumer with manual_release=false (auto-release enabled) */
 	data_bus_consumer_cfg_t cfg = {
-		.name = "ref_consumer",
-		.mode = DATA_BUS_MODE_REF,
-		.callback = ref_consumer_cb,
+		.name = "auto_consumer",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
@@ -148,7 +147,7 @@ ZTEST(test_data_bus, test_publish_ref)
 	/* Wait for consumer callback */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
 	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_ref_count, 1, "REF consumer should have been called once");
+	zassert_equal(g_call_count, 1, "consumer should have been called once");
 	zassert_equal(g_recv_seq, 0, "first seq should be 0");
 
 	data_bus_channel_destroy(ch);
@@ -156,47 +155,7 @@ ZTEST(test_data_bus, test_publish_ref)
 }
 
 /**
- * @brief Test COPY mode publish and consume
- */
-ZTEST(test_data_bus, test_publish_copy)
-{
-	data_bus_test_setup();
-	data_bus_init();
-
-	data_bus_channel_t *ch = NULL;
-	int ret = data_bus_channel_create("copy_ch", &ch);
-	zassert_equal(ret, 0, "channel create failed");
-
-	/* Register COPY consumer */
-	uint8_t rx_buf[64];
-	data_bus_consumer_cfg_t cfg = {
-		.name = "copy_consumer",
-		.mode = DATA_BUS_MODE_COPY,
-		.callback = copy_consumer_cb,
-		.user_data = NULL,
-		.copy_buf = rx_buf,
-		.copy_buf_size = sizeof(rx_buf),
-	};
-	ret = data_bus_consumer_register(ch, &cfg, NULL);
-	zassert_equal(ret, 0, "consumer register failed");
-
-	/* Publish data */
-	const uint8_t test_data[] = "hello copy";
-	ret = data_bus_publish(ch, test_data, sizeof(test_data));
-	zassert_equal(ret, 0, "publish failed");
-
-	/* Wait for consumer callback */
-	ret = k_sem_take(&g_test_sem, K_MSEC(100));
-	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_copy_len, sizeof(test_data), "COPY len mismatch");
-	zassert_mem_equal(g_copy_buf, test_data, sizeof(test_data), "COPY data mismatch");
-
-	data_bus_channel_destroy(ch);
-	data_bus_deinit();
-}
-
-/**
- * @brief Test multiple consumers (mixed REF + COPY)
+ * @brief Test multiple consumers with auto-release
  */
 ZTEST(test_data_bus, test_multi_consumer)
 {
@@ -207,29 +166,24 @@ ZTEST(test_data_bus, test_multi_consumer)
 	int ret = data_bus_channel_create("multi_ch", &ch);
 	zassert_equal(ret, 0, "channel create failed");
 
-	uint8_t rx_buf[64];
-
-	/* Register REF consumer */
+	/* Register two auto-release consumers */
 	data_bus_consumer_cfg_t cfg1 = {
-		.name = "ref_consumer",
-		.mode = DATA_BUS_MODE_REF,
-		.callback = ref_consumer_cb,
+		.name = "consumer_a",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg1, NULL);
-	zassert_equal(ret, 0, "REF consumer register failed");
+	zassert_equal(ret, 0, "consumer A register failed");
 
-	/* Register COPY consumer */
 	data_bus_consumer_cfg_t cfg2 = {
-		.name = "copy_consumer",
-		.mode = DATA_BUS_MODE_COPY,
-		.callback = copy_consumer_cb,
+		.name = "consumer_b",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
 		.user_data = NULL,
-		.copy_buf = rx_buf,
-		.copy_buf_size = sizeof(rx_buf),
 	};
 	ret = data_bus_consumer_register(ch, &cfg2, NULL);
-	zassert_equal(ret, 0, "COPY consumer register failed");
+	zassert_equal(ret, 0, "consumer B register failed");
 
 	/* Publish data */
 	const uint8_t test_data[] = {0xAB, 0xCD};
@@ -242,8 +196,53 @@ ZTEST(test_data_bus, test_multi_consumer)
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
 	zassert_equal(ret, 0, "second consumer timeout");
 
-	zassert_equal(g_ref_count, 1, "REF consumer should be called once");
-	zassert_equal(g_copy_len, sizeof(test_data), "COPY consumer should receive data");
+	zassert_equal(g_call_count, 2, "both consumers should be called");
+
+	data_bus_channel_destroy(ch);
+	data_bus_deinit();
+}
+
+/**
+ * @brief Test data_bus_block_retain for async ownership
+ */
+ZTEST(test_data_bus, test_retain)
+{
+	data_bus_test_setup();
+	data_bus_init();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("retain_ch", &ch);
+	zassert_equal(ret, 0, "channel create failed");
+
+	/* Register consumer that retains the block */
+	data_bus_consumer_cfg_t cfg = {
+		.name = "retain_consumer",
+		.manual_release = false,
+		.callback = retain_consumer_cb,
+		.user_data = NULL,
+	};
+	ret = data_bus_consumer_register(ch, &cfg, NULL);
+	zassert_equal(ret, 0, "consumer register failed");
+
+	/* Publish data */
+	const char *msg = "retain me";
+	ret = data_bus_publish(ch, msg, strlen(msg) + 1);
+	zassert_equal(ret, 0, "publish failed");
+
+	/* Wait for callback */
+	ret = k_sem_take(&g_test_sem, K_MSEC(100));
+	zassert_equal(ret, 0, "consumer callback timeout");
+	zassert_equal(g_call_count, 1, "consumer should be called once");
+
+	/* The retained block should still be valid */
+	zassert_not_null(g_retained_block, "retained block should not be NULL");
+	zassert_equal(g_retained_block->len, strlen(msg) + 1, "retained len mismatch");
+	zassert_mem_equal(g_retained_block->ptr, msg, strlen(msg) + 1,
+			  "retained data mismatch");
+
+	/* Release the retained block */
+	data_bus_block_release(g_retained_block);
+	g_retained_block = NULL;
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
@@ -338,8 +337,8 @@ ZTEST(test_data_bus, test_consumer_unregister)
 	data_bus_consumer_t *consumer = NULL;
 	data_bus_consumer_cfg_t cfg = {
 		.name = "temp_consumer",
-		.mode = DATA_BUS_MODE_REF,
-		.callback = ref_consumer_cb,
+		.manual_release = false,
+		.callback = auto_consumer_cb,
 		.user_data = NULL,
 	};
 	ret = data_bus_consumer_register(ch, &cfg, &consumer);
@@ -358,7 +357,7 @@ ZTEST(test_data_bus, test_consumer_unregister)
 	/* Wait a bit - callback should NOT fire */
 	ret = k_sem_take(&g_test_sem, K_MSEC(50));
 	zassert_equal(ret, -EAGAIN, "callback should not fire after unregister");
-	zassert_equal(g_ref_count, 0, "REF count should remain 0");
+	zassert_equal(g_call_count, 0, "call count should remain 0");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();
@@ -376,15 +375,12 @@ ZTEST(test_data_bus, test_publish_block)
 	int ret = data_bus_channel_create("block_ch", &ch);
 	zassert_equal(ret, 0, "channel create failed");
 
-	/* Register COPY consumer */
-	uint8_t rx_buf[64];
+	/* Register auto-release consumer */
 	data_bus_consumer_cfg_t cfg = {
 		.name = "block_consumer",
-		.mode = DATA_BUS_MODE_COPY,
-		.callback = copy_consumer_cb,
+		.manual_release = false,
+		.callback = auto_consumer_cb,
 		.user_data = NULL,
-		.copy_buf = rx_buf,
-		.copy_buf_size = sizeof(rx_buf),
 	};
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
 	zassert_equal(ret, 0, "consumer register failed");
@@ -404,8 +400,7 @@ ZTEST(test_data_bus, test_publish_block)
 	/* Wait for consumer callback */
 	ret = k_sem_take(&g_test_sem, K_MSEC(100));
 	zassert_equal(ret, 0, "consumer callback timeout");
-	zassert_equal(g_copy_len, strlen(msg) + 1, "COPY len mismatch");
-	zassert_mem_equal(g_copy_buf, msg, strlen(msg) + 1, "data mismatch");
+	zassert_equal(g_call_count, 1, "consumer should be called once");
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();

@@ -178,3 +178,12 @@ void data_bus_block_release(data_bus_block_t *block)
 		k_mem_slab_free(&data_bus_block_slab, block);
 	}
 }
+
+data_bus_block_t *data_bus_block_retain(data_bus_block_t *block)
+{
+	if (block == NULL) {
+		return NULL;
+	}
+	data_bus_block_acquire(block);
+	return block;
+}

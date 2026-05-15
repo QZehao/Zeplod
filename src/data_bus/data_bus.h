@@ -28,15 +28,6 @@ typedef struct data_bus_channel data_bus_channel_t;
 typedef struct data_bus_consumer data_bus_consumer_t;
 
 /* ============================================================================
- * Consumer mode
- * ============================================================================ */
-
-typedef enum {
-    DATA_BUS_MODE_REF,   /**< Default recommended. Zero-copy, consumer must release */
-    DATA_BUS_MODE_COPY,  /**< Auxiliary option. Framework copies to copy_buf, no release needed */
-} data_bus_consume_mode_t;
-
-/* ============================================================================
  * Callback types
  * ============================================================================ */
 
@@ -44,11 +35,13 @@ typedef enum {
  * @brief Data bus consumer callback
  *
  * @param ch        Channel that produced this block
- * @param block     Data block (REF: shared original, COPY: stack temporary)
+ * @param block     Data block (shared zero-copy reference)
  * @param user_data User data from registration
  *
- * @note REF mode: consumer must call data_bus_block_release() when done
- * @note COPY mode: do NOT call acquire/release on the block; do NOT store the pointer
+ * @note The framework automatically calls data_bus_block_release() after the
+ *       callback returns. If you need to hold the block beyond the callback
+ *       (e.g. pass to another thread), call data_bus_block_retain() inside
+ *       the callback and release it later when done.
  */
 typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
                                        data_bus_block_t* block,
@@ -60,12 +53,11 @@ typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
 
 typedef struct {
     const char*             name;           /**< Consumer name (for debugging); copied on register */
-    data_bus_consume_mode_t mode;           /**< REF (default) or COPY */
+    bool                    manual_release; /**< Default false (auto-release enabled).
+                                                  Set true if you will call data_bus_block_release()
+                                                  yourself inside the callback. */
     data_bus_consume_fn_t   callback;       /**< Data arrival callback */
     void*                   user_data;      /**< Callback user data */
-    /* COPY mode only: */
-    void*                   copy_buf;       /**< Pre-allocated receive buffer */
-    size_t                  copy_buf_size;  /**< Buffer size (must be >= 1 byte) */
 } data_bus_consumer_cfg_t;
 
 /* ============================================================================
@@ -87,11 +79,9 @@ struct data_bus_block {
 struct data_bus_consumer {
     const char*             name;
     char                    name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    data_bus_consume_mode_t mode;
+    bool                    manual_release;
     data_bus_consume_fn_t   callback;
     void*                   user_data;
-    void*                   copy_buf;       /**< COPY mode only */
-    size_t                  copy_buf_size;  /**< COPY mode only */
     uint32_t                last_seq;       /**< Last consumed sequence number */
     bool                    active;         /**< Distributor and unregister may race;
                                                  naturally atomic on 32-bit architectures */
@@ -155,7 +145,7 @@ int data_bus_init(void);
  * Stops accepting new publishes, drains all channel queues,
  * releases all pending blocks, destroys all channels.
  *
- * @warning Cannot reclaim REF blocks still held by application threads.
+ * @warning Cannot reclaim blocks still held by application threads via retain().
  *          Callers must ensure all async consumers have released.
  *
  * @return 0 on success
@@ -235,7 +225,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
  *
  * @pre  Block not yet in any channel queue; typically ref_count == 0
  * @post On success ref_count == 1 (bus holds the reference)
- * @note Caller should not call release on this block after publish_block
+ * @note The bus takes ownership; do not release after publish_block succeeds
  */
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
 
@@ -259,7 +249,7 @@ int data_bus_consumer_register(data_bus_channel_t* ch,
  * @brief Unregister a consumer
  *
  * Immediately removed from channel consumer list. If consumer is currently
- * processing data in a callback (REF mode and already acquired block),
+ * processing data in a callback (and has retained the block),
  * subsequent release is unaffected because reference counting is on the block.
  */
 int data_bus_consumer_unregister(data_bus_consumer_t* consumer);
@@ -273,6 +263,16 @@ void data_bus_block_acquire(data_bus_block_t* block);
 
 /** @brief Decrement reference count, free when zero */
 void data_bus_block_release(data_bus_block_t* block);
+
+/**
+ * @brief Retain a block for asynchronous use (beyond callback scope)
+ *
+ * Call inside a consumer callback to take an extra reference.
+ * You must later call data_bus_block_release() when done.
+ *
+ * @return The retained block (same pointer, ref_count incremented)
+ */
+data_bus_block_t* data_bus_block_retain(data_bus_block_t* block);
 
 /* ============================================================================
  * Statistics

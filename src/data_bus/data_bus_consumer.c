@@ -12,11 +12,9 @@
 
 typedef struct {
 	bool active;
-	data_bus_consume_mode_t mode;
+	bool manual_release;
 	data_bus_consume_fn_t callback;
 	void *user_data;
-	void *copy_buf;
-	size_t copy_buf_size;
 } data_bus_consumer_snap_t;
 
 /* ============================================================================
@@ -32,11 +30,6 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
 	}
 	if (cfg->callback == NULL) {
 		return -EINVAL;
-	}
-	if (cfg->mode == DATA_BUS_MODE_COPY) {
-		if (cfg->copy_buf == NULL || cfg->copy_buf_size == 0) {
-			return -EINVAL;
-		}
 	}
 
 	k_spinlock_key_t key = k_spin_lock(&ch->lock);
@@ -59,11 +52,9 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
 		consumer->name_storage[0] = '\0';
 	}
 	consumer->name = consumer->name_storage;
-	consumer->mode = cfg->mode;
+	consumer->manual_release = cfg->manual_release;
 	consumer->callback = cfg->callback;
 	consumer->user_data = cfg->user_data;
-	consumer->copy_buf = cfg->copy_buf;
-	consumer->copy_buf_size = cfg->copy_buf_size;
 	consumer->last_seq = 0;
 	consumer->active = true;
 
@@ -161,40 +152,49 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 		data_bus_consumer_t *c = &ch->consumers[i];
 
 		snaps[i].active = c->active;
-		snaps[i].mode = c->mode;
+		snaps[i].manual_release = c->manual_release;
 		snaps[i].callback = c->callback;
 		snaps[i].user_data = c->user_data;
-		snaps[i].copy_buf = c->copy_buf;
-		snaps[i].copy_buf_size = c->copy_buf_size;
 	}
 	k_spin_unlock(&ch->lock, key);
+
+	/* Count active consumers for reference splitting */
+	uint32_t active_count = 0;
+	for (uint32_t i = 0; i < count; i++) {
+		if (snaps[i].active && snaps[i].callback != NULL) {
+			active_count++;
+		}
+	}
+
+	if (active_count == 0) {
+		return;
+	}
+
+	/*
+	 * Split bus reference: ref_count was 1 (bus owns).
+	 * Add active_count so total references = 1 + active_count.
+	 * Each consumer gets an implicit reference.
+	 */
+	atomic_add(&block->ref_count, active_count);
 
 	for (uint32_t i = 0; i < count; i++) {
 		if (!snaps[i].active || snaps[i].callback == NULL) {
 			continue;
 		}
 
-		if (snaps[i].mode == DATA_BUS_MODE_REF) {
-			/* REF mode: share the original block */
-			data_bus_block_acquire(block);
-			snaps[i].callback(ch, block, snaps[i].user_data);
-			/* Consumer is responsible for calling release() */
-		} else {
-			/* COPY mode: copy data to consumer's buffer */
-			data_bus_block_t copy;
+		snaps[i].callback(ch, block, snaps[i].user_data);
 
-			memset(&copy, 0, sizeof(copy));
-			copy.ptr = snaps[i].copy_buf;
-			copy.len = (block->len < snaps[i].copy_buf_size) ? block->len : snaps[i].copy_buf_size;
-			memcpy(copy.ptr, block->ptr, copy.len);
-
-			snaps[i].callback(ch, &copy, snaps[i].user_data);
-			/* copy is on stack, no release needed */
+		/* Framework automatically releases the implicit reference
+		 * unless consumer opts into manual release.
+		 */
+		if (!snaps[i].manual_release) {
+			data_bus_block_release(block);
 		}
 
 		k_spinlock_key_t lk = k_spin_lock(&ch->lock);
-		if (i < ch->consumer_count && ch->consumers[i].callback == snaps[i].callback &&
-		    ch->consumers[i].user_data == snaps[i].user_data && ch->consumers[i].mode == snaps[i].mode) {
+		if (i < ch->consumer_count &&
+		    ch->consumers[i].callback == snaps[i].callback &&
+		    ch->consumers[i].user_data == snaps[i].user_data) {
 			ch->consumers[i].last_seq = block->seq;
 		}
 		k_spin_unlock(&ch->lock, lk);
