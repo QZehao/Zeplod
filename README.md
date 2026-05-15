@@ -34,6 +34,7 @@ A high-performance, real-time, event-driven application template based on Zephyr
 - **Shell Commands**: Built-in shell commands for debugging and monitoring
 - **Version Tracking**: Complete software version tracking with Git info and build time
 - **Thread IPC (In-App)**: Optional worker + dispatcher threads, request/response queues, and event system bridge (see `docs/en/30-core-modules/33-thread-ipc-service-guide.md`)
+- **Data Bus**: Named-channel, reference-counted streaming data sharing with zero-copy multi-consumer dispatch, ISR/thread unified publish, auto-release with explicit retain, optional event system bridge (see `docs/en/30-core-modules/37-data-bus-guide.md`)
 
 ## Use Cases
 
@@ -237,6 +238,14 @@ zephyr_framework/
     │   ├── event_dispatcher_autoinit.c # SYS_INIT auto-initialization
     │   ├── event_memory.{c,h}         # Slab memory management (priority-tiered pools, large-block pools)
     │   └── event_system_compat.{c,h}  # Event system compatibility layer
+    ├── data_bus/                      # Data Bus: named-channel streaming data sharing
+    │   ├── data_bus.{c,h}             # Core: init/deinit, dispatcher thread, stats
+    │   ├── data_bus_channel.{c,h}     # Channel management (create/find/destroy/publish)
+    │   ├── data_bus_consumer.{c,h}    # Consumer registration and dispatch
+    │   ├── data_bus_memory.{c,h}      # Two-tier Slab pools + reference-counted lifecycle
+    │   ├── data_bus_event_bridge.c    # Event system bridge (optional)
+    │   ├── data_bus_internal.h        # Internal shared declarations
+    │   └── Kconfig                    # Data Bus Kconfig options
     ├── services/                      # System services
     │   ├── sys_log.{c,h}              # Unified logging (levels, mem ring, optional RTT)
     │   ├── sys_memory.{c,h}           # Memory pool management (with leak detection)
@@ -471,6 +480,35 @@ SYS_INIT(my_module_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MINE);
 | `sys_memory` | Memory pool management with allocation tracking |
 | `sys_watchdog` | Hardware/software watchdog for improved reliability |
 | `sys_timer` | High-resolution one-shot and periodic timers |
+
+### Data Bus
+
+The Data Bus provides named-channel, reference-counted streaming data sharing, completely independent of the event system:
+
+- **Named Channels**: Globally unique names, dynamically created/looked up at runtime
+- **Zero-Copy Sharing**: Data is copied once into a slab block; multiple consumers share the same memory
+- **ISR/Thread Unified Publish**: `data_bus_publish()` automatically detects context and adapts
+- **Auto-Release**: Framework automatically `release`s after consumer callback returns (default)
+- **Explicit Retain**: Call `data_bus_block_retain()` inside callback for asynchronous hold
+- **Event Bridge**: Optional bridge to event system for lightweight notifications
+- **Memory Determinism**: All from pre-allocated slabs; ISR path does not depend on `k_malloc`
+
+```c
+// Create channel and register consumer
+data_bus_channel_t *ch;
+data_bus_channel_create("imu", &ch);
+
+data_bus_consumer_cfg_t cfg = {
+    .name     = "imu_fusion",
+    .callback = imu_consumer_cb,
+};
+data_bus_consumer_register(ch, &cfg, NULL);
+
+// Publish from ISR or thread
+data_bus_publish(ch, &imu_data, sizeof(imu_data));
+```
+
+> **Data Bus vs Event System**: Data Bus is for streaming data blocks (arbitrary size, reference-counted); Event System is for discrete events (fixed size, fire-and-forget). Use Data Bus for sensor streams and large payload sharing; use Event System for control commands and state notifications.
 
 ## Configuration
 
@@ -765,6 +803,7 @@ For questions and feature requests, please submit an Issue in the project reposi
 | [docs/en/30-core-modules/32-module-system-guide.md](docs/en/30-core-modules/32-module-system-guide.md) | Module lifecycle, runtime dependencies |
 | [docs/en/30-core-modules/33-thread-ipc-service-guide.md](docs/en/30-core-modules/33-thread-ipc-service-guide.md) | Thread IPC service |
 | [docs/en/30-core-modules/34-thread-ipc-integration-guide.md](docs/en/30-core-modules/34-thread-ipc-integration-guide.md) | Integrating IPC in modules |
+| [docs/en/30-core-modules/37-data-bus-guide.md](docs/en/30-core-modules/37-data-bus-guide.md) | Data Bus: named-channel streaming data sharing |
 | [docs/en/70-release-productization/74-ota-storage-guide.md](docs/en/70-release-productization/74-ota-storage-guide.md) | OTA, NVS, low power (optional) |
 | [docs/en/70-release-productization/71-version-management.md](docs/en/70-release-productization/71-version-management.md) | Version number and build info |
 | [docs/en/70-release-productization/72-zephyr-version-ci.md](docs/en/70-release-productization/72-zephyr-version-ci.md) | Aligning with CI image version |

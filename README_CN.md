@@ -35,6 +35,7 @@
 - **Shell 命令**：内置调试和监控的 Shell 命令
 - **版本管理**：完整的软件版本跟踪，包含 Git 信息和编译时间
 - **Thread IPC（应用内）**：可选的工作线程 + 分发线程、请求/响应队列，及与事件系统的桥接（见 `docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md`）
+- **Data Bus（数据总线）**：命名通道、引用计数流数据共享，零拷贝多消费者分发，ISR/线程统一发布，自动释放与显式 Retain，可选事件系统桥接（见 `docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md`）
 
 ## 适用场景
 
@@ -238,6 +239,14 @@ zephyr_framework/
     │   ├── event_dispatcher_autoinit.c # SYS_INIT 自动初始化
     │   ├── event_memory.{c,h}        # Slab 内存管理（优先级分层池、大数据块池）
     │   └── event_system_compat.{c,h} # 事件系统兼容层
+    ├── data_bus/                     # Data Bus：命名通道流数据共享
+    │   ├── data_bus.{c,h}            # 核心：初始化/反初始化、分发线程、统计
+    │   ├── data_bus_channel.{c,h}    # 通道管理（创建/查找/销毁/发布）
+    │   ├── data_bus_consumer.{c,h}   # 消费者注册与分发
+    │   ├── data_bus_memory.{c,h}     # 两级 Slab 内存池 + 引用计数生命周期
+    │   ├── data_bus_event_bridge.c   # 事件系统桥接（可选）
+    │   ├── data_bus_internal.h       # 内部共享声明
+    │   └── Kconfig                   # Data Bus Kconfig 配置项
     ├── services/                     # 系统服务
     │   ├── sys_log.{c,h}             # 统一日志（分级、内存环、可选 RTT）
     │   ├── sys_memory.{c,h}          # 内存池管理（带泄漏检测）
@@ -469,6 +478,35 @@ SYS_INIT(my_module_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MINE);
 | `sys_memory` | 内存池管理，带分配跟踪 |
 | `sys_watchdog` | 硬件/软件看门狗，提高可靠性 |
 | `sys_timer` | 高分辨率单次和周期定时器 |
+
+### Data Bus 数据总线
+
+Data Bus 提供命名通道、引用计数流数据共享，完全独立于事件系统：
+
+- **命名通道**：全局唯一名称，运行时动态创建/查找
+- **零拷贝共享**：数据只拷贝一次到 slab 块，多消费者共享同一块内存
+- **ISR / 线程统一发布**：`data_bus_publish()` 自动检测上下文并适配
+- **自动释放**：消费者回调返回后框架自动 `release`（默认）
+- **显式 Retain**：需要异步持有时，回调内调用 `data_bus_block_retain()`
+- **事件桥接**：可选桥接到事件系统，发送轻量级通知
+- **内存确定性**：全部来自预分配 slab，ISR 路径不依赖 `k_malloc`
+
+```c
+/* 创建通道并注册消费者 */
+data_bus_channel_t *ch;
+data_bus_channel_create("imu", &ch);
+
+data_bus_consumer_cfg_t cfg = {
+    .name     = "imu_fusion",
+    .callback = imu_consumer_cb,
+};
+data_bus_consumer_register(ch, &cfg, NULL);
+
+/* ISR 或线程中发布 */
+data_bus_publish(ch, &imu_data, sizeof(imu_data));
+```
+
+> **Data Bus 与事件系统的区别**：Data Bus 适用于流式数据块（任意大小、引用计数），事件系统适用于离散事件（固定大小、发布即忘）。传感器流和大数据块共享用 Data Bus，控制命令和状态通知用事件系统。
 
 ## 配置
 
@@ -763,6 +801,7 @@ git commit -m "修复 bug"       # 未说明修复什么
 | [docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md](docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md) | 模块生命周期、运行时依赖 |
 | [docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md](docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md) | Thread IPC 服务 |
 | [docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md](docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md) | 在模块中集成 IPC |
+| [docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md](docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md) | Data Bus：命名通道流数据共享 |
 | [docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md](docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md) | OTA、NVS、低功耗（可选） |
 | [docs/zh-CN/70-发布与产品化/71-版本管理.md](docs/zh-CN/70-发布与产品化/71-版本管理.md) | 版本号与构建信息 |
 | [docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md](docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md) | 与 CI 镜像版本对齐 |

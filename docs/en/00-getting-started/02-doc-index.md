@@ -62,6 +62,7 @@ docs/
     ├── 10-environment-build/
     ├── 20-architecture/
     ├── 30-core-modules/
+    │   └── 37-data-bus-guide.md
     ├── 40-app-development/
     ├── 50-testing-ci/
     ├── 60-debugging/
@@ -102,6 +103,7 @@ The five paths below are organized by common use cases. **You don't need to read
 3. **[32-module-system-guide.md](../30-core-modules/32-module-system-guide.md)** — Module registration, lifecycle, **`depends_on`** runtime dependencies.
 4. If **Thread IPC** is enabled: **[33-thread-ipc-service-guide.md](../30-core-modules/33-thread-ipc-service-guide.md)** → **[34-thread-ipc-integration-guide.md](../30-core-modules/34-thread-ipc-integration-guide.md)**; for expansion plans see **[35-ipc-service-roadmap.md](../30-core-modules/35-ipc-service-roadmap.md)**.
 5. For using or trimming **logging / memory pool / timer / watchdog**: **[36-system-services-guide.md](../30-core-modules/36-system-services-guide.md)** (corresponds to **`CONFIG_SYS_*`**).
+6. For **sensor streams, log streams, large payload sharing**: **[37-data-bus-guide.md](../30-core-modules/37-data-bus-guide.md)** — Named channels, zero-copy, reference counting, auto-release and Retain.
 
 ### Path C: Release Versions, Align CI, Optional OTA
 
@@ -170,6 +172,7 @@ The five paths below are organized by common use cases. **You don't need to read
 | **[34-thread-ipc-integration-guide.md](../30-core-modules/34-thread-ipc-integration-guide.md)** | Register IPC handling logic in modules | Module authors |
 | **[35-ipc-service-roadmap.md](../30-core-modules/35-ipc-service-roadmap.md)** | Roadmap for future IPC extensibility | IPC maintainers |
 | **[36-system-services-guide.md](../30-core-modules/36-system-services-guide.md)** | `sys_log` / `sys_memory` / `sys_timer` / `sys_watchdog` overview | Shared capabilities between business and drivers |
+| **[37-data-bus-guide.md](../30-core-modules/37-data-bus-guide.md)** | Named channels, zero-copy, reference counting, auto-release and Retain, event bridge | Sensor streams, log streams, large payload sharing |
 
 ### 40-App Development
 
