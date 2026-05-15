@@ -1,6 +1,18 @@
 /**
  * @file data_bus_channel.c
- * @brief Data Bus channel management - create/destroy/find/publish
+ * @brief Data Bus 通道管理 - 创建/销毁/查找/发布
+ *
+ * 通道对象从预分配 slab 池中获取，不依赖 k_malloc。
+ * 发布时将数据拷贝到内部管理的 block，然后通过信号量通知分发线程。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
+ *
  */
 
 #include "data_bus_channel.h"

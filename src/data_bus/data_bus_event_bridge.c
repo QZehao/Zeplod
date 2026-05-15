@@ -1,9 +1,18 @@
 /**
  * @file data_bus_event_bridge.c
- * @brief Data Bus to Event System bridge (optional)
+ * @brief Data Bus 到事件系统桥接（可选）
  *
- * Sends lightweight event notifications on successful data bus publishes.
- * Only triggered from thread context (not ISR).
+ * 在成功的数据总线发布时发送轻量级事件通知。
+ * 仅从线程上下文触发（非 ISR）。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
+ *
  */
 
 #include "data_bus.h"

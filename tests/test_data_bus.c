@@ -1,6 +1,18 @@
 /**
  * @file test_data_bus.c
- * @brief Data Bus unit tests
+ * @brief Data Bus 单元测试
+ *
+ * 覆盖：初始化/反初始化、通道管理、自动释放、多消费者、
+ * retain 异步持有、队列溢出、消费者注销、publish_block。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：删除 COPY 模式测试，添加 retain 测试
+ *
  */
 
 #include <zephyr/logging/log.h>

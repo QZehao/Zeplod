@@ -1,8 +1,17 @@
 /**
  * @file data_bus_internal.h
- * @brief Data Bus internal global state declarations
+ * @brief Data Bus 内部全局状态声明
  *
- * Shared between data_bus.c, data_bus_channel.c, data_bus_consumer.c
+ * data_bus.c、data_bus_channel.c、data_bus_consumer.c 共享。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
+ *
  */
 
 #ifndef DATA_BUS_INTERNAL_H

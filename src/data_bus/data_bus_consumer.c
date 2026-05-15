@@ -1,6 +1,21 @@
 /**
  * @file data_bus_consumer.c
- * @brief Data Bus consumer management - register/unregister/dispatch
+ * @brief Data Bus 消费者管理 - 注册/注销/分发
+ *
+ * 分发核心逻辑：
+ * 1. 快照活跃消费者列表
+ * 2. atomic_add(ref_count, active_count) 拆分引用
+ * 3. 逐个调用消费者回调
+ * 4. 非 manual_release 模式下，回调后框架自动 release
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：删除 COPY 模式，实现 +N 引用拆分
+ *
  */
 
 #include "data_bus_consumer.h"

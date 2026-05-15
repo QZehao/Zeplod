@@ -1,9 +1,22 @@
 /**
  * @file data_bus.h
- * @brief Data Bus public API - named-channel, reference-counted stream data sharing
+ * @brief Data Bus 公共 API - 命名通道、引用计数流数据共享
  *
- * Independent from the event system (optional bridge available).
- * Supports ISR and thread context unified publishing.
+ * 独立于事件系统（可选桥接）。
+ * 支持 ISR 和线程上下文统一发布。
+ *
+ * 核心设计：统一零拷贝 + 自动释放 + 显式 Retain（ARC 风格）
+ * - 默认自动释放：回调返回后框架自动 release
+ * - 异步持有：回调内调用 data_bus_block_retain()，稍后手动 release
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：删除 COPY 模式，统一 auto_release + retain
+ *
  */
 
 #ifndef DATA_BUS_H

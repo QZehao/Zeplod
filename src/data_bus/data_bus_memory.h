@@ -1,6 +1,17 @@
 /**
  * @file data_bus_memory.h
- * @brief Data Bus internal memory management API
+ * @brief Data Bus 内部内存管理 API
+ *
+ * Slab 内存池 + 引用计数生命周期管理。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：添加 data_bus_block_retain()
+ *
  */
 
 #ifndef DATA_BUS_MEMORY_H

@@ -1,6 +1,18 @@
 /**
  * @file data_bus.c
- * @brief Data Bus core - dispatcher thread, init/deinit, stats
+ * @brief Data Bus 核心 - 分发线程、初始化/反初始化、统计
+ *
+ * 分发线程从各通道队列中取出数据块，调用 data_bus_consumer_dispatch()
+ * 将数据分发给所有注册的消费者。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 分发模型
+ *
  */
 
 #include "data_bus.h"

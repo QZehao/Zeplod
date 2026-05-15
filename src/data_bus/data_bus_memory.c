@@ -1,6 +1,17 @@
 /**
  * @file data_bus_memory.c
- * @brief Data Bus memory management - slab pools + reference counting lifecycle
+ * @brief Data Bus 内存管理 - slab 内存池 + 引用计数生命周期
+ *
+ * 两级分配：block 结构体从固定 slab 分配，数据缓冲区按大小分级 slab + k_malloc 兜底。
+ * @author zeh (china_qzh@163.com)
+ * @version 2.0
+ * @date 2026-05-15
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-15       2.0            zeh            重构：添加 data_bus_block_retain()
+ *
  */
 
 #include "data_bus_memory.h"
