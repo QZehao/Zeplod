@@ -90,13 +90,19 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 
 				k_spinlock_key_t key = k_spin_lock(&ch->lock);
 				if (atomic_get(&ch->active)) {
-					len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
-					if (len == sizeof(block) && block != NULL) {
-						ch->queue_used--;
-					}
 					consumer_count_snap = ch->consumer_count;
+					if (consumer_count_snap > 0) {
+						len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
+						if (len == sizeof(block) && block != NULL) {
+							ch->queue_used--;
+						}
+					}
 				}
 				k_spin_unlock(&ch->lock, key);
+
+				if (consumer_count_snap == 0) {
+					break;
+				}
 
 				if (len != sizeof(block) || block == NULL) {
 					break;

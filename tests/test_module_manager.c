@@ -190,11 +190,11 @@ ZTEST(module_manager, test_get_module_info) {
     zassert_not_null(info.interface, "接口指针不应为 NULL");
     zassert_not_null(info.interface->name, "模块名称不应为 NULL");
 
-    /* 测试无效 ID */
-    zassert_equal(module_manager_get_module_info(9999, &info), -1, "无效 ID 应返回 -1");
+    /* 测试无效 ID（API 返回 MODULE_ERR_NOT_FOUND / -ENOENT，勿写死 -1） */
+    zassert_equal(module_manager_get_module_info(9999, &info), MODULE_ERR_NOT_FOUND, "无效 ID 应返回 NOT_FOUND");
 
-    /* 测试 NULL 输出 */
-    zassert_equal(module_manager_get_module_info(id, NULL), -1, "NULL 输出应返回 -1");
+    /* 测试 NULL 输出（实现返回 MODULE_ERR_INVALID_ARG，非 -1） */
+    zassert_equal(module_manager_get_module_info(id, NULL), MODULE_ERR_INVALID_ARG, "NULL 输出应返回 INVALID_ARG");
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
 }
@@ -288,4 +288,6 @@ ZTEST(module_manager, test_set_callback) {
     zassert_equal(module_manager_unregister(id), 0, NULL);
 }
 
-ZTEST_SUITE(module_manager, NULL, module_manager_suite_setup, NULL, NULL, module_manager_test_teardown);
+/* Zephyr: setup, before_each, after_each, suite_teardown — 每测清理须在 arg5 */
+ZTEST_SUITE(module_manager, NULL, module_manager_suite_setup, NULL, module_manager_test_teardown,
+	    module_manager_suite_teardown);

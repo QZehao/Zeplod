@@ -100,7 +100,7 @@ static data_bus_block_t *mem_alloc_impl(size_t len, bool isr)
 	slab = slab_for_size(len);
 	if (slab != NULL) {
 		/* Slab 路径 */
-		data_ptr = alloc_from_slab(slab, isr ? K_NO_WAIT : K_FOREVER);
+		data_ptr = alloc_from_slab(slab, K_NO_WAIT);
 	}
 
 	if (data_ptr == NULL && !isr) {

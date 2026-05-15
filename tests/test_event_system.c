@@ -477,13 +477,13 @@ ZTEST(test_event_system, test_event_publish_when_stopped) {
     event_system_init();
     /* 不启动系统 */
 
-    /* 发布应被拒绝 */
+    /* 发布应被拒绝（未 start 时返回 NOT_RUNNING） */
     status = event_publish(&event);
-    zassert_equal(status, EVENT_ERR_INVALID_ARG, "停止状态下发布应被拒绝");
+    zassert_equal(status, EVENT_ERR_NOT_RUNNING, "停止状态下发布应被拒绝");
 
     /* event_publish_copy 也应被拒绝 */
     status = event_publish_copy(150, EVENT_PRIORITY_NORMAL, "test", 4);
-    zassert_equal(status, EVENT_ERR_INVALID_ARG, "停止状态下 publish_copy 应被拒绝");
+    zassert_equal(status, EVENT_ERR_NOT_RUNNING, "停止状态下 publish_copy 应被拒绝");
 }
 
 /**

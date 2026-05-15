@@ -354,9 +354,13 @@ event_status_t event_system_start(void) {
  * @return EVENT_OK 成功
  */
 event_status_t event_system_stop(void) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized) {
+    /* 与 shutdown 一致：空闲态下幂等返回 OK，避免 VALIDATE 将 IDLE 误判为非法 */
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
         return EVENT_OK;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
+        return EVENT_ERR_INVALID_ARG;
     }
 
     if (atomic_get(&g_event_system.running) == 0) {
@@ -385,7 +389,14 @@ event_status_t event_system_stop(void) {
  *       否则可能因分发器线程正在执行该 callback 而产生死锁。
  */
 event_status_t event_system_shutdown(void) {
-    EVENT_SYSTEM_VALIDATE();
+    /* 幂等：已完成 shutdown 后 magic 为 IDLE，勿再走 VALIDATE（否则会误报 INVALID_ARG） */
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
+        return EVENT_OK;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
+        return EVENT_ERR_INVALID_ARG;
+    }
 
     /* HIGH-NEW-2: 禁止从分发器线程内部调用 shutdown。
      * dispatcher 线程调用 stop 时会跳过自 join，导致 shutdown 继续释放队列资源

@@ -42,6 +42,8 @@ ZTEST(test_event_queue, test_queue_init) {
 
     status = event_queue_init(&test_queue, NULL, 4);
     zassert_equal(status, EVENT_ERR_INVALID_ARG, "应拒绝空缓冲区参数");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -59,7 +61,8 @@ ZTEST(test_event_queue, test_queue_enqueue_dequeue) {
     event_in.data_len = 0;
 
     /* 初始化 */
-    event_queue_init(&test_queue, buffer, 4);
+    status = event_queue_init(&test_queue, buffer, 4);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 测试入队 */
     status = event_queue_enqueue(&test_queue, &event_in, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
@@ -76,6 +79,8 @@ ZTEST(test_event_queue, test_queue_enqueue_dequeue) {
     /* 测试空队列出队 */
     status = event_queue_dequeue(&test_queue, &event_out, K_NO_WAIT);
     zassert_equal(status, EVENT_ERR_QUEUE_EMPTY, "空队列应返回 EMPTY");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -88,7 +93,8 @@ ZTEST(test_event_queue, test_queue_full) {
     event_t        event = {.type = 51, .priority = EVENT_PRIORITY_NORMAL};
 
     /* 初始化小队列 */
-    event_queue_init(&test_queue, buffer, 3);
+    status = event_queue_init(&test_queue, buffer, 3);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 填满队列 */
     status = event_queue_enqueue(&test_queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
@@ -106,6 +112,8 @@ ZTEST(test_event_queue, test_queue_full) {
 
     /* 测试 is_full */
     zassert_true(event_queue_is_full(&test_queue), "队列应标记为满");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -117,7 +125,8 @@ ZTEST(test_event_queue, test_queue_overflow_drop_lowest) {
     event_status_t status;
     event_t        out;
 
-    event_queue_init(&test_queue, buffer, 3);
+    status = event_queue_init(&test_queue, buffer, 3);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     event_t e1 = {.type = 1, .priority = EVENT_PRIORITY_NORMAL};
     event_t e2 = {.type = 2, .priority = EVENT_PRIORITY_NORMAL};
@@ -145,6 +154,8 @@ ZTEST(test_event_queue, test_queue_overflow_drop_lowest) {
 
     status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
     zassert_equal(out.type, 99, "高优先级事件应在队尾入队");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -156,7 +167,8 @@ ZTEST(test_event_queue, test_queue_overflow_drop_lowest_reject_worse) {
     event_status_t status;
     event_t        out;
 
-    event_queue_init(&test_queue, buffer, 3);
+    status = event_queue_init(&test_queue, buffer, 3);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     for (int i = 0; i < 3; i++) {
         event_t hi = {.type = (uint32_t) (10 + i), .priority = EVENT_PRIORITY_HIGH};
@@ -177,18 +189,22 @@ ZTEST(test_event_queue, test_queue_overflow_drop_lowest_reject_worse) {
         zassert_equal(status, EVENT_OK, "出队");
         zassert_equal((int) out.type, t, "仍为原 HIGH 事件");
     }
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试队列清空
  */
 ZTEST(test_event_queue, test_queue_purge) {
-    struct k_msgq test_queue;
-    char          buffer[5 * sizeof(event_t)];
-    event_t       event = {.type = 52, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq  test_queue;
+    char           buffer[5 * sizeof(event_t)];
+    event_status_t status;
+    event_t        event = {.type = 52, .priority = EVENT_PRIORITY_NORMAL};
 
     /* 初始化 */
-    event_queue_init(&test_queue, buffer, 5);
+    status = event_queue_init(&test_queue, buffer, 5);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 添加一些事件 */
     for (int i = 0; i < 3; i++) {
@@ -202,19 +218,23 @@ ZTEST(test_event_queue, test_queue_purge) {
 
     zassert_equal(event_queue_depth(&test_queue), 0, "队列应为空");
     zassert_true(event_queue_is_empty(&test_queue), "队列应标记为空");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试队列统计
  */
 ZTEST(test_event_queue, test_queue_stats) {
-    struct k_msgq test_queue;
-    char          buffer[5 * sizeof(event_t)];
-    queue_stats_t stats;
-    event_t       event = {.type = 53, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq  test_queue;
+    char           buffer[5 * sizeof(event_t)];
+    event_status_t status;
+    queue_stats_t  stats;
+    event_t        event = {.type = 53, .priority = EVENT_PRIORITY_NORMAL};
 
     /* 初始化 */
-    event_queue_init(&test_queue, buffer, 5);
+    status = event_queue_init(&test_queue, buffer, 5);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 入队一些事件 */
     for (int i = 0; i < 4; i++) {
@@ -237,17 +257,21 @@ ZTEST(test_event_queue, test_queue_stats) {
     event_queue_reset_stats(&test_queue);
     event_queue_get_stats(&test_queue, &stats);
     zassert_equal(stats.enqueue_count, 0, "重置后入队计数应为 0");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试队列容量获取
  */
 ZTEST(test_event_queue, test_queue_capacity) {
-    struct k_msgq test_queue;
-    char          buffer[4 * sizeof(event_t)];
-    uint32_t      capacity;
+    struct k_msgq  test_queue;
+    char           buffer[4 * sizeof(event_t)];
+    event_status_t status;
+    uint32_t       capacity;
 
-    event_queue_init(&test_queue, buffer, 4);
+    status = event_queue_init(&test_queue, buffer, 4);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 获取容量 */
     capacity = event_queue_capacity(&test_queue);
@@ -256,18 +280,22 @@ ZTEST(test_event_queue, test_queue_capacity) {
     /* NULL 参数应返回 0 */
     capacity = event_queue_capacity(NULL);
     zassert_equal(capacity, 0, "NULL 队列容量应为 0");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试高水位线
  */
 ZTEST(test_event_queue, test_queue_high_watermark) {
-    struct k_msgq test_queue;
-    char          buffer[5 * sizeof(event_t)];
-    queue_stats_t stats;
-    event_t       event = {.type = 60, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq  test_queue;
+    char           buffer[5 * sizeof(event_t)];
+    event_status_t status;
+    queue_stats_t  stats;
+    event_t        event = {.type = 60, .priority = EVENT_PRIORITY_NORMAL};
 
-    event_queue_init(&test_queue, buffer, 5);
+    status = event_queue_init(&test_queue, buffer, 5);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 填满队列 */
     for (int i = 0; i < 5; i++) {
@@ -287,18 +315,22 @@ ZTEST(test_event_queue, test_queue_high_watermark) {
     /* 高水位线应保持不变 */
     event_queue_get_stats(&test_queue, &stats);
     zassert_equal(stats.high_watermark, 5, "高水位线应保持为 5");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试队列溢出计数
  */
 ZTEST(test_event_queue, test_queue_overflow_count) {
-    struct k_msgq test_queue;
-    char          buffer[2 * sizeof(event_t)];
-    queue_stats_t stats;
-    event_t       event = {.type = 61, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq  test_queue;
+    char           buffer[2 * sizeof(event_t)];
+    event_status_t status;
+    queue_stats_t  stats;
+    event_t        event = {.type = 61, .priority = EVENT_PRIORITY_NORMAL};
 
-    event_queue_init(&test_queue, buffer, 2);
+    status = event_queue_init(&test_queue, buffer, 2);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 填满队列 */
     event_queue_enqueue(&test_queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
@@ -310,19 +342,23 @@ ZTEST(test_event_queue, test_queue_overflow_count) {
     /* 检查溢出计数 */
     event_queue_get_stats(&test_queue, &stats);
     zassert_true(stats.overflow_count >= 1, "溢出计数应至少为 1");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试 NULL 参数处理
  */
 ZTEST(test_event_queue, test_null_parameters) {
-    struct k_msgq test_queue;
-    char          buffer[3 * sizeof(event_t)];
-    event_t       event = {.type = 70, .priority = EVENT_PRIORITY_NORMAL};
-    event_t       out;
-    queue_stats_t stats;
+    struct k_msgq  test_queue;
+    char           buffer[3 * sizeof(event_t)];
+    event_status_t status;
+    event_t        event = {.type = 70, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        out;
+    queue_stats_t  stats;
 
-    event_queue_init(&test_queue, buffer, 3);
+    status = event_queue_init(&test_queue, buffer, 3);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* NULL 队列入队 */
     zassert_equal(event_queue_enqueue(NULL, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_ERR_INVALID_ARG, NULL);
@@ -356,6 +392,8 @@ ZTEST(test_event_queue, test_null_parameters) {
 
     /* NULL 队列是否已满 */
     zassert_false(event_queue_is_full(NULL), "NULL 队列不应满");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -365,14 +403,17 @@ ZTEST(test_event_queue, test_invalid_event_type) {
     struct k_msgq  test_queue;
     char           buffer[3 * sizeof(event_t)];
     event_status_t status;
-    /* 事件类型 256 是无效的（超出 uint8_t 范围会在编译时报错，这里测试运行时验证）*/
-    event_t        event = {.type = 255, .priority = EVENT_PRIORITY_NORMAL}; /* 255 是有效的，但可以测试边界 */
+    /* 事件类型 255 是有效的（最大 uint8_t），但可以测试边界 */
+    event_t        event = {.type = 255, .priority = EVENT_PRIORITY_NORMAL};
 
-    event_queue_init(&test_queue, buffer, 3);
+    status = event_queue_init(&test_queue, buffer, 3);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 正常边界值应成功 */
     status = event_queue_enqueue(&test_queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
     zassert_equal(status, EVENT_OK, "类型 255 应成功入队");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
@@ -400,7 +441,8 @@ ZTEST(test_event_queue, test_drop_lowest_priority_ordering) {
     event_status_t status;
     event_t        out;
 
-    event_queue_init(&test_queue, buffer, 4);
+    status = event_queue_init(&test_queue, buffer, 4);
+    zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* 按优先级从低到高入队 */
     event_t e1 = {.type = 1, .priority = EVENT_PRIORITY_LOW};      /* priority = 10 */
@@ -422,20 +464,26 @@ ZTEST(test_event_queue, test_drop_lowest_priority_ordering) {
     status = event_queue_dequeue(&test_queue, &out, K_NO_WAIT);
     zassert_equal(status, EVENT_OK, NULL);
     zassert_equal(out.priority, EVENT_PRIORITY_NORMAL, "第一个应为 NORMAL");
+
+    event_queue_deinit(&test_queue);
 }
 
 /**
  * @brief 测试多队列独立统计
  */
 ZTEST(test_event_queue, test_multiple_queues) {
-    struct k_msgq queue1, queue2;
-    char          buffer1[2 * sizeof(event_t)];
-    char          buffer2[3 * sizeof(event_t)];
-    queue_stats_t stats1, stats2;
-    event_t       event = {.type = 90, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq  queue1, queue2;
+    char           buffer1[2 * sizeof(event_t)];
+    char           buffer2[3 * sizeof(event_t)];
+    event_status_t status;
+    queue_stats_t  stats1, stats2;
+    event_t        event = {.type = 90, .priority = EVENT_PRIORITY_NORMAL};
 
-    event_queue_init(&queue1, buffer1, 2);
-    event_queue_init(&queue2, buffer2, 3);
+    status = event_queue_init(&queue1, buffer1, 2);
+    zassert_equal(status, EVENT_OK, "队列 1 初始化失败");
+
+    status = event_queue_init(&queue2, buffer2, 3);
+    zassert_equal(status, EVENT_OK, "队列 2 初始化失败");
 
     /* 向队列 1 入队 2 个事件 */
     event_queue_enqueue(&queue1, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
@@ -452,6 +500,9 @@ ZTEST(test_event_queue, test_multiple_queues) {
 
     zassert_equal(stats1.enqueue_count, 2, "队列 1 入队计数应为 2");
     zassert_equal(stats2.enqueue_count, 3, "队列 2 入队计数应为 3");
+
+    event_queue_deinit(&queue1);
+    event_queue_deinit(&queue2);
 }
 
 /* =============================================================================

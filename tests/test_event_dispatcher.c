@@ -66,10 +66,14 @@ ZTEST(event_dispatcher, test_pause_resume) {
 }
 
 ZTEST(event_dispatcher, test_set_filter) {
-    static int filter_call_count = 0;
+    static int filter_call_count;
+
+    filter_call_count = 0;
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(100, "filter_t100"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(101, "filter_t101"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
 
     /* 定义过滤函数：只允许特定类型的事件 */
@@ -391,10 +395,13 @@ ZTEST(event_dispatcher, test_process_one_when_stopped) {
  * @brief 测试过滤器阻止所有事件
  */
 ZTEST(event_dispatcher, test_filter_block_all) {
-    static uint32_t dropped_count = 0;
+    static uint32_t dropped_count;
+
+    dropped_count = 0;
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(210, "filter_block_t210"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
 
     /* 设置一个总是返回 false 的过滤器 */
@@ -487,4 +494,12 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
-ZTEST_SUITE(event_dispatcher, NULL, NULL, NULL, NULL, NULL);
+static void event_dispatcher_after_each(void *fixture)
+{
+    (void)fixture;
+    /* 完整 shutdown：清空已注册事件类型与分发器状态。仅 stop 不会清理类型表，
+     * 否则本套件注册的 type（如 100/101/210）会污染后续 test_event_system 等套件。 */
+    (void)event_system_shutdown();
+}
+
+ZTEST_SUITE(event_dispatcher, NULL, NULL, NULL, event_dispatcher_after_each, NULL);
