@@ -515,5 +515,11 @@ rsource "src/modules/ipc_service/Kconfig"
 
 endmenu
 
+menu "Data Bus (Standard)"
+
+rsource "src/data_bus/Kconfig"
+
+endmenu
+
 # 商业模块配置（可选，当 src/proprietary 不存在时自动跳过）
 osource "Kconfig_proprietary"

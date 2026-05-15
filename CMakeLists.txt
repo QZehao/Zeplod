@@ -267,6 +267,11 @@ if(CONFIG_THREAD_IPC_SERVICE)
     add_subdirectory(src/modules/ipc_service)
 endif()
 
+# Data Bus
+if(CONFIG_DATA_BUS)
+    add_subdirectory(src/data_bus)
+endif()
+
 # Example modules (conditionally compiled)
 if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
     target_sources(app PRIVATE

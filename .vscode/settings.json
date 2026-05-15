@@ -36,7 +36,8 @@
         "*.h": "c",
         "Kconfig": "kconfig",
         "*.dts": "dts",
-        "*.dtsi": "dts"
+        "*.dtsi": "dts",
+        "typeinfo": "c"
     },
 
     // 排除的文件（仅隐藏资源管理器视图；构建仍生成于 ./build）
