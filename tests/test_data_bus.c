@@ -13,6 +13,7 @@
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：删除 COPY 模式测试，添加 retain 测试
+ * 2026-05-15       2.1            zeh            无消费者时队列排空回归测试
  *
  */
 
@@ -415,6 +416,45 @@ ZTEST(test_data_bus, test_deinit_cleanup)
 }
 
 /**
+ * @brief 无消费者或 consumer_count==0 时分发线程仍须排空 ring 队列（防块泄漏）
+ */
+ZTEST(test_data_bus, test_dispatch_drains_without_consumer)
+{
+	data_bus_test_setup();
+	zassert_equal(data_bus_init(), 0, NULL);
+
+	data_bus_channel_t *ch = NULL;
+	zassert_equal(data_bus_channel_create("orphan_ch", &ch), 0, NULL);
+
+	const uint8_t p1[] = {0x01};
+	zassert_equal(data_bus_publish(ch, p1, sizeof(p1)), 0, NULL);
+	k_msleep(150);
+	zassert_equal(data_bus_channel_destroy(ch), 0, "无消费者 publish 排空后应可销毁");
+
+	/* 最后一个消费者注销后再次 publish，队列须在 consumer_count==0 时被排空 */
+	ch = NULL;
+	zassert_equal(data_bus_channel_create("orphan2", &ch), 0, NULL);
+	data_bus_consumer_cfg_t cfg = {
+		.name = "tmp_cons",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
+		.user_data = NULL,
+	};
+	data_bus_consumer_t *cons = NULL;
+	zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+	const uint8_t p2[] = {0x02};
+	zassert_equal(data_bus_publish(ch, p2, sizeof(p2)), 0, NULL);
+	zassert_equal(k_sem_take(&g_test_sem, K_MSEC(200)), 0, NULL);
+	zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+	const uint8_t p3[] = {0x03};
+	zassert_equal(data_bus_publish(ch, p3, sizeof(p3)), 0, NULL);
+	k_msleep(150);
+	zassert_equal(data_bus_channel_destroy(ch), 0, "注销全部消费者后 publish 仍须可销毁");
+
+	zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+/**
  * @brief 测试消费者注销
  */
 ZTEST(test_data_bus, test_consumer_unregister)
@@ -446,7 +486,7 @@ ZTEST(test_data_bus, test_consumer_unregister)
 	ret = data_bus_publish(ch, test_data, sizeof(test_data));
 	zassert_equal(ret, 0, "发布失败");
 
-	/* 给分发线程足够时间处理队列（无消费者，块会被丢弃） */
+	/* 给分发线程足够时间：无消费者时仍应出队并释放块（不触发回调） */
 	k_sleep(K_MSEC(100));
 	zassert_equal(atomic_get(&g_call_count), 0, "注销后回调不应触发");
 

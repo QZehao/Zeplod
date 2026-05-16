@@ -12,6 +12,7 @@
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 分发模型
+ * 2026-05-15       2.1            zeh            分发线程：queue 非空时无消费者也出队并 release，避免块泄漏
  *
  */
 
@@ -89,20 +90,16 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 				uint32_t consumer_count_snap = 0;
 
 				k_spinlock_key_t key = k_spin_lock(&ch->lock);
-				if (atomic_get(&ch->active)) {
+				/* 只要队列有待投递块即出队；consumer_count==0 时也必须取出并 release，
+				 * 否则 publish 已入队的块永不释放（且无消费者时无法通过回调释放）。 */
+				if (atomic_get(&ch->active) && ch->queue_used > 0) {
 					consumer_count_snap = ch->consumer_count;
-					if (consumer_count_snap > 0) {
-						len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
-						if (len == sizeof(block) && block != NULL) {
-							ch->queue_used--;
-						}
+					len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
+					if (len == sizeof(block) && block != NULL) {
+						ch->queue_used--;
 					}
 				}
 				k_spin_unlock(&ch->lock, key);
-
-				if (consumer_count_snap == 0) {
-					break;
-				}
 
 				if (len != sizeof(block) || block == NULL) {
 					break;
