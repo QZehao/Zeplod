@@ -1,3 +1,8 @@
+# Usage:
+#   . .\scripts\setup_env.ps1    # activate in current PowerShell session (recommended)
+#   .\scripts\setup_env.ps1      # same for $env: vars; venv PATH applies to this session
+#
+# Called automatically by scripts\run_tests.ps1 before west build.
 $ErrorActionPreference = "Stop"
 
 Write-Host "============================================"

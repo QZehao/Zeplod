@@ -26,11 +26,6 @@
 
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 
-/* 数据总线通知的事件类型 */
-#ifndef EVENT_TYPE_DATA_BUS_AVAILABLE
-#define EVENT_TYPE_DATA_BUS_AVAILABLE 30U
-#endif
-
 typedef struct {
 	char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
 	uint32_t seq;
@@ -62,7 +57,7 @@ void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t l
 	LOG_DBG("Bridge notify ch='%s' seq=%u len=%u",
 		notification.channel_name, seq, (uint32_t)len);
 
-	event_publish_copy(EVENT_TYPE_DATA_BUS_AVAILABLE,
+	event_publish_copy((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
 			   EVENT_PRIORITY_NORMAL,
 			   &notification, sizeof(notification));
 }

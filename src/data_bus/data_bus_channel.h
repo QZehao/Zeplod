@@ -35,6 +35,12 @@ int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name);
  */
 void data_bus_channel_obj_reset(data_bus_channel_t *ch);
 
+/**
+ * @brief 排空通道上已入队的块
+ * @param run_dispatch true：先分发给消费者再 release；false：仅 release（销毁/重置）
+ */
+void data_bus_channel_drain_pending(data_bus_channel_t *ch, bool run_dispatch);
+
 #ifdef __cplusplus
 }
 #endif

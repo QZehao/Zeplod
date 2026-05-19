@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Run ztest suite with a host simulation board (native_sim preferred, native_posix fallback).
+# Sources scripts/setup_env.sh (requires zephyr_config.env).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/setup_env.sh"
 BUILD_DIR="${ZEPHYR_TEST_BUILD_DIR:-build_tests}"
 CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf}"
 

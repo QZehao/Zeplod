@@ -627,6 +627,86 @@ ZTEST(test_data_bus, test_reset_stats)
 	data_bus_deinit();
 }
 
+/**
+ * @brief publish_block 在 ref_count != 0 时应拒绝
+ */
+ZTEST(test_data_bus, test_publish_block_rejects_nonzero_ref)
+{
+	data_bus_test_setup();
+	data_bus_init();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("ref_ch", &ch);
+	zassert_equal(ret, 0, "通道创建失败");
+
+	data_bus_block_t *block = data_bus_mem_alloc(4);
+	zassert_not_null(block, "mem_alloc 失败");
+
+	atomic_set(&block->ref_count, 1);
+	ret = data_bus_publish_block(ch, block);
+	zassert_equal(ret, -EINVAL, "非零 ref_count 应拒绝入队");
+
+	atomic_set(&block->ref_count, 0);
+	data_bus_mem_free(block);
+	data_bus_channel_destroy(ch);
+	data_bus_deinit();
+}
+
+/**
+ * @brief 单通道突发入队超过旧版 8 块批处理上限时应全部投递
+ */
+ZTEST(test_data_bus, test_dispatch_burst_drain)
+{
+	data_bus_test_setup();
+	data_bus_init();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("burst_ch", &ch);
+	zassert_equal(ret, 0, "通道创建失败");
+
+	data_bus_consumer_cfg_t cfg = {
+		.name = "burst_consumer",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
+		.user_data = NULL,
+	};
+	ret = data_bus_consumer_register(ch, &cfg, NULL);
+	zassert_equal(ret, 0, "消费者注册失败");
+
+	const int burst_count = CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH + 4;
+
+	for (int i = 0; i < burst_count; i++) {
+		const uint8_t payload[] = {(uint8_t)i, 0xEE};
+		ret = data_bus_publish(ch, payload, sizeof(payload));
+		zassert_equal(ret, 0, "突发发布 %d 失败", i);
+	}
+
+	for (int i = 0; i < burst_count; i++) {
+		ret = k_sem_take(&g_test_sem, K_MSEC(500));
+		zassert_equal(ret, 0, "突发投递 %d 超时", i);
+	}
+
+	zassert_equal(atomic_get(&g_call_count), burst_count, "应投递全部突发块");
+
+	data_bus_channel_destroy(ch);
+	data_bus_deinit();
+}
+
+/**
+ * @brief 未初始化时创建通道应失败
+ */
+ZTEST(test_data_bus, test_requires_init)
+{
+	data_bus_test_setup();
+
+	data_bus_deinit();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("no_init_ch", &ch);
+	zassert_equal(ret, -ENODEV, "未初始化应返回 -ENODEV");
+	zassert_is_null(ch, "不应输出通道指针");
+}
+
 /* ============================================================================
  * 测试套件
  * ============================================================================ */

@@ -52,9 +52,20 @@ tests/
 
 ### 前提
 
-- 已设置 `ZEPHYR_BASE`，或已在仓库根目录配置 `zephyr_config.env`（与主工程相同）。
+- 仓库根目录已配置 **`zephyr_config.env`**（由 `zephyr_config.env.template` 复制并填写路径）。
+- **先激活环境**（加载 venv、`ZEPHYR_BASE`、SDK 到 PATH）：
 
-### 推荐：使用脚本（自动选择板型）
+```powershell
+# Windows（当前终端生效）
+.\scripts\setup_env.ps1
+```
+
+```bash
+# Linux / macOS / WSL
+source scripts/setup_env.sh
+```
+
+### 推荐：使用脚本（自动激活环境 + 选择板型）
 
 **Linux / macOS / WSL：**
 
@@ -68,7 +79,8 @@ tests/
 .\scripts\run_tests.ps1
 ```
 
-脚本会优先使用 `native_sim`（若 `west boards` 列出），否则回退 `native_posix`。环境变量 `ZEPHYR_TEST_BOARD`、`ZEPHYR_TEST_CONF` 可覆盖板型与 `CONF_FILE`。
+脚本会先执行 **`setup_env`**（读取 `zephyr_config.env`），再构建/运行测试；无需单独激活环境。  
+板型优先 `native_sim`（若 `west boards` 列出），否则 `native_posix`。可用环境变量 `ZEPHYR_TEST_BOARD`、`ZEPHYR_TEST_CONF` 覆盖。
 
 ### West（手动）
 

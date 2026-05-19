@@ -44,6 +44,11 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
                                 const data_bus_consumer_cfg_t *cfg,
                                 data_bus_consumer_t **out_consumer)
 {
+	int ready = data_bus_require_initialized();
+
+	if (ready != 0) {
+		return ready;
+	}
 	if (ch == NULL || cfg == NULL) {
 		return -EINVAL;
 	}
@@ -68,11 +73,18 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
 	data_bus_consumer_t *consumer = &ch->consumers[ch->consumer_count];
 
 	if (cfg->name != NULL) {
-		(void)snprintf(consumer->name_storage, sizeof(consumer->name_storage), "%s", cfg->name);
+		int name_ret = snprintf(consumer->name_storage, sizeof(consumer->name_storage), "%s",
+					cfg->name);
+
+		if (name_ret < 0 || (size_t)name_ret >= sizeof(consumer->name_storage)) {
+			k_spin_unlock(&ch->lock, key);
+			return -EINVAL;
+		}
 	} else {
 		consumer->name_storage[0] = '\0';
 	}
 	consumer->name = consumer->name_storage;
+	consumer->channel = ch;
 	consumer->manual_release = cfg->manual_release;
 	consumer->callback = cfg->callback;
 	consumer->user_data = cfg->user_data;
@@ -100,47 +112,45 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 		return -EINVAL;
 	}
 
-	/* 查找该消费者所属的通道 */
-	/* 扫描所有通道以找到包含的通道 */
-	/* 时间复杂度 O(N*M)，但通道和消费者通常很小 */
+	data_bus_channel_t *found_ch = consumer->channel;
+
+	if (found_ch == NULL) {
+		return -EINVAL;
+	}
 
 	k_mutex_lock(&g_channels_lock, K_FOREVER);
 
-	data_bus_channel_t *found_ch = NULL;
-	uint32_t found_idx = 0;
-
-	for (uint32_t i = 0; i < g_channel_count; i++) {
-		data_bus_channel_t *ch = g_channels[i];
-		if (ch == NULL) {
-			continue;
-		}
-		for (uint32_t j = 0; j < ch->consumer_count; j++) {
-			if (&ch->consumers[j] == consumer) {
-				found_ch = ch;
-				found_idx = j;
-				break;
-			}
-		}
-		if (found_ch != NULL) {
-			break;
-		}
-	}
-
-	if (found_ch == NULL) {
-		LOG_WRN("Consumer unregister failed: not found");
+	if (!atomic_get(&found_ch->active)) {
 		k_mutex_unlock(&g_channels_lock);
 		return -EINVAL;
 	}
 
 	k_spinlock_key_t key = k_spin_lock(&found_ch->lock);
 
+	uint32_t found_idx = found_ch->consumer_count;
+	for (uint32_t j = 0; j < found_ch->consumer_count; j++) {
+		if (&found_ch->consumers[j] == consumer) {
+			found_idx = j;
+			break;
+		}
+	}
+
+	if (found_idx >= found_ch->consumer_count) {
+		k_spin_unlock(&found_ch->lock, key);
+		k_mutex_unlock(&g_channels_lock);
+		LOG_WRN("Consumer unregister failed: not found on channel '%s'", found_ch->name);
+		return -EINVAL;
+	}
+
 	/* 标记为非活跃 */
 	atomic_set(&consumer->active, 0);
+	consumer->channel = NULL;
 
 	/* 通过移位压缩数组 */
 	for (uint32_t i = found_idx; i < found_ch->consumer_count - 1; i++) {
 		found_ch->consumers[i] = found_ch->consumers[i + 1];
 		found_ch->consumers[i].name = found_ch->consumers[i].name_storage;
+		found_ch->consumers[i].channel = found_ch;
 	}
 
 	/* 清空最后一个槽 */

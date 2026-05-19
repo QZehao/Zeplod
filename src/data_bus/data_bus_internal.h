@@ -34,6 +34,12 @@ extern struct k_mutex g_channels_lock;
 extern atomic_t g_initialized;
 extern atomic_t g_shutting_down;
 
+/**
+ * @brief 要求 Data Bus 已初始化且未关闭
+ * @return 0 就绪，-ENODEV 未初始化，-ESHUTDOWN 正在/已关闭
+ */
+int data_bus_require_initialized(void);
+
 /* 分发线程（定义在 data_bus.c 中） */
 extern struct k_thread g_dispatcher_thread_data;
 extern k_thread_stack_t g_dispatcher_stack[];

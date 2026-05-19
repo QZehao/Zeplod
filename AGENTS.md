@@ -34,7 +34,11 @@ west build -b <board> .
 
 ### 单元测试（native_sim / native_posix）
 ```bash
-# 推荐：自动选择板型（native_sim 优先）
+# 先激活环境（或直接用 run_tests，其内会自动 source setup_env）
+source scripts/setup_env.sh     # Linux/macOS/WSL
+# .\scripts\setup_env.ps1       # Windows PowerShell
+
+# 推荐：自动激活环境 + 选择板型（native_sim 优先）
 ./scripts/run_tests.sh          # Linux/macOS/WSL
 # .\scripts\run_tests.ps1       # Windows
 

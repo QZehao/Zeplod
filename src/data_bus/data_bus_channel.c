@@ -16,13 +16,14 @@
  */
 
 #include "data_bus_channel.h"
-#include "data_bus_internal.h"
-#include "data_bus_memory.h"
 #include <zephyr/kernel.h>
-#include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/__assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "data_bus_consumer.h"
+#include "data_bus_internal.h"
+#include "data_bus_memory.h"
 
 LOG_MODULE_REGISTER(data_bus_channel, CONFIG_DATA_BUS_LOG_LEVEL);
 
@@ -30,353 +31,377 @@ LOG_MODULE_REGISTER(data_bus_channel, CONFIG_DATA_BUS_LOG_LEVEL);
  * 通道对象 slab
  * ============================================================================ */
 
-K_MEM_SLAB_DEFINE(data_bus_channel_slab, sizeof(data_bus_channel_t),
-                  CONFIG_DATA_BUS_MAX_CHANNELS, sizeof(void *));
+K_MEM_SLAB_DEFINE(data_bus_channel_slab, sizeof(data_bus_channel_t), CONFIG_DATA_BUS_MAX_CHANNELS, sizeof(void*));
 
 /* ============================================================================
  * 内部辅助函数
  * ============================================================================ */
 
-static bool name_valid(const char *name)
-{
-	if (name == NULL) {
-		return false;
-	}
-	size_t len = strlen(name);
-	if (len == 0 || len >= CONFIG_DATA_BUS_CHANNEL_NAME_MAX) {
-		return false;
-	}
-	return true;
+static bool name_valid(const char* name) {
+    if (name == NULL) {
+        return false;
+    }
+    size_t len = strlen(name);
+    if (len == 0 || len >= CONFIG_DATA_BUS_CHANNEL_NAME_MAX) {
+        return false;
+    }
+    return true;
 }
 
-static data_bus_channel_t *find_in_table(const char *name)
-{
-	for (uint32_t i = 0; i < g_channel_count; i++) {
-		data_bus_channel_t *ch = g_channels[i];
-		if (ch != NULL && atomic_get(&ch->active) && strcmp(ch->name, name) == 0) {
-			return ch;
-		}
-	}
-	return NULL;
+static data_bus_channel_t* find_in_table(const char* name) {
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        data_bus_channel_t* ch = g_channels[i];
+        if (ch != NULL && atomic_get(&ch->active) && strcmp(ch->name, name) == 0) {
+            return ch;
+        }
+    }
+    return NULL;
 }
 
 /* ============================================================================
  * 通道对象初始化/重置
  * ============================================================================ */
 
-int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name)
-{
-	__ASSERT(ch != NULL, "NULL channel pointer");
-	__ASSERT(name != NULL, "NULL name");
+int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
+    __ASSERT(ch != NULL, "NULL channel pointer");
+    __ASSERT(name != NULL, "NULL name");
 
-	memset(ch, 0, sizeof(*ch));
+    memset(ch, 0, sizeof(*ch));
 
-	{
-		int name_ret = snprintf(ch->name_storage, sizeof(ch->name_storage), "%s", name);
+    {
+        int name_ret = snprintf(ch->name_storage, sizeof(ch->name_storage), "%s", name);
 
-		if (name_ret < 0 || (size_t)name_ret >= sizeof(ch->name_storage)) {
-			return -EINVAL;
-		}
-	}
+        if (name_ret < 0 || (size_t) name_ret >= sizeof(ch->name_storage)) {
+            return -EINVAL;
+        }
+    }
 
-	ch->name = ch->name_storage;
-	ring_buf_init(&ch->queue, sizeof(ch->queue_buf), ch->queue_buf);
-	/* k_spinlock 零初始化是有效的 */
-	atomic_set(&ch->active, 1);
-	ch->next_seq = 0;
-	atomic_set(&ch->dispatch_hold, 0);
+    ch->name = ch->name_storage;
+    ring_buf_init(&ch->queue, sizeof(ch->queue_buf), ch->queue_buf);
+    /* k_spinlock 零初始化是有效的 */
+    atomic_set(&ch->active, 1);
+    ch->next_seq = 0;
+    atomic_set(&ch->dispatch_hold, 0);
 
-	return 0;
+    return 0;
 }
 
-void data_bus_channel_obj_reset(data_bus_channel_t *ch)
-{
-	if (ch == NULL) {
-		return;
-	}
+void data_bus_channel_drain_pending(data_bus_channel_t* ch, bool run_dispatch) {
+    if (ch == NULL) {
+        return;
+    }
 
-	/* 排空所有挂起的块 */
-	data_bus_block_t *block = NULL;
-	while (true) {
-		k_spinlock_key_t key = k_spin_lock(&ch->lock);
-		size_t len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
-		if (len == sizeof(block) && block != NULL) {
-			ch->queue_used--;
-		}
-		k_spin_unlock(&ch->lock, key);
+    while (true) {
+        data_bus_block_t* block = NULL;
+        size_t            len = 0;
 
-		if (len != sizeof(block) || block == NULL) {
-			break;
-		}
-		data_bus_block_release(block);
-	}
+        k_spinlock_key_t key = k_spin_lock(&ch->lock);
+        if (ch->queue_used > 0) {
+            len = ring_buf_get(&ch->queue, (uint8_t*) &block, sizeof(block));
+            if (len == sizeof(block) && block != NULL) {
+                ch->queue_used--;
+            }
+        }
+        k_spin_unlock(&ch->lock, key);
 
-	/* 注销所有消费者 */
-	for (uint32_t i = 0; i < ch->consumer_count; i++) {
-		atomic_set(&ch->consumers[i].active, 0);
-	}
-	ch->consumer_count = 0;
+        if (len != sizeof(block) || block == NULL) {
+            break;
+        }
 
-	atomic_set(&ch->active, 0);
+        if (run_dispatch) {
+            LOG_DBG("dispatch ch='%s' seq=%u len=%zu", ch->name, block->seq, block->len);
+            data_bus_consumer_dispatch(ch, block);
+        }
+
+        data_bus_block_release(block);
+    }
 }
 
+void data_bus_channel_obj_reset(data_bus_channel_t* ch) {
+    if (ch == NULL) {
+        return;
+    }
+
+    data_bus_channel_drain_pending(ch, false);
+
+    /* 注销所有消费者 */
+    for (uint32_t i = 0; i < ch->consumer_count; i++) {
+        atomic_set(&ch->consumers[i].active, 0);
+        ch->consumers[i].channel = NULL;
+    }
+    ch->consumer_count = 0;
+
+    atomic_set(&ch->active, 0);
+}
 /* ============================================================================
  * 公共 API: 通道管理
  * ============================================================================ */
 
-int data_bus_channel_create(const char *name, data_bus_channel_t **out_channel)
-{
-	if (out_channel == NULL) {
-		return -EINVAL;
-	}
-	if (!name_valid(name)) {
-		return -EINVAL;
-	}
+int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) {
+    int ready = data_bus_require_initialized();
 
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
+    if (ready != 0) {
+        return ready;
+    }
+    if (out_channel == NULL) {
+        return -EINVAL;
+    }
+    if (!name_valid(name)) {
+        return -EINVAL;
+    }
 
-	/* 检查重复名称 */
-	if (find_in_table(name) != NULL) {
-		LOG_WRN("Channel '%s' already exists", name);
-		k_mutex_unlock(&g_channels_lock);
-		return -EEXIST;
-	}
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    /* 检查重复名称 */
+    if (find_in_table(name) != NULL) {
+        LOG_WRN("Channel '%s' already exists", name);
+        k_mutex_unlock(&g_channels_lock);
+        return -EEXIST;
+    }
 
-	/* 在表中找一个空槽 */
-	if (g_channel_count >= CONFIG_DATA_BUS_MAX_CHANNELS) {
-		k_mutex_unlock(&g_channels_lock);
-		return -ENOMEM;
-	}
+    /* 在表中找一个空槽 */
+    if (g_channel_count >= CONFIG_DATA_BUS_MAX_CHANNELS) {
+        k_mutex_unlock(&g_channels_lock);
+        return -ENOMEM;
+    }
 
-	/* 从 slab 分配通道对象 */
-	data_bus_channel_t *ch = NULL;
-	int ret = k_mem_slab_alloc(&data_bus_channel_slab, (void **)&ch, K_NO_WAIT);
-	if (ret != 0) {
-		LOG_ERR("Channel slab exhausted (max=%u)", CONFIG_DATA_BUS_MAX_CHANNELS);
-		k_mutex_unlock(&g_channels_lock);
-		return -ENOMEM;
-	}
+    /* 从 slab 分配通道对象 */
+    data_bus_channel_t* ch = NULL;
+    int                 ret = k_mem_slab_alloc(&data_bus_channel_slab, (void**) &ch, K_NO_WAIT);
+    if (ret != 0) {
+        LOG_ERR("Channel slab exhausted (max=%u)", CONFIG_DATA_BUS_MAX_CHANNELS);
+        k_mutex_unlock(&g_channels_lock);
+        return -ENOMEM;
+    }
 
-	/* 初始化通道 */
-	ret = data_bus_channel_obj_init(ch, name);
-	if (ret != 0) {
-		k_mem_slab_free(&data_bus_channel_slab, ch);
-		k_mutex_unlock(&g_channels_lock);
-		return ret;
-	}
+    /* 初始化通道 */
+    ret = data_bus_channel_obj_init(ch, name);
+    if (ret != 0) {
+        k_mem_slab_free(&data_bus_channel_slab, ch);
+        k_mutex_unlock(&g_channels_lock);
+        return ret;
+    }
 
-	/* 添加到全局表 */
-	g_channels[g_channel_count++] = ch;
+    /* 添加到全局表 */
+    g_channels[g_channel_count++] = ch;
 
-	k_mutex_unlock(&g_channels_lock);
+    k_mutex_unlock(&g_channels_lock);
 
-	LOG_INF("Channel '%s' created (total=%u/%u)", name, g_channel_count,
-		CONFIG_DATA_BUS_MAX_CHANNELS);
-	*out_channel = ch;
-	return 0;
+    LOG_INF("Channel '%s' created (total=%u/%u)", name, g_channel_count, CONFIG_DATA_BUS_MAX_CHANNELS);
+    *out_channel = ch;
+    return 0;
 }
 
-int data_bus_channel_destroy(data_bus_channel_t *ch)
-{
-	if (ch == NULL) {
-		return -EINVAL;
-	}
+int data_bus_channel_destroy(data_bus_channel_t* ch) {
+    int ready = data_bus_require_initialized();
 
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
+    if (ready != 0) {
+        return ready;
+    }
+    if (ch == NULL) {
+        return -EINVAL;
+    }
 
-	if (!atomic_get(&ch->active)) {
-		k_mutex_unlock(&g_channels_lock);
-		return -EINVAL;
-	}
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    if (!atomic_get(&ch->active)) {
+        k_mutex_unlock(&g_channels_lock);
+        return -EINVAL;
+    }
 
-	/* 检查活跃消费者 */
-	for (uint32_t i = 0; i < ch->consumer_count; i++) {
-		if (atomic_get(&ch->consumers[i].active)) {
-			LOG_WRN("Channel '%s' destroy failed: active consumers remain",
-				ch->name);
-			k_mutex_unlock(&g_channels_lock);
-			return -EBUSY;
-		}
-	}
+    /* 检查活跃消费者 */
+    for (uint32_t i = 0; i < ch->consumer_count; i++) {
+        if (atomic_get(&ch->consumers[i].active)) {
+            LOG_WRN("Channel '%s' destroy failed: active consumers remain", ch->name);
+            k_mutex_unlock(&g_channels_lock);
+            return -EBUSY;
+        }
+    }
 
-	/* 检查挂起的数据 */
-	k_spinlock_key_t key = k_spin_lock(&ch->lock);
-	bool queue_empty = (ch->queue_used == 0);
-	k_spin_unlock(&ch->lock, key);
+    /* 检查挂起的数据 */
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    bool             queue_empty = (ch->queue_used == 0);
+    k_spin_unlock(&ch->lock, key);
 
-	if (!queue_empty) {
-		k_mutex_unlock(&g_channels_lock);
-		return -EAGAIN;
-	}
+    if (!queue_empty) {
+        k_mutex_unlock(&g_channels_lock);
+        return -EAGAIN;
+    }
 
-	if (atomic_get(&ch->dispatch_hold) != 0) {
-		k_mutex_unlock(&g_channels_lock);
-		return -EAGAIN;
-	}
+    if (atomic_get(&ch->dispatch_hold) != 0) {
+        k_mutex_unlock(&g_channels_lock);
+        return -EAGAIN;
+    }
 
-	/* 从表中移除 */
-	for (uint32_t i = 0; i < g_channel_count; i++) {
-		if (g_channels[i] == ch) {
-			/* 通过移位压缩表 */
-			for (uint32_t j = i; j < g_channel_count - 1; j++) {
-				g_channels[j] = g_channels[j + 1];
-			}
-			g_channels[--g_channel_count] = NULL;
-			break;
-		}
-	}
+    /* 从表中移除 */
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        if (g_channels[i] == ch) {
+            /* 通过移位压缩表 */
+            for (uint32_t j = i; j < g_channel_count - 1; j++) {
+                g_channels[j] = g_channels[j + 1];
+            }
+            g_channels[--g_channel_count] = NULL;
+            break;
+        }
+    }
 
-	LOG_INF("Channel '%s' destroyed", ch->name);
+    LOG_INF("Channel '%s' destroyed", ch->name);
 
-	/* 重置并释放 */
-	data_bus_channel_obj_reset(ch);
-	k_mem_slab_free(&data_bus_channel_slab, ch);
+    /* 重置并释放 */
+    data_bus_channel_obj_reset(ch);
+    k_mem_slab_free(&data_bus_channel_slab, ch);
 
-	k_mutex_unlock(&g_channels_lock);
-	return 0;
+    k_mutex_unlock(&g_channels_lock);
+    return 0;
 }
 
-data_bus_channel_t *data_bus_channel_find(const char *name)
-{
-	if (name == NULL) {
-		return NULL;
-	}
+data_bus_channel_t* data_bus_channel_find(const char* name) {
+    if (name == NULL) {
+        return NULL;
+    }
+    if (data_bus_require_initialized() != 0) {
+        return NULL;
+    }
 
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
-	data_bus_channel_t *ch = find_in_table(name);
-	k_mutex_unlock(&g_channels_lock);
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    data_bus_channel_t* ch = find_in_table(name);
+    k_mutex_unlock(&g_channels_lock);
 
-	return ch;
+    return ch;
 }
 
 /* ============================================================================
  * 内部辅助：将块入队到通道
  * ============================================================================ */
 
-static uint32_t channel_enqueue_block(data_bus_channel_t *ch, data_bus_block_t *block)
-{
-	k_spinlock_key_t key = k_spin_lock(&ch->lock);
-	uint32_t ret = ring_buf_put(&ch->queue, (uint8_t *)&block, sizeof(block));
-	if (ret == sizeof(block)) {
-		block->seq = ch->next_seq++;
-		ch->publish_count++;
-		atomic_set(&block->ref_count, 1);
-		ch->queue_used++;
-		if (ch->queue_used > ch->peak_queue_usage) {
-			ch->peak_queue_usage = ch->queue_used;
-		}
-	}
-	k_spin_unlock(&ch->lock, key);
-	return ret;
+static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* block) {
+#if IS_ENABLED(CONFIG_DATA_BUS_DEBUG_REFCNT)
+    __ASSERT(atomic_get(&block->ref_count) == 0, "block ref_count must be 0 before enqueue");
+#endif
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    uint32_t         ret = ring_buf_put(&ch->queue, (uint8_t*) &block, sizeof(block));
+    if (ret == sizeof(block)) {
+        block->seq = ch->next_seq++;
+        ch->publish_count++;
+        atomic_set(&block->ref_count, 1);
+        ch->queue_used++;
+        if (ch->queue_used > ch->peak_queue_usage) {
+            ch->peak_queue_usage = ch->queue_used;
+        }
+    }
+    k_spin_unlock(&ch->lock, key);
+    return ret;
 }
 
 /* ============================================================================
  * 公共 API: 发布
  * ============================================================================ */
 
-int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len)
-{
-	if (ch == NULL || (data == NULL && len > 0)) {
-		return -EINVAL;
-	}
-	if (len == 0) {
-		return -EINVAL;
-	}
+int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
+    int ready = data_bus_require_initialized();
 
-	/* 检查关闭状态 */
-	if (atomic_get(&g_shutting_down)) {
-		return -ESHUTDOWN;
-	}
+    if (ready != 0) {
+        return ready;
+    }
+    if (ch == NULL || (data == NULL && len > 0)) {
+        return -EINVAL;
+    }
+    if (len == 0) {
+        return -EINVAL;
+    }
 
-	if (!atomic_get(&ch->active)) {
-		return -ESHUTDOWN;
-	}
+    if (!atomic_get(&ch->active)) {
+        return -ESHUTDOWN;
+    }
+    bool              in_isr = k_is_in_isr();
+    data_bus_block_t* block = NULL;
 
-	bool in_isr = k_is_in_isr();
-	data_bus_block_t *block = NULL;
+    /* 分配块 */
+    if (in_isr) {
+        block = data_bus_mem_alloc_isr(len);
+    } else {
+        block = data_bus_mem_alloc(len);
+    }
+    if (block == NULL) {
+        LOG_ERR("Publish to '%s' failed: block allocation failed (len=%zu)", ch->name, len);
+        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
+        ch->alloc_fail_count++;
+        k_spin_unlock(&ch->lock, fkey);
+        return -ENOMEM;
+    }
 
-	/* 分配块 */
-	if (in_isr) {
-		block = data_bus_mem_alloc_isr(len);
-	} else {
-		block = data_bus_mem_alloc(len);
-	}
-	if (block == NULL) {
-		LOG_ERR("Publish to '%s' failed: block allocation failed (len=%zu)",
-			ch->name, len);
-		k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
-		ch->alloc_fail_count++;
-		k_spin_unlock(&ch->lock, fkey);
-		return -ENOMEM;
-	}
+    /* 拷贝数据 */
+    memcpy(block->ptr, data, len);
+    /* block->len 已由 mem_alloc 设置，ref_count 已为 0 */
 
-	/* 拷贝数据 */
-	memcpy(block->ptr, data, len);
-	/* block->len 已由 mem_alloc 设置，ref_count 已为 0 */
+    /* 入队 */
+    uint32_t ret = channel_enqueue_block(ch, block);
 
-	/* 入队 */
-	uint32_t ret = channel_enqueue_block(ch, block);
+    if (ret != sizeof(block)) {
+        LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
+        data_bus_mem_free(block);
+        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
+        ch->drop_count++;
+        ch->queue_full_count++;
+        k_spin_unlock(&ch->lock, fkey);
+        return -ENOBUFS;
+    }
 
-	if (ret != sizeof(block)) {
-		LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)",
-			ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
-		data_bus_mem_free(block);
-		k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
-		ch->drop_count++;
-		ch->queue_full_count++;
-		k_spin_unlock(&ch->lock, fkey);
-		return -ENOBUFS;
-	}
+    LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, block->seq, len);
 
-	LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, block->seq, len);
+    /* 通知分发线程 */
+    k_sem_give(&g_dispatcher_sem);
 
-	/* 通知分发线程 */
-	k_sem_give(&g_dispatcher_sem);
-
-	/* 事件桥接（仅线程路径） */
+    /* 事件桥接（仅线程路径） */
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
-	if (!in_isr) {
-		data_bus_event_bridge_notify(ch, block->seq, block->len);
-	}
+    if (!in_isr) {
+        data_bus_event_bridge_notify(ch, block->seq, block->len);
+    }
 #endif
 
-	return 0;
+    return 0;
 }
 
-int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block)
-{
-	if (ch == NULL || block == NULL) {
-		return -EINVAL;
-	}
-	if (block->ptr == NULL || block->len == 0) {
-		return -EINVAL;
-	}
-	if (atomic_get(&g_shutting_down)) {
-		return -ESHUTDOWN;
-	}
+int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
+    int ready = data_bus_require_initialized();
 
-	if (!atomic_get(&ch->active)) {
-		return -ESHUTDOWN;
-	}
+    if (ready != 0) {
+        return ready;
+    }
+    if (ch == NULL || block == NULL) {
+        return -EINVAL;
+    }
+    if (block->ptr == NULL || block->len == 0) {
+        return -EINVAL;
+    }
+    if (atomic_get(&block->ref_count) != 0) {
+        return -EINVAL;
+    }
 
-	/* 入队 */
-	uint32_t ret = channel_enqueue_block(ch, block);
+    if (!atomic_get(&ch->active)) {
+        return -ESHUTDOWN;
+    }
 
-	if (ret != sizeof(block)) {
-		LOG_WRN("publish_block to '%s' dropped: queue full (depth=%u)",
-			ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
-		k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
-		ch->drop_count++;
-		ch->queue_full_count++;
-		k_spin_unlock(&ch->lock, fkey);
-		return -ENOBUFS;
-	}
+    /* 入队 */
+    uint32_t ret = channel_enqueue_block(ch, block);
+    if (ret != sizeof(block)) {
+        LOG_WRN("publish_block to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
+        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
+        ch->drop_count++;
+        ch->queue_full_count++;
+        k_spin_unlock(&ch->lock, fkey);
+        return -ENOBUFS;
+    }
 
-	LOG_DBG("publish_block to '%s' seq=%u len=%zu",
-		ch->name, block->seq, block->len);
+    LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, block->seq, block->len);
 
-	/* 通知分发器 */
-	k_sem_give(&g_dispatcher_sem);
+    /* 通知分发器 */
+    k_sem_give(&g_dispatcher_sem);
 
-	return 0;
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
+    if (!k_is_in_isr()) {
+        data_bus_event_bridge_notify(ch, block->seq, block->len);
+    }
+#endif
+
+    return 0;
 }

@@ -1,5 +1,8 @@
 # Run ztest suite (native_sim preferred, native_posix fallback).
+# Loads Zephyr/west from zephyr_config.env via setup_env.ps1 (same as manual activation).
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'setup_env.ps1')
 
 $Root = Split-Path -Parent $PSScriptRoot
 $BuildDir = if ($env:ZEPHYR_TEST_BUILD_DIR) { $env:ZEPHYR_TEST_BUILD_DIR } else { 'build_tests' }

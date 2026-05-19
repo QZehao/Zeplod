@@ -88,6 +88,7 @@ struct data_bus_block {
  * ============================================================================ */
 
 struct data_bus_consumer {
+    data_bus_channel_t*     channel;        /**< 所属通道（注册时设置，注销 O(1) 定位） */
     const char*             name;
     char                    name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
     bool                    manual_release;
@@ -233,7 +234,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
  * publish_block 负责：seq（来自通道 next_seq），
  *                      成功入队时 ref_count = 1
  *
- * @pre  块尚未进入任何通道队列；通常 ref_count == 0
+ * @pre  块尚未进入任何通道队列；ref_count 必须为 0，否则返回 -EINVAL
  * @post 成功时 ref_count == 1（bus 持有引用）
  * @note bus 接管所有权；publish_block 成功后不要 release
  * @note 入队失败（如 -ENOBUFS）时块仍归调用方，须 data_bus_block_release

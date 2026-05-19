@@ -39,6 +39,31 @@ struct k_mutex g_channels_lock;
 atomic_t g_initialized;
 atomic_t g_shutting_down;
 
+int data_bus_require_initialized(void)
+{
+	if (!atomic_get(&g_initialized)) {
+		return -ENODEV;
+	}
+	if (atomic_get(&g_shutting_down)) {
+		return -ESHUTDOWN;
+	}
+	return 0;
+}
+
+static void data_bus_drain_all_channels(bool run_dispatch)
+{
+	k_mutex_lock(&g_channels_lock, K_FOREVER);
+	uint32_t n = g_channel_count;
+	for (uint32_t i = 0; i < n; i++) {
+		data_bus_channel_t *ch = g_channels[i];
+
+		if (ch != NULL) {
+			data_bus_channel_drain_pending(ch, run_dispatch);
+		}
+	}
+	k_mutex_unlock(&g_channels_lock);
+}
+
 struct k_thread g_dispatcher_thread_data;
 K_THREAD_STACK_DEFINE(g_dispatcher_stack, CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE);
 
@@ -54,12 +79,14 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 
 	while (1) {
 		if (atomic_get(&g_shutting_down)) {
+			data_bus_drain_all_channels(false);
 			break;
 		}
 
 		k_sem_take(&g_dispatcher_sem, K_FOREVER);
 
 		if (atomic_get(&g_shutting_down)) {
+			data_bus_drain_all_channels(false);
 			break;
 		}
 
@@ -79,43 +106,10 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 		for (uint32_t i = 0; i < n; i++) {
 			data_bus_channel_t *ch = snap[i];
 
-			if (ch == NULL) {
-				continue;
+			if (ch != NULL) {
+				data_bus_channel_drain_pending(ch, true);
+				(void)atomic_dec(&ch->dispatch_hold);
 			}
-
-			/* 批量出队：连续处理最多 8 个块，避免高负载通道饥饿 */
-			for (int batch = 0; batch < 8; batch++) {
-				data_bus_block_t *block = NULL;
-				size_t len = 0;
-				uint32_t consumer_count_snap = 0;
-
-				k_spinlock_key_t key = k_spin_lock(&ch->lock);
-				/* 只要队列有待投递块即出队；consumer_count==0 时也必须取出并 release，
-				 * 否则 publish 已入队的块永不释放（且无消费者时无法通过回调释放）。 */
-				if (atomic_get(&ch->active) && ch->queue_used > 0) {
-					consumer_count_snap = ch->consumer_count;
-					len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
-					if (len == sizeof(block) && block != NULL) {
-						ch->queue_used--;
-					}
-				}
-				k_spin_unlock(&ch->lock, key);
-
-				if (len != sizeof(block) || block == NULL) {
-					break;
-				}
-
-				LOG_DBG("dispatch ch='%s' seq=%u len=%zu consumers=%u",
-					ch->name, block->seq, block->len, consumer_count_snap);
-
-				/* 分发给所有消费者 */
-				data_bus_consumer_dispatch(ch, block);
-
-				/* 释放 bus 引用 */
-				data_bus_block_release(block);
-			}
-
-			(void)atomic_dec(&ch->dispatch_hold);
 		}
 	}
 }
@@ -183,23 +177,7 @@ int data_bus_deinit(void)
 	while (g_channel_count > 0) {
 		data_bus_channel_t *ch = g_channels[0];
 		if (ch != NULL) {
-			/* 排空队列并释放所有块 */
-			data_bus_block_t *block = NULL;
-			while (true) {
-				k_spinlock_key_t key = k_spin_lock(&ch->lock);
-				size_t len = ring_buf_get(&ch->queue, (uint8_t *)&block, sizeof(block));
-				if (len == sizeof(block) && block != NULL) {
-					ch->queue_used--;
-				}
-				k_spin_unlock(&ch->lock, key);
-
-				if (len != sizeof(block) || block == NULL) {
-					break;
-				}
-				data_bus_block_release(block);
-			}
-
-			/* 重置并释放通道对象 */
+			data_bus_channel_drain_pending(ch, false);
 			data_bus_channel_obj_reset(ch);
 			k_mem_slab_free(&data_bus_channel_slab, ch);
 		}
