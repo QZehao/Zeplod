@@ -111,7 +111,8 @@ typedef struct {
  */
 typedef struct {
     uint64_t events_processed;  /**< 已处理的事件总数 */
-    uint64_t events_dropped;    /**< 被丢弃的事件数 */
+    uint64_t events_dropped;    /**< 队列满等导致的丢弃数 */
+    uint64_t events_filtered;   /**< 被过滤器拒绝、未分发给订阅者的出队事件数 */
     uint32_t max_latency_us;    /**< 最大处理延迟（微秒） */
     uint32_t avg_latency_us;    /**< 平均处理延迟（微秒） */
     uint32_t processing_errors; /**< 处理错误次数 */

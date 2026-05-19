@@ -21,6 +21,7 @@
  *
  */
 #include "event_system.h"
+#include <string.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -146,6 +147,16 @@ static void event_publish_in_flight_wait_zero(void) {
 }
 
 /**
+ * @brief 入队成功后，调用方 event 不再拥有动态负载（队列副本持有）
+ */
+static void event_publish_transfer_data_ownership(event_t* event) {
+    if (event == NULL) {
+        return;
+    }
+    event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
+}
+
+/**
  * @brief 增加全局丢弃计数器（内部接口，供 event_queue.c 调用）
  */
 void event_system_inc_dropped_count(void) {
@@ -218,6 +229,7 @@ static void event_system_cleanup_event_types(void) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
         k_mutex_lock(&entry->lock, K_FOREVER);
         entry->name = NULL;
+        entry->name_storage[0] = '\0';
         entry->subscriber_count = 0;
         memset(entry->subscribers, 0, sizeof(entry->subscribers));
         k_mutex_unlock(&entry->lock);
@@ -491,6 +503,14 @@ event_status_t event_register_type(event_type_t type, const char* name) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    {
+        size_t name_len = strlen(name);
+        if (name_len == 0U || name_len >= CONFIG_EVENT_TYPE_NAME_MAX) {
+            LOG_ERR("Event type name invalid length %zu (max %d)", name_len, CONFIG_EVENT_TYPE_NAME_MAX - 1);
+            return EVENT_ERR_INVALID_ARG;
+        }
+    }
+
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
     k_mutex_lock(&entry->lock, K_FOREVER);
@@ -501,7 +521,9 @@ event_status_t event_register_type(event_type_t type, const char* name) {
         return EVENT_OK; /* 幂等操作 */
     }
 
-    entry->name = name;
+    (void) strncpy(entry->name_storage, name, sizeof(entry->name_storage) - 1U);
+    entry->name_storage[sizeof(entry->name_storage) - 1U] = '\0';
+    entry->name = entry->name_storage;
     entry->subscriber_count = 0;
     memset(entry->subscribers, 0, sizeof(entry->subscribers));
 
@@ -545,6 +567,7 @@ event_status_t event_unregister_type(event_type_t type) {
     }
 
     entry->name = NULL;
+    entry->name_storage[0] = '\0';
     entry->subscriber_count = 0;
 
     k_mutex_unlock(&entry->lock);
@@ -710,7 +733,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
  * @param event 要发布的事件
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
-event_status_t event_publish(const event_t* event) {
+event_status_t event_publish(event_t* event) {
     EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized || event == NULL) {
         return EVENT_ERR_INVALID_ARG;
@@ -746,6 +769,9 @@ event_status_t event_publish(const event_t* event) {
     }
 
     event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    if (st == EVENT_OK) {
+        event_publish_transfer_data_ownership(event);
+    }
     atomic_dec(&g_publish_in_flight);
     return st;
 }
@@ -756,7 +782,7 @@ event_status_t event_publish(const event_t* event) {
  * @param event 要发布的事件
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
-event_status_t event_publish_from_isr(const event_t* event) {
+event_status_t event_publish_from_isr(event_t* event) {
     EVENT_SYSTEM_VALIDATE();
     if (!g_event_system.initialized || event == NULL) {
         return EVENT_ERR_INVALID_ARG;
@@ -782,6 +808,9 @@ event_status_t event_publish_from_isr(const event_t* event) {
     }
 
     event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    if (st == EVENT_OK) {
+        event_publish_transfer_data_ownership(event);
+    }
     atomic_dec(&g_publish_in_flight);
     return st;
 }
@@ -804,9 +833,8 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
 
     event_status_t status = event_publish(event);
 
-    /* 发布成功后，数据所有权已转移到队列副本 */
     if (status == EVENT_OK) {
-        event->flags &= ~EVENT_FLAG_DATA_DYNAMIC;
+        event_publish_transfer_data_ownership(event);
     }
 
     event_free(event);
@@ -935,9 +963,8 @@ event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priorit
 
     event_status_t status = event_publish(event);
 
-    /* 发布成功后，数据所有权已转移到队列副本 */
     if (status == EVENT_OK) {
-        event->flags &= ~EVENT_FLAG_DATA_DYNAMIC;
+        event_publish_transfer_data_ownership(event);
     }
 
     event_free(event);

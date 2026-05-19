@@ -186,6 +186,7 @@ ZTEST(event_dispatcher, test_stats_comprehensive) {
     event_dispatcher_get_stats(&stats);
     zassert_equal(stats.events_processed, 0ULL, "重置后处理计数应为 0");
     zassert_equal(stats.events_dropped, 0ULL, "重置后丢弃计数应为 0");
+    zassert_equal(stats.events_filtered, 0ULL, "重置后过滤计数应为 0");
     zassert_equal(stats.processing_errors, 0ULL, "重置后错误计数应为 0");
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);

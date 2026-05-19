@@ -64,6 +64,13 @@ extern "C" {
 #endif
 
 /**
+ * @brief 事件类型名称最大长度（含 NUL），用于 register_type 内部拷贝
+ */
+#ifndef CONFIG_EVENT_TYPE_NAME_MAX
+#define CONFIG_EVENT_TYPE_NAME_MAX 32
+#endif
+
+/**
  * @brief 事件分发器线程栈大小（字节）
  */
 #ifndef CONFIG_EVENT_DISPATCHER_STACK_SIZE
@@ -213,7 +220,8 @@ BUILD_ASSERT(sizeof(event_t) == CONFIG_EVENT_STRUCT_SIZE,
  * @param user_data 订阅时传入的用户数据
  *
  * @note 回调在分发器线程上下文中执行，避免长时间阻塞操作
- * @note 不要在此回调中释放 event 或 event->data
+ * @note event 仅在回调执行期间有效；返回后不得持有 event 或 event->data.ptr 指针
+ * @note 不要在此回调中调用 event_free / event_free_data
  */
 typedef void (*event_callback_t)(const event_t* event, void* user_data);
 
@@ -236,7 +244,8 @@ typedef struct {
  */
 typedef struct {
     event_type_t       type;                                      /**< 事件类型 ID */
-    const char*        name;                                      /**< 事件类型名称（用于调试） */
+    char               name_storage[CONFIG_EVENT_TYPE_NAME_MAX];  /**< 类型名存储（register 时拷贝） */
+    const char*        name;                                      /**< 指向 name_storage，未注册时为 NULL */
     subscriber_entry_t subscribers[CONFIG_EVENT_MAX_SUBSCRIBERS]; /**< 订阅者数组 */
     uint32_t           subscriber_count;                          /**< 当前活跃的订阅者数量 */
     struct k_mutex     lock;                                      /**< 保护订阅者列表的互斥锁 */
@@ -317,11 +326,12 @@ bool event_system_is_running(void);
  * 注册一个事件类型，使其可以被订阅和发布。
  *
  * @param type 事件类型 ID（0-255）
- * @param name 事件类型名称（用于调试和日志，建议唯一）
+ * @param name 事件类型名称（拷贝到内部缓冲，长度 < CONFIG_EVENT_TYPE_NAME_MAX）
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
  * @note 重复注册同一类型是幂等的，不会返回错误
  * @note 类型 ID 应预先规划，避免冲突
+ * @note name 过长返回 EVENT_ERR_INVALID_ARG
  */
 event_status_t event_register_type(event_type_t type, const char* name);
 
@@ -401,22 +411,22 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  * 将事件发布到全局事件队列中。事件会被复制到队列中，
  * 然后由分发器线程异步处理。
  *
- * @param event 指向要发布的事件的指针
+ * @param event 要发布的事件（成功入队后会清除其动态数据所有权标记，便于 event_free）
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
- * @note 如果队列已满，事件将被丢弃并返回 EVENT_ERR_QUEUE_FULL
- * @note event 指向的内容会被复制到队列，调用者可安全释放
- * @note 如果 event->flags 包含 EVENT_FLAG_DATA_DYNAMIC，调用者仍需负责释放 event->data.ptr
- * @note event->type 必须小于 CONFIG_EVENT_MAX_TYPES，否则返回 EVENT_ERR_INVALID_ARG
+ * @note 如果队列已满，事件将被丢弃并返回 EVENT_ERR_QUEUE_FULL；失败时调用方仍拥有动态负载
+ * @note k_msgq 按值浅拷贝 event_t；成功入队后动态数据由队列内副本持有，勿再 event_free_data
+ * @note 成功后可对同一 event 调用 event_free 释放壳体；失败时需自行释放动态数据
+ * @note event->type 必须已 register_type，否则返回 EVENT_ERR_NOT_FOUND
  */
-event_status_t event_publish(const event_t* event);
+event_status_t event_publish(event_t* event);
 
 /**
  * @brief 从中断服务程序 (ISR) 发布事件
  *
  * 专用于 ISR 上下文的事件发布函数。
  *
- * @param event 指向要发布的事件的指针
+ * @param event 要发布的事件（语义同 event_publish）
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
  * @note 此函数不使用互斥锁，适用于 ISR 上下文
@@ -424,7 +434,7 @@ event_status_t event_publish(const event_t* event);
  * @note 避免在 ISR 中调用 event_publish_copy，因为其中包含 k_malloc
  * @note 与 event_publish 相同：event_system_stop 后 running 为假时返回 EVENT_ERR_NOT_RUNNING
  */
-event_status_t event_publish_from_isr(const event_t* event);
+event_status_t event_publish_from_isr(event_t* event);
 
 /**
  * @brief 发布事件并复制数据

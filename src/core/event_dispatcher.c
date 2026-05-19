@@ -363,7 +363,7 @@ dispatcher_state_t event_dispatcher_get_state(void) {
  * @return true 当前线程是分发器线程，false 不是或未初始化
  */
 bool event_dispatcher_is_current_thread(void) {
-    return k_current_get() == &g_dispatcher.thread;
+    return g_dispatcher.thread_started && (k_current_get() == &g_dispatcher.thread);
 }
 
 /* =============================================================================
@@ -446,7 +446,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
             /* SIL-2: 使用之前捕获的 enable_stats，避免数据竞争 */
             if (enable_stats) {
                 k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-                g_dispatcher.stats.events_dropped++;
+                g_dispatcher.stats.events_filtered++;
                 k_mutex_unlock(&g_dispatcher.lock);
             }
             return EVENT_OK;
