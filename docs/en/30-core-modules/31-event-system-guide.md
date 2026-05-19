@@ -283,23 +283,21 @@ void isr_handler(void)
 - Returns NULL/error when Slab is exhausted, **does NOT fallback** to k_malloc
 - Small data (≤ INLINE_DATA_SIZE) stored inline, zero additional allocation
 
-### `event_publish`: Module May Still Need to Handle "Shell" and Lifecycle
+### `event_publish`: Ownership After Successful Enqueue
 
-`event_publish` **only copies the current `event_t` into the queue**, **does NOT** `k_free` the **`event_t *` pointer** you obtained through `event_create` / `event_create_with_data` after publish returns.
+`event_publish` / `event_publish_from_isr` **copy `event_t` by value** into `k_msgq` (see "What the Queue Actually Stores" above).
 
-The dispatcher thread, after processing a message, **only**:
-- Checks `flags & EVENT_FLAG_DATA_DYNAMIC`, if true, frees `data.ptr`
+- **On successful enqueue**: Implementation clears `EVENT_FLAG_DATA_DYNAMIC` (and related flags) on the caller's `event`, meaning **dynamic payload ownership moves to the queue copy**; caller **must not** call `event_free_data()`, but **may** call `event_free()` on the same pointer to release the **`event_t` shell** (stack locals need no free).
+- **On failure** (e.g. `EVENT_ERR_QUEUE_FULL`): Caller **retains** dynamic data; free with `event_free_data()` / `event_free()` as appropriate.
 
-**Does NOT** free the `event_t` structure you allocated.
-
-Therefore, for different scenarios:
+The dispatcher frees dynamic `data.ptr` on the **queue copy**; it does **not** free your original shell after a successful publish (use `event_free` on the caller side).
 
 | Publishing Method | `event_t` Source | Data Storage | Who Frees `data` | Who Frees `event_t` Shell |
 |-------------------|-------------------|--------------|-------------------|---------------------------|
 | `event_publish_copy` | Internal temp | Inline/Slab/Heap | Dispatcher thread | Internal |
 | `event_publish_copy_rt` | Internal temp Slab | Inline/Slab | Dispatcher thread | Internal |
-| `event_publish` + stack-local `event_t` | Stack | Inline | None needed | Stack auto-cleanup |
-| `event_publish` + `event_create*` heap object | Slab/Heap | Inline/Slab/Heap | Dispatcher thread | **Module must free** |
+| `event_publish` + stack-local `event_t` | Stack | Inline | Dispatcher (copy) | Stack auto-cleanup |
+| `event_publish` + `event_create*` heap object | Slab/Heap | Inline/Slab/Heap | Dispatcher (copy) | **Caller `event_free` after success** |
 
 **Practical Recommendations**:
 
@@ -323,7 +321,7 @@ Therefore, for different scenarios:
 
 ### Correspondence with Examples in "Best Practices"
 
-The **"Do not access `event` after successful publish"** in other parts of the documentation mainly refers to: **Do not** read/write the **`event_t` memory** already handed to `event_publish` (the queue already has a copy, modifying the original structure is meaningless; if you still hold a heap pointer, it involves leak or double-free strategy). **Does not mean** "the system will automatically `k_free` the pointer returned by your `event_create`" — the latter only applies to **inside `event_publish_copy`**.
+After a successful enqueue: do **not** call `event_free_data()`; do **not** mutate cleared flags on `event`; for heap shells call **`event_free(event)`**. `event_publish_copy` manages the full lifecycle internally.
 
 ---
 
@@ -468,14 +466,14 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  * @param event Event pointer
  * @return EVENT_OK on success, other values are error codes
  */
-event_status_t event_publish(const event_t *event);
+event_status_t event_publish(event_t *event);
 
 /**
  * @brief Publish an event from interrupt context
- * @param event Event pointer
+ * @param event Event pointer (same ownership rules as event_publish)
  * @return EVENT_OK on success, other values are error codes
  */
-event_status_t event_publish_from_isr(const event_t *event);
+event_status_t event_publish_from_isr(event_t *event);
 
 /**
  * @brief Publish an event and copy data (internal copy created)

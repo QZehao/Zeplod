@@ -20,8 +20,9 @@
 # 为目标板构建
 west build -b <board> .
 
-# 构建 native POSIX（用于 PC 测试）
-west build -b native_posix .
+# 构建主机仿真（Zephyr 4.x 用 native_sim；CI 3.6 用 native_posix）
+west build -b native_sim .
+# west build -b native_posix .
 
 # 使用自定义配置叠加文件构建
 west build -b <board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
@@ -31,19 +32,26 @@ west build -t pristine
 west build -b <board> .
 ```
 
-### 单元测试（仅 native_posix）
+### 单元测试（native_sim / native_posix）
 ```bash
-# 构建并运行所有测试
+# 推荐：自动选择板型（native_sim 优先）
+./scripts/run_tests.sh          # Linux/macOS/WSL
+# .\scripts\run_tests.ps1       # Windows
+
+# 手动（Zephyr 4.x）
+west build -b native_sim tests/ --build-dir build_tests
+west build -t run --build-dir build_tests
+
+# CI 对齐（Zephyr 3.6 容器）
 west build -b native_posix tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 
-# 运行单个测试文件（需先构建，再指定目标）
-west build -b native_posix tests/ --build-dir build_tests
-# 编辑 tests/CMakeLists.txt 注释掉其他 test_*.c，只保留要运行的
+# 全量 IPC + Slab（native_sim）
+west build -b native_sim tests/ --build-dir build_tests -- -DCONF_FILE="prj_native_sim.conf"
 west build -t run --build-dir build_tests
 
-# 带覆盖率运行
-west build -b native_posix tests/ --build-dir build_tests -- -DCMAKE_C_FLAGS="--coverage"
+# 带覆盖率运行（将板型换为当前环境可用项）
+west build -b native_sim tests/ --build-dir build_tests -- -DCMAKE_C_FLAGS="--coverage"
 west build -t run --build-dir build_tests
 gcovr -r .. --html --html-details coverage.html
 ```
@@ -418,8 +426,8 @@ CONFIG_SYS_WATCHDOG_TIMEOUT_MS=5000
 
 ### GitHub Actions（`.github/workflows/ci.yml`）
 - 代码质量：ShellCheck、pre-commit
-- 构建：native_posix、ARM 板矩阵（nucleo_f429zi、nucleo_f767zi、disco_l475_iot1）
-- 测试：native_posix ztest
+- 构建：native_posix（CI Zephyr 3.6）、ARM 板矩阵；本机 Zephyr 4.x 推荐 native_sim
+- 测试：native_posix ztest（CI）；本机可用 `scripts/run_tests.sh`
 - 文档：Doxygen 生成
 
 ### GitLab CI（`.gitlab-ci.yml`）

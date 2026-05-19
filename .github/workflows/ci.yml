@@ -89,6 +89,7 @@ jobs:
           path: build_native/zephyr/zephyr.elf
           retention-days: 7
 
+  # Zephyr 3.6 container: native_posix. Local Zephyr 4.x: use native_sim (scripts/run_tests.sh).
   build-tests:
     name: Unit Tests (native_posix)
     runs-on: ubuntu-22.04

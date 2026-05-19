@@ -12,16 +12,30 @@ This document describes how to build and run **ztest unit tests** in this reposi
 
 ## 1. Unit Tests (`tests/`)
 
-- **Purpose**: Run core logic tests on **host emulation target `native_posix`** without real hardware.
-- **Detailed documentation** (directory structure, writing test cases, gcov): Please read **`tests/README.md`** directly.
-- **Common commands**:
+- **Purpose**: Run core logic on a **host simulation board** (**`native_sim`** on Zephyr 4.x; **`native_posix`** in CI with Zephyr 3.6).
+- **Details** (`prj.conf`, `prj_native_sim.conf`, writing cases, gcov): See **`tests/README.md`**.
+- **Recommended** (auto board selection):
+
+```bash
+./scripts/run_tests.sh
+# .\scripts\run_tests.ps1   # Windows
+```
+
+- **Manual** (Zephyr 4.x):
+
+```bash
+west build -b native_sim tests/ --build-dir build_tests
+west build -t run --build-dir build_tests
+```
+
+- **CI-aligned** (Zephyr 3.6 container):
 
 ```bash
 west build -b native_posix tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 ```
 
-- **Note**: The test project uses **`tests/prj.conf`**, separate from the main application's **`prj.conf`**; if you modify the root **`Kconfig`**, the test side reuses the application menu via **`tests/Kconfig`**'s **`rsource`**.
+- **Note**: Default **`tests/prj.conf`** has **`CONFIG_THREAD_IPC_SERVICE=n`**; IPC tests use **`prj_native_sim.conf`** (see **`tests/README.md`**).
 
 ### 1.1 Test Coverage
 
@@ -37,7 +51,7 @@ As of 2026-04-10, tests cover the following core modules:
 | **System Memory** | `test_sys_memory.c` | Initialization, alloc/free, zero-size allocation, statistics |
 | **System Timer** | `test_sys_timer.c` | Initialization, create/delete, one-shot/periodic mode, statistics |
 | **System Watchdog** | `test_sys_watchdog.c` | Init/start/stop, pause/resume, feed, statistics, simulate expiry, thread monitoring |
-| **IPC Service** | `test_ipc_service.c` | Initialization, synchronous calls, start/stop |
+| **IPC Service** | `test_ipc_service.c` | Initialization, synchronous calls, start/stop (`CONFIG_THREAD_IPC_SERVICE=y`, see `prj_native_sim.conf`) |
 | **Example Module A** | `test_example_module_a.c` | Lifecycle, control commands, event handling, concurrent access |
 | **Example Module B** | `test_example_module_b.c` | Lifecycle, communication, statistics, event handling |
 | **GPIO Module** | `test_example_module_gpio.c` | LED control, button read, blink interval, event handling |
@@ -69,7 +83,7 @@ Both typically include (subject to actual YAML):
 | Job Type | Typical Content |
 |----------|----------------|
 | **Code Quality** | **`shellcheck`** (`scripts/*.sh`), **`pre-commit run --all-files`** (including **clang-format**, YAML, trailing whitespace, etc., consistent with **`.pre-commit-config.yaml`**) |
-| **Build** | Main project and **`tests/`** build and test run for **`native_posix`**; compile smoke tests for ARM matrix boards (based on **`.github/workflows/ci.yml`**) |
+| **Build** | Main project and **`tests/`** on **`native_posix`** (Zephyr 3.6 CI image); ARM matrix smoke builds. Use **`native_sim`** locally on Zephyr 4.x |
 
 **Version Alignment**: Zephyr container version used by CI is documented in **`Zephyr Version and CI Guide.md`**; local **`ZEPHYR_BASE`** is recommended to be compatible with CI main version line to reduce "passed locally, failed on CI".
 
@@ -78,7 +92,7 @@ Both typically include (subject to actual YAML):
 ## 3. Relationship with Main Application
 
 - Tests **share** most implementations under `src/` with the main application, but **do not** link the complete **`app_main`** and all example business modules (based on **`tests/CMakeLists.txt`**).
-- When adding modules or code with strong dependencies on board-level peripherals, you need to provide **mock** or conditional compilation in tests to avoid directly accessing non-existent peripherals on **`native_posix`**.
+- When adding modules or board-dependent code, use **mocks** or conditional compilation so tests do not touch missing peripherals on **`native_sim` / `native_posix`**.
 
 ---
 

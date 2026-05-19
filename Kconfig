@@ -36,6 +36,14 @@ config EVENT_MAX_SUBSCRIBERS
 	help
 	  Maximum number of subscribers per event type.
 
+config EVENT_TYPE_NAME_MAX
+	int "Maximum Event Type Name Length"
+	default 32
+	range 8 64
+	help
+	  Storage size for event type names registered via event_register_type().
+	  Includes the terminating null byte.
+
 config EVENT_DISPATCHER_STACK_SIZE
 	int "Event Dispatcher Stack Size"
 	default 2048

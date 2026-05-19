@@ -197,7 +197,7 @@ typedef struct {
 
 ```c
 // event_system.c:480-486
-event_status_t event_publish(const event_t* event) {
+event_status_t event_publish(event_t* event) {
     // Use K_NO_WAIT, non-blocking
     int ret = k_msgq_put(g_event_system.event_queue, event, K_NO_WAIT);
     if (ret != 0) {

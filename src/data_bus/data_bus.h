@@ -219,6 +219,7 @@ data_bus_channel_t* data_bus_channel_find(const char* name);
  *
  * @note ISR 路径中 slab 耗尽返回 -ENOMEM（无 k_malloc 兜底）
  * @note 数据被拷贝到内部管理的块中
+ * @note 无已注册消费者时仍会入队；分发线程会排空队列并 release 块，避免块滞留泄漏
  */
 int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
 
@@ -235,6 +236,8 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
  * @pre  块尚未进入任何通道队列；通常 ref_count == 0
  * @post 成功时 ref_count == 1（bus 持有引用）
  * @note bus 接管所有权；publish_block 成功后不要 release
+ * @note 入队失败（如 -ENOBUFS）时块仍归调用方，须 data_bus_block_release
+ * @note 无消费者时与 data_bus_publish 相同：分发线程排空并 release
  */
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
 

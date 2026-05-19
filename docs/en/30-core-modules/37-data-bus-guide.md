@@ -299,6 +299,7 @@ int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block);
 - `publish()`: Data is copied into internal block; callable from ISR/thread
 - `publish_block()`: Zero-copy; block must be from `data_bus_mem_alloc()`
 - Both return `-ENOBUFS` when queue is full
+- **No consumers**: Blocks are still enqueued; the dispatcher thread drains the queue and `release`s each block (avoids leaks). `publish_block` failure leaves ownership with the caller (`release` required)
 
 ### Consumer Management
 
