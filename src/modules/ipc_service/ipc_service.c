@@ -77,6 +77,12 @@ static inline bool ipc_timeout_is_zero(k_timeout_t timeout) {
  */
 static atomic_t s_request_id_counter = ATOMIC_INIT(1);
 
+BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE >= 2);
+BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE <= IPC_SERVICE_MAX_QUEUE_SIZE);
+BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE >= 2);
+BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE <= IPC_SERVICE_MAX_QUEUE_SIZE);
+BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_STACK_SIZE >= IPC_SERVICE_MIN_STACK_SIZE);
+
 /**
  * @brief 生成唯一的请求 ID
  *
@@ -541,12 +547,6 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
         return -EINVAL;
     }
 
-    BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE >= 2);
-    BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE <= IPC_SERVICE_MAX_QUEUE_SIZE);
-    BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE >= 2);
-    BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE <= IPC_SERVICE_MAX_QUEUE_SIZE);
-    BUILD_ASSERT(CONFIG_THREAD_IPC_SERVICE_STACK_SIZE >= IPC_SERVICE_MIN_STACK_SIZE);
-
     memset(service, 0, sizeof(ipc_service_t));
 
     service->name = name;
@@ -689,10 +689,14 @@ int ipc_service_stop(ipc_service_t* service) {
         stop_err = -EIO;
     }
 
+    /* SIL-2: 清理队列残留消息，防止 stop 后再 start 时消费旧消息 */
+    k_msgq_purge(&service->request_queue);
+    k_msgq_purge(&service->response_queue);
+
     /* SIL-2: 无论线程是否成功退出，都清理状态 */
     k_mutex_lock(&service->state_lock, K_FOREVER);
     service->running = false;
-    atomic_set(&service->shutdown, 1);
+    atomic_set(&service->shutdown, 0);
     k_mutex_unlock(&service->state_lock);
 
     /* SIL-2: 清理所有 pending 请求，防止资源泄漏 */

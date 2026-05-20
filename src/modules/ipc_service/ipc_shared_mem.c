@@ -542,10 +542,6 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
     const size_t block_stride = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE;
     const size_t offset = (size_t) (p - pool_start);
 
-    if ((offset % block_stride) != 0U) {
-        return IPC_SHM_HANDLE_INVALID;
-    }
-
     const uint32_t index = (uint32_t) (offset / block_stride);
 
     if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
@@ -554,7 +550,10 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
 
     ipc_shm_block_t* block = &pool->blocks[index];
 
-    if (block->ptr != ptr) {
+    /* 验证 ptr 落在此块的有效物理范围内（允许块内任意偏移） */
+    const uint8_t* block_start = (const uint8_t*) block->ptr;
+    const uint8_t* block_end = block_start + block_stride;
+    if (p < block_start || p >= block_end) {
         return IPC_SHM_HANDLE_INVALID;
     }
 

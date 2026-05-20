@@ -8,8 +8,10 @@
  * - 标准版：默认使用，无需额外配置
  * - 商业版：在 prj.conf 中同时启用 CONFIG_USE_MODULE_MANAGER_PRO 与 CONFIG_MODULE_MANAGER_PRO
  *
- *       module_interface_t 二进制不兼容；注册/注销请使用 src/proprietary 头文件中的
- *       module_manager_pro_* API。本头文件中仅 init/start/stop/shutdown 与统计映射到 PRO。
+ *       二进制不兼容原因：PRO 版 module_interface_t 扩展了状态机回调与审计字段，结构体大小
+ *       和字段偏移与标准版不同。因此 PRO 模式下注册/注销须使用 src/proprietary 头文件中的
+ *       module_manager_pro_* API，不可直接传递标准版 module_interface_t。本头文件中仅
+ *       init/start/stop/shutdown 与统计接口映射到 PRO。
  * @author zeh (china_qzh@163.com)
  * @version 1.1
  * @date 2026-04-09

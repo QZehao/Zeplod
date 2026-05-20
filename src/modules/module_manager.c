@@ -107,6 +107,13 @@ typedef struct {
 /** 全局模块管理器控制块实例 */
 static module_manager_cb_t g_module_mgr;
 
+/** shutdown 进行中标志：防止 module_manager_shutdown 与 unregister 并发重复调用 shutdown */
+static atomic_t g_shutting_down = ATOMIC_INIT(0);
+
+/* module_manager_foreach / dump_info 使用栈上快照；若超出典型线程栈（4KB）的一半，编译报错提示调整配置 */
+BUILD_ASSERT(sizeof(module_info_t) * CONFIG_MAX_MODULES <= 2048,
+             "module_manager snapshot too large for stack; reduce CONFIG_MAX_MODULES or CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS");
+
 /* =============================================================================
  * 前置声明
  * ============================================================================= */
@@ -706,6 +713,9 @@ int module_manager_init(void) {
     (void) memset(&g_module_mgr, 0, sizeof(g_module_mgr));
     k_mutex_init(&g_module_mgr.lock);
 
+    /* 清除 shutdown 标志，支持重新初始化 */
+    atomic_set(&g_shutting_down, 0);
+
     /* 初始化所有模块槽位 */
     for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
         g_module_mgr.modules[i].status = MODULE_STATUS_UNINITIALIZED;
@@ -781,6 +791,9 @@ int module_manager_shutdown(void) {
         LOG_ERR("Module manager not initialized");
         return MODULE_ERR_NOT_INITIALIZED;
     }
+
+    /* 设置 shutdown 标志，防止并发 unregister 重复调用 shutdown */
+    atomic_set(&g_shutting_down, 1);
 
     (void) module_manager_stop();
 
@@ -858,6 +871,9 @@ int module_manager_shutdown(void) {
     g_module_mgr.running = false;
 
     k_mutex_unlock(&g_module_mgr.lock);
+
+    /* 清除 shutdown 标志，允许重新初始化 */
+    atomic_set(&g_shutting_down, 0);
 
     LOG_INF("Module manager shutdown complete");
     return MODULE_OK;
@@ -975,9 +991,13 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 
     if (iret != MODULE_OK) {
         LOG_ERR("Module '%s' init failed: %d", interface->name, iret);
+        int (*shutdown_fn)(void) = interface->shutdown;
         clear_module_slot_locked(info);
         g_module_mgr.stats.error_modules++;
         k_mutex_unlock(&g_module_mgr.lock);
+        if (shutdown_fn != NULL) {
+            shutdown_fn();
+        }
         return iret;
     }
 
@@ -1057,8 +1077,8 @@ int module_manager_unregister(uint32_t module_id) {
     /* 清除所有事件订阅 */
     module_event_clear_all_locked(info);
 
-    /* 调用模块 shutdown 函数 */
-    if (info->interface != NULL && info->interface->shutdown != NULL) {
+    /* 调用模块 shutdown 函数（shutdown 进行中时跳过，由 shutdown 路径统一调用） */
+    if (atomic_get(&g_shutting_down) == 0 && info->interface != NULL && info->interface->shutdown != NULL) {
         int (*sd)(void) = info->interface->shutdown;
 
         k_mutex_unlock(&g_module_mgr.lock);

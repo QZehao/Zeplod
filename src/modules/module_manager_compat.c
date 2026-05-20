@@ -284,4 +284,6 @@ static int module_compat_auto_register(void) {
     return 0;
 }
 
+#if !IS_ENABLED(CONFIG_MODULE_MANAGER_COMPAT_NO_AUTO_INIT)
 SYS_INIT(module_compat_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MGR);
+#endif

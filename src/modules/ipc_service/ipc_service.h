@@ -181,6 +181,8 @@ typedef struct ipc_response_msg {
  * 队列和线程栈嵌入结构体，不使用动态内存分配。
  *
  * @note 用户应通过 API 操作此结构，不应直接访问内部成员
+ * @warning 此结构体包含线程栈和队列缓冲区，体积较大（默认配置约 2.5KB，含共享内存可达 6KB+）。
+ *          必须在全局/静态存储中定义，严禁在栈上分配。
  */
 typedef struct ipc_service {
     const char*     name;            /**< 服务名称 */
@@ -280,7 +282,9 @@ int ipc_service_stop(ipc_service_t* service);
  *
  * @note 调用线程将阻塞直到收到响应或超时
  * @note 若响应携带共享内存句柄，须使用 ipc_call_sync_shm()；ipc_call_sync() 将返回 -ENOTSUP
- * @warning 超时返回后，out_data 指向的数据可能已被释放，调用者不应使用超时返回后的数据
+ * @warning 超时返回后，out_data 指向的数据可能已被释放，调用者不应使用超时返回后的数据。
+ *          若请求携带共享内存输入（通过 ipc_call_sync_shm），超时后该内存引用会被框架自动释放；
+ *          调用者不得继续使用原数据指针。
  */
 int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, void** out_data, size_t* out_data_size,
                   k_timeout_t timeout);
