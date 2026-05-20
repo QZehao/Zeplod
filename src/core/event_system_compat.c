@@ -164,8 +164,9 @@ void event_compat_reset_statistics(void) {
 /* =============================================================================
  * SYS_INIT 自动初始化
  *
- * 标准版：本文件 @ APP_INIT_PRIO_EVENT_SYS 完成 event_system init+start；
- * event_dispatcher_autoinit.c @ APP_INIT_PRIO_DISPATCHER 完成 dispatcher init+start。
+ * 标准版：本文件 @ APP_INIT_PRIO_EVENT_SYS 完成 event_system init；
+ * 若同时启用 CONFIG_EVENT_DISPATCHER_AUTOINIT，则 start 推迟到
+ * event_dispatcher_autoinit.c（@ APP_INIT_PRIO_DISPATCHER），避免无消费者时入队。
  * 默认勿再手动调用 event_dispatcher_init/start，除非已禁用 autoinit 对象文件。
  * ============================================================================= */
 
@@ -180,6 +181,10 @@ static int event_compat_auto_init(void) {
         return -EIO;
     }
 
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
+    LOG_INF("Event system initialized (start deferred to dispatcher autoinit)");
+    return 0;
+#else
     if (event_compat_start() != 0) {
         LOG_ERR("event_compat_start failed");
         (void) event_compat_shutdown();
@@ -188,6 +193,7 @@ static int event_compat_auto_init(void) {
 
     LOG_INF("Event system initialized and started");
     return 0;
+#endif
 }
 
 SYS_INIT(event_compat_auto_init, POST_KERNEL, APP_INIT_PRIO_EVENT_SYS);

@@ -21,6 +21,7 @@
 
 #include "event_queue.h"
 #include <errno.h>
+#include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -50,7 +51,7 @@ typedef struct {
     atomic_t       drop_count;          /**< 显式丢弃计数（DROP_LOWEST/purge） */
     atomic_t       high_watermark;      /**< 队列深度历史最大值（CAS 更新） */
     uint32_t       capacity;            /**< 队列容量 */
-    struct k_mutex reorder_lock;        /**< DROP_LOWEST 排空/回灌时与并发入队互斥 */
+    struct k_mutex reorder_lock;        /**< DROP_LOWEST 时串行化线程侧 msgq 操作 */
     event_t*       drop_lowest_scratch; /**< DROP_LOWEST 独立临时缓冲区 */
 } event_queue_cb_t;
 
@@ -62,6 +63,33 @@ static event_queue_cb_t g_queue_cb[MAX_QUEUE_CB_ENTRIES];
 
 /** 保护队列控制块数组的全局互斥锁 */
 static K_MUTEX_DEFINE(g_queue_cb_lock);
+
+/** scratch 已就绪时，线程侧 msgq 操作须串行化（含单元测试运行时指定 DROP_LOWEST 策略） */
+static inline bool event_queue_use_op_lock(const event_queue_cb_t* cb) {
+    return (cb != NULL) && (cb->drop_lowest_scratch != NULL);
+}
+
+/**
+ * @brief 为 DROP_LOWEST 分配 scratch（Kconfig 启用时 init 预分配；否则首次使用时惰性分配）
+ */
+static event_status_t event_queue_ensure_drop_lowest_scratch(event_queue_cb_t* cb) {
+    if (cb->drop_lowest_scratch != NULL) {
+        return EVENT_OK;
+    }
+
+    k_mutex_lock(&g_queue_cb_lock, K_FOREVER);
+    if (cb->drop_lowest_scratch == NULL) {
+        cb->drop_lowest_scratch = (event_t*) k_malloc(cb->capacity * sizeof(event_t));
+        if (cb->drop_lowest_scratch == NULL) {
+            k_mutex_unlock(&g_queue_cb_lock);
+            LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
+            return EVENT_ERR_NO_MEM;
+        }
+    }
+    k_mutex_unlock(&g_queue_cb_lock);
+
+    return EVENT_OK;
+}
 
 /**
  * @brief 验证事件有效性
@@ -144,14 +172,11 @@ static inline void update_high_watermark(atomic_t* hw, uint32_t depth) {
 /**
  * 队列已满时：丢弃队列中优先级最低的一条（priority 数值最大；相等则 FIFO 最旧），再入队 event。
  * 若 event 比队列中最差的一条还差，则丢弃 event（不入队）。
+ *
+ * @pre 调用方已持有 cb->reorder_lock；cb->drop_lowest_scratch 已分配
  */
-static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* event, k_timeout_t timeout,
-                                          event_queue_cb_t* cb) {
-    if (k_is_in_isr()) {
-        LOG_WRN("QUEUE_OVERFLOW_DROP_LOWEST is not supported from ISR");
-        return EVENT_ERR_INVALID_ARG;
-    }
-
+static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const event_t* event, k_timeout_t timeout,
+                                                 event_queue_cb_t* cb) {
     /* SIL-2: 验证输入事件有效性 */
     if (!event_is_valid(event)) {
         LOG_ERR("Invalid event in enqueue_drop_lowest");
@@ -173,15 +198,11 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         return EVENT_ERR_INVALID_ARG;
     }
 
-    k_mutex_lock(&cb->reorder_lock, K_FOREVER);
-
     k_msgq_get_attrs(queue, &attrs);
     uint32_t n = attrs.used_msgs;
 
     if (n < attrs.max_msgs) {
         int pret = event_msgq_put(queue, event, timeout);
-
-        k_mutex_unlock(&cb->reorder_lock);
 
         if (pret != 0) {
             if (pret == -ECANCELED) {
@@ -199,23 +220,20 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         return EVENT_OK;
     }
 
+    /* 排空/回灌期间屏蔽 ISR 入队，避免与 scratch 算法并发修改 k_msgq */
+    unsigned int irq_key = irq_lock();
+
     for (uint32_t i = 0; i < n; i++) {
         if (k_msgq_get(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT) != 0) {
             LOG_ERR("DROP_LOWEST drain failed at %u, restoring %u events", i, i);
-            /* SIL-2: 回灌已出队的事件，避免事件丢失和内存泄漏。
-             * LOW-3: 每次迭代访问独立的 scratch[j]，不存在 double-free 风险。
-             * 持有 reorder_lock 时 k_msgq_put 失败是异常情况；为最大化恢复事件，
-             * 单条失败仅释放该条负载并继续处理其余事件，而不是 break 提前退出
-             * （break 会导致剩余 scratch 中的动态负载泄漏）。 */
             for (uint32_t j = 0; j < i; j++) {
                 if (k_msgq_put(queue, &cb->drop_lowest_scratch[j], K_NO_WAIT) != 0) {
-                    /* 队列在我们持有 reorder_lock 时变满，理论不应发生 */
                     event_free_queued_payload(&cb->drop_lowest_scratch[j]);
                     atomic_inc(&cb->drop_count);
                     event_system_inc_dropped_count();
                 }
             }
-            k_mutex_unlock(&cb->reorder_lock);
+            irq_unlock(irq_key);
             return EVENT_ERR_QUEUE_FULL;
         }
     }
@@ -232,7 +250,7 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         for (uint32_t i = 0; i < n; i++) {
             (void) k_msgq_put(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT);
         }
-        k_mutex_unlock(&cb->reorder_lock);
+        irq_unlock(irq_key);
         atomic_inc(&cb->drop_count);
         event_system_inc_dropped_count();
         LOG_DBG("Queue full, incoming lower than worst queued; drop newest");
@@ -250,13 +268,10 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         }
     }
 
-    int ret = event_msgq_put(queue, event, timeout);
+    int ret = k_msgq_put(queue, event, K_NO_WAIT);
 
-    k_mutex_unlock(&cb->reorder_lock);
+    irq_unlock(irq_key);
 
-    if (ret == -ECANCELED) {
-        return EVENT_ERR_NOT_RUNNING;
-    }
     if (ret != 0) {
         if (ret == -ENOMSG) {
             return EVENT_ERR_QUEUE_FULL;
@@ -349,13 +364,16 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
         return EVENT_ERR_NO_MEM;
     }
 
-    /* SIL-2: 先分配 scratch 再 k_msgq_init，避免 scratch 失败时遗留已初始化的 msgq */
+#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
     cb->drop_lowest_scratch = (event_t*) k_malloc(capacity * sizeof(event_t));
     if (cb->drop_lowest_scratch == NULL) {
         k_mutex_unlock(&g_queue_cb_lock);
         LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
         return EVENT_ERR_NO_MEM;
     }
+#else
+    cb->drop_lowest_scratch = NULL;
+#endif
 
     k_msgq_init(queue, buffer, sizeof(event_t), capacity);
 
@@ -410,50 +428,78 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         return EVENT_ERR_INVALID_ARG;
     }
 
-    /* SIL-2: 先尝试入队，使用返回值判断真实结果，避免 TOCTOU 竞态。
-     * 之前的实现先检查 used_msgs >= max_msgs 再调用 k_msgq_put，
-     * 在这两个操作之间其他线程可能出队，导致 overflow_count 被错误递增。 */
+    if (policy == QUEUE_OVERFLOW_DROP_LOWEST) {
+        event_status_t scr = event_queue_ensure_drop_lowest_scratch(cb);
+
+        if (scr != EVENT_OK) {
+            return scr;
+        }
+    }
+
+    if (event_queue_use_op_lock(cb)) {
+        k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    }
+
     int ret = event_msgq_put(queue, event, timeout);
 
     if (ret == 0) {
-        /* SIL-2: HIGH-3 修复后使用原子操作，ISR 路径也能正确累计统计。 */
         atomic_inc(&cb->enqueue_count);
         update_high_watermark(&cb->high_watermark, k_msgq_num_used_get(queue));
+        if (event_queue_use_op_lock(cb)) {
+            k_mutex_unlock(&cb->reorder_lock);
+        }
         return EVENT_OK;
     }
 
     if (ret == -ECANCELED) {
+        if (event_queue_use_op_lock(cb)) {
+            k_mutex_unlock(&cb->reorder_lock);
+        }
         return EVENT_ERR_NOT_RUNNING;
     }
 
-    /* 区分超时和队列满 */
     if (ret == -EAGAIN) {
+        if (event_queue_use_op_lock(cb)) {
+            k_mutex_unlock(&cb->reorder_lock);
+        }
         return EVENT_ERR_TIMEOUT;
     }
 
     if (ret == -ENOMSG) {
+        event_status_t st;
+
         switch (policy) {
         case QUEUE_OVERFLOW_DROP_NEWEST:
             event_queue_record_drop(cb);
             LOG_DBG("Queue full, dropping newest event");
-            return EVENT_ERR_QUEUE_FULL;
+            st = EVENT_ERR_QUEUE_FULL;
+            break;
 
         case QUEUE_OVERFLOW_DROP_LOWEST:
-            /* 丢弃计数由 enqueue_drop_lowest 在实际踢出/拒绝事件时更新 */
-            return enqueue_drop_lowest(queue, event, timeout, cb);
+            st = enqueue_drop_lowest_locked(queue, event, timeout, cb);
+            break;
 
         case QUEUE_OVERFLOW_BLOCK:
-            /* K_FOREVER 由 event_msgq_put 轮询 running；此处为 K_NO_WAIT 等瞬时满队列 */
             event_queue_record_drop(cb);
             LOG_DBG("Queue full under BLOCK policy (non-blocking timeout)");
-            return EVENT_ERR_QUEUE_FULL;
+            st = EVENT_ERR_QUEUE_FULL;
+            break;
 
         default:
             LOG_ERR("Unknown overflow policy: %d", policy);
-            return EVENT_ERR_INVALID_ARG;
+            st = EVENT_ERR_INVALID_ARG;
+            break;
         }
+
+        if (event_queue_use_op_lock(cb)) {
+            k_mutex_unlock(&cb->reorder_lock);
+        }
+        return st;
     }
 
+    if (event_queue_use_op_lock(cb)) {
+        k_mutex_unlock(&cb->reorder_lock);
+    }
     return EVENT_ERR_INVALID_ARG;
 }
 
@@ -470,17 +516,23 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
         return EVENT_ERR_INVALID_ARG;
     }
 
+    event_queue_cb_t* cb = event_queue_find_cb(queue);
+
+    if (event_queue_use_op_lock(cb)) {
+        k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    }
+
     int ret = k_msgq_get(queue, event, timeout);
     if (ret != 0) {
+        if (event_queue_use_op_lock(cb)) {
+            k_mutex_unlock(&cb->reorder_lock);
+        }
         if (ret == -ENOMSG) {
             return EVENT_ERR_QUEUE_EMPTY;
         }
         return EVENT_ERR_TIMEOUT;
     }
 
-    /* SIL-2: find_cb 失败时，事件已从队列移除，需要释放动态负载防止泄漏。
-     * 此情况说明队列未通过 event_queue_init() 初始化，属于编程错误。 */
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
     if (cb == NULL) {
         LOG_ERR("Queue not initialized via event_queue_init(); event lost, data freed");
         event_free_queued_payload(event);
@@ -488,6 +540,10 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     }
 
     atomic_inc(&cb->dequeue_count);
+
+    if (event_queue_use_op_lock(cb)) {
+        k_mutex_unlock(&cb->reorder_lock);
+    }
 
     return EVENT_OK;
 }
@@ -581,17 +637,24 @@ void event_queue_purge(struct k_msgq* queue) {
         LOG_WRN("Purge on queue %p without event_queue_init(); payload free may be unsafe", queue);
     }
 
-    /* SIL-2: 获取 reorder_lock，与 enqueue_drop_lowest 互斥，防止 drain-refill 窗口竞态 */
     if (cb != NULL) {
         k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    }
+
+    unsigned int irq_key = 0U;
+
+    if (event_queue_use_op_lock(cb)) {
+        irq_key = irq_lock();
     }
 
     while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
         event_free_queued_payload(&ev);
         purged++;
     }
-    /* SIL-2: 不移除 k_msgq_purge；此时 k_msgq_get 循环已清空队列。
-     * 若此处再调用 k_msgq_purge，两次操作之间新入队的事件的动态负载将无法释放。 */
+
+    if (event_queue_use_op_lock(cb)) {
+        irq_unlock(irq_key);
+    }
 
     if (cb != NULL) {
         k_mutex_unlock(&cb->reorder_lock);

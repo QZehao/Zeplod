@@ -521,9 +521,7 @@ event_status_t event_system_shutdown(void) {
     event_status_t dret = event_dispatcher_stop();
     if (dret != EVENT_OK) {
         LOG_ERR("Failed to stop dispatcher during shutdown: %d", dret);
-        /* 恢复 running 状态以便上层可重试或继续运行；
-         * 不释放任何资源，保持系统可用 */
-        atomic_set(&g_event_system.running, 1);
+        /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown */
         atomic_clear_bit(&g_init_lock, 0);
         return dret;
     }

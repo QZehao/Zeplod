@@ -33,10 +33,20 @@ LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
 
 #if !EVENT_COMPAT_USE_PRO && IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
 
+static void event_dispatcher_autoinit_rollback(bool local_system_init, bool local_system_start) {
+    (void) event_dispatcher_stop();
+
+    if (local_system_start || event_system_is_running()) {
+        (void) event_system_stop();
+    }
+
+    if (local_system_init) {
+        (void) event_system_shutdown();
+    }
+}
+
 static int event_dispatcher_auto_init(void) {
-
     bool local_system_init = false;
-
     bool local_system_start = false;
 
     struct k_msgq* queue = event_system_get_queue();
@@ -53,9 +63,7 @@ static int event_dispatcher_auto_init(void) {
     if (!event_system_is_running()) {
         if (event_system_start() != EVENT_OK) {
             LOG_ERR("event_system_start failed");
-            if (local_system_init) {
-                (void) event_system_shutdown();
-            }
+            event_dispatcher_autoinit_rollback(local_system_init, false);
             return -EIO;
         }
         local_system_start = true;
@@ -68,29 +76,13 @@ static int event_dispatcher_auto_init(void) {
                                              .max_events_per_cycle = CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE};
     if (event_dispatcher_init(&dispatcher_config) != EVENT_OK) {
         LOG_ERR("event_dispatcher_init failed");
-        if (local_system_start) {
-            (void) event_system_stop();
-        }
-        if (local_system_init) {
-
-            (void) event_system_shutdown();
-        }
-
+        event_dispatcher_autoinit_rollback(local_system_init, local_system_start);
         return -EIO;
     }
 
     if (event_dispatcher_start() != EVENT_OK) {
         LOG_ERR("event_dispatcher_start failed");
-        (void) event_dispatcher_stop();
-        if (local_system_start) {
-
-            (void) event_system_stop();
-        }
-        if (local_system_init) {
-
-            (void) event_system_shutdown();
-        }
-
+        event_dispatcher_autoinit_rollback(local_system_init, local_system_start);
         return -EIO;
     }
 
