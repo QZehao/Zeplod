@@ -24,6 +24,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
+#include <stdint.h>
 #include <string.h>
 #include "event_dispatcher.h"
 #include "event_memory.h"
@@ -95,8 +96,8 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** 初始化保护标志 */
 static atomic_t g_init_lock = ATOMIC_INIT(0);
 
-/** stop 期间停止了分发器；start 时需重新 event_dispatcher_start() */
-static bool g_restart_dispatcher_on_start;
+/** stop 期间停止了分发器；start 时需重新 event_dispatcher_start()（原子位，避免 start/stop 并发撕裂） */
+static atomic_t g_restart_dispatcher_on_start;
 
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_LOWEST
@@ -226,8 +227,10 @@ static subscriber_entry_t* find_subscriber(event_type_entry_t* entry, uint32_t s
  * 释放时必须使用实际分配的 slab，否则会造成内存损坏。
  *
  * 使用查找表简化标记逻辑，提高可维护性。
+ *
+ * @return true 已设置 EVENT_FLAG_SLAB_* 标记，false slab 指针未知
  */
-static inline void event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
+static bool event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
     /* 定义 slab 到标记的映射表 */
     static const struct {
@@ -249,17 +252,86 @@ static inline void event_set_slab_marker(event_t* event, struct k_mem_slab* slab
     for (size_t i = 0; i < ARRAY_SIZE(slab_markers); i++) {
         if (slab == slab_markers[i].slab) {
             event->flags |= slab_markers[i].flag;
-            return;
+            return true;
         }
     }
 
     /* 未找到匹配的 slab（不应该发生）*/
     LOG_ERR("Unknown slab pointer %p, cannot set marker", slab);
+    return false;
 #else
     ARG_UNUSED(event);
     ARG_UNUSED(slab);
+    return false;
 #endif
 }
+
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+/**
+ * @brief 判断指针是否属于指定数据 slab 池（用于释放路径纠偏）
+ */
+static bool event_slab_ptr_in_pool(const void* ptr, const struct k_mem_slab* slab) {
+    if (ptr == NULL || slab == NULL || slab->buffer == NULL || slab->num_blocks == 0U) {
+        return false;
+    }
+
+    uintptr_t block = (uintptr_t) ptr;
+    uintptr_t base = (uintptr_t) slab->buffer;
+    size_t    total = (size_t) slab->block_size * (size_t) slab->num_blocks;
+
+    if (block < base || block >= (base + total)) {
+        return false;
+    }
+
+    return ((block - base) % slab->block_size) == 0U;
+}
+
+/**
+ * @brief 按指针地址反查数据 slab 池（标记损坏时的安全释放）
+ */
+static struct k_mem_slab* event_resolve_data_slab_for_ptr(void* ptr) {
+    static struct k_mem_slab* const data_slabs[] = {
+#if EVENT_SLAB_256_AVAILABLE
+        &event_slab_data_256,
+#endif
+#if EVENT_SLAB_1K_AVAILABLE
+        &event_slab_data_1k,
+#endif
+#if EVENT_SLAB_4K_AVAILABLE
+        &event_slab_data_4k,
+#endif
+    };
+
+    for (size_t i = 0; i < ARRAY_SIZE(data_slabs); i++) {
+        if (event_slab_ptr_in_pool(ptr, data_slabs[i])) {
+            return data_slabs[i];
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief 从 slab 分配数据并绑定到事件（标记失败时回滚 slab 分配）
+ */
+static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, const void* data, size_t data_len) {
+    if (k_mem_slab_alloc(slab, &event->data.ptr, K_NO_WAIT) != 0) {
+        return false;
+    }
+
+    event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
+    if (!event_set_slab_marker(event, slab)) {
+        k_mem_slab_free(slab, event->data.ptr);
+        event->data.ptr = NULL;
+        event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
+        return false;
+    }
+
+    memcpy(event->data.ptr, data, data_len);
+    event->data_len = (uint32_t) data_len;
+    return true;
+}
+#endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
 
 /**
  * @brief 清理所有事件类型条目
@@ -326,7 +398,7 @@ static void event_system_init_rollback(void) {
     event_queue_deinit(&g_event_msgq);
     memset(&g_event_system, 0, sizeof(g_event_system));
     atomic_set(&g_publish_in_flight, 0);
-    g_restart_dispatcher_on_start = false;
+    atomic_clear(&g_restart_dispatcher_on_start);
 }
 
 /**
@@ -371,7 +443,7 @@ event_status_t event_system_init(void) {
     }
 
     g_event_system.event_queue = &g_event_msgq;
-    g_restart_dispatcher_on_start = false;
+    atomic_clear(&g_restart_dispatcher_on_start);
 
     /* 注册队列到 event_queue 管理层（内部 k_msgq_init + 溢出策略统计） */
     event_status_t qret = event_queue_init(&g_event_msgq, g_event_msgq_buffer, CONFIG_EVENT_QUEUE_SIZE);
@@ -413,8 +485,7 @@ event_status_t event_system_start(void) {
 
     atomic_set(&g_event_system.running, 1);
 
-    if (g_restart_dispatcher_on_start) {
-        g_restart_dispatcher_on_start = false;
+    if (atomic_cas(&g_restart_dispatcher_on_start, 1, 0)) {
         event_status_t dret = event_dispatcher_start();
         if (dret != EVENT_OK) {
             LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
@@ -454,7 +525,7 @@ event_status_t event_system_stop(void) {
     {
         dispatcher_state_t disp_st = event_dispatcher_get_state();
         if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
-            g_restart_dispatcher_on_start = true;
+            atomic_set(&g_restart_dispatcher_on_start, 1);
             event_status_t dret = event_dispatcher_stop();
             if (dret != EVENT_OK) {
                 LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
@@ -532,12 +603,9 @@ event_status_t event_system_shutdown(void) {
     /* 清理所有事件类型条目 */
     event_system_cleanup_event_types();
 
-    /* SIL-2: 重置消息队列 */
-    k_msgq_purge(&g_event_msgq);
-
-    /* 重置控制块 */
+    /* 重置控制块（event_queue_deinit 已 purge 队列，无需再次 k_msgq_purge） */
     event_system_reset_control_block();
-    g_restart_dispatcher_on_start = false;
+    atomic_clear(&g_restart_dispatcher_on_start);
 
     atomic_clear_bit(&g_init_lock, 0);
     LOG_INF("Event system shutdown complete");
@@ -1009,10 +1077,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     /* 大数据：从 slab 分配，首选最优大小，满时级联到更大的池（MED-NEW-2/3） */
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
     struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
-    if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
-        memcpy(event->data.ptr, data, data_len);
-        event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-        event_set_slab_marker(event, data_slab);
+    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
         return event;
     }
     if (data_slab != NULL) {
@@ -1020,10 +1085,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     }
     /* 首选 slab 已满或不可用，尝试级联 fallback */
     data_slab = event_memory_select_data_slab_with_fallback(data_len);
-    if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
-        memcpy(event->data.ptr, data, data_len);
-        event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-        event_set_slab_marker(event, data_slab);
+    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
         return event;
     }
     event_free(event);
@@ -1157,22 +1219,14 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
     if (data_slab != NULL) {
         event_t* event = event_create(type, priority);
         if (event != NULL) {
-            if (k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
-                memcpy(event->data.ptr, data, data_len);
-                event->data_len = (uint32_t) data_len;
-                event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-                event_set_slab_marker(event, data_slab);
+            if (event_attach_slab_data(event, data_slab, data, data_len)) {
                 return event;
             }
             event_memory_notify_slab_exhausted(priority, "event_slab_data");
             /* 首选 slab 已满，尝试级联 fallback */
             struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
             if (fallback_slab != NULL && fallback_slab != data_slab &&
-                k_mem_slab_alloc(fallback_slab, &event->data.ptr, K_NO_WAIT) == 0) {
-                memcpy(event->data.ptr, data, data_len);
-                event->data_len = (uint32_t) data_len;
-                event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-                event_set_slab_marker(event, fallback_slab);
+                event_attach_slab_data(event, fallback_slab, data, data_len)) {
                 return event;
             }
             /* slab 全满，回退到 k_malloc */
@@ -1245,6 +1299,10 @@ void event_free_data(event_t* event) {
 #endif
             default:
                 LOG_ERR("Unknown slab marker for ptr %p (flags=0x%02x)", event->data.ptr, event->flags);
+                slab = event_resolve_data_slab_for_ptr(event->data.ptr);
+                if (slab == NULL) {
+                    LOG_ERR("Cannot resolve slab pool for ptr %p; memory may leak", event->data.ptr);
+                }
                 break;
             }
             if (slab != NULL) {

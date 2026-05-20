@@ -63,6 +63,7 @@ typedef struct {
     uint32_t       events_in_batch;                   /**< 当前批次处理的事件数 */
     uint64_t       last_event_time;                   /**< 上一个事件处理时间 */
     bool           thread_started;                    /**< 分发线程是否已创建并运行 */
+    uint32_t       thread_gen;                        /**< 当前分发线程世代（stop/join 配对用） */
 } dispatcher_cb_t;
 
 /* =============================================================================
@@ -80,6 +81,9 @@ static bool g_dispatcher_initialized;
 
 /** ISR/线程均可递增；避免在 ISR 路径对 g_dispatcher.lock 调用 mutex */
 static atomic_t g_dispatcher_events_dropped = ATOMIC_INIT(0);
+
+/** 单调递增世代号；每次 k_thread_create 成功前递增并写入 thread_gen */
+static atomic_t g_dispatcher_next_gen = ATOMIC_INIT(0);
 
 /* =============================================================================
  * 前置声明
@@ -224,12 +228,18 @@ event_status_t event_dispatcher_start(void) {
     }
 
     if (g_dispatcher.thread_started) {
+        if (g_dispatcher.state == DISPATCHER_STOPPED) {
+            k_mutex_unlock(&g_dispatcher.lock);
+            LOG_WRN("Cannot start dispatcher while stop/join is in progress");
+            return EVENT_ERR_TIMEOUT;
+        }
         g_dispatcher.state = DISPATCHER_RUNNING;
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_OK;
     }
 
     g_dispatcher.state = DISPATCHER_RUNNING;
+    g_dispatcher.thread_gen = (uint32_t) atomic_inc(&g_dispatcher_next_gen);
 
     /* SIL-2: 创建分发器线程 */
     k_tid_t tid = k_thread_create(&g_dispatcher.thread, g_dispatcher.stack, g_dispatcher.config.stack_size,
@@ -263,7 +273,8 @@ event_status_t event_dispatcher_start(void) {
  * @return EVENT_OK 成功
  */
 event_status_t event_dispatcher_stop(void) {
-    bool should_join = false;
+    bool     should_join = false;
+    uint32_t join_gen = 0U;
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
@@ -275,6 +286,7 @@ event_status_t event_dispatcher_stop(void) {
     /* SIL-2: 设置停止状态，线程会在下次循环检查时退出 */
     g_dispatcher.state = DISPATCHER_STOPPED;
     should_join = g_dispatcher.thread_started;
+    join_gen = g_dispatcher.thread_gen;
     k_mutex_unlock(&g_dispatcher.lock);
 
     /* SIL-2: 等待线程退出，使用有限超时 */
@@ -305,9 +317,14 @@ event_status_t event_dispatcher_stop(void) {
         }
     }
 
-    /* SIL-2: join 成功或 abort 验证成功后清理状态 */
+    /* SIL-2: join 成功或 abort 验证成功后清理状态；若 stop 期间另有 start 创建新线程则保留 thread_started */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    g_dispatcher.thread_started = false;
+    if (g_dispatcher.thread_gen == join_gen) {
+        g_dispatcher.thread_started = false;
+    } else {
+        LOG_WRN("Dispatcher generation changed during stop (join_gen=%u current=%u); preserving thread_started",
+                join_gen, g_dispatcher.thread_gen);
+    }
     k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_INF("Event dispatcher stopped");
@@ -624,12 +641,7 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
         }
     }
 
-    /* SIL-2: 清理线程状态 */
-    k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    g_dispatcher.thread_started = false;
-    g_dispatcher.state = DISPATCHER_STOPPED;
-    k_mutex_unlock(&g_dispatcher.lock);
-
+    /* thread_started 由 event_dispatcher_stop() 在 join 成功后清理，避免 join 完成前允许 start 复用线程控制块 */
     LOG_INF("Dispatcher thread exiting");
 }
 

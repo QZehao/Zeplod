@@ -59,6 +59,9 @@ typedef struct {
 /* SIL-2: 增加数组大小以支持更多测试场景和并发队列 */
 #define MAX_QUEUE_CB_ENTRIES 32
 
+/** DROP_LOWEST purge 时每处理若干条消息后短暂开中断，避免长时间屏蔽 ISR */
+#define EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH 16U
+
 static event_queue_cb_t g_queue_cb[MAX_QUEUE_CB_ENTRIES];
 
 /** 保护队列控制块数组的全局互斥锁 */
@@ -198,7 +201,6 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
         return EVENT_ERR_INVALID_ARG;
     }
 
-    k_msgq_get_attrs(queue, &attrs);
     uint32_t n = attrs.used_msgs;
 
     if (n < attrs.max_msgs) {
@@ -228,6 +230,7 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
             LOG_ERR("DROP_LOWEST drain failed at %u, restoring %u events", i, i);
             for (uint32_t j = 0; j < i; j++) {
                 if (k_msgq_put(queue, &cb->drop_lowest_scratch[j], K_NO_WAIT) != 0) {
+                    LOG_ERR("DROP_LOWEST restore failed at %u during drain recovery", j);
                     event_free_queued_payload(&cb->drop_lowest_scratch[j]);
                     atomic_inc(&cb->drop_count);
                     event_system_inc_dropped_count();
@@ -650,6 +653,10 @@ void event_queue_purge(struct k_msgq* queue) {
     while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
         event_free_queued_payload(&ev);
         purged++;
+        if (event_queue_use_op_lock(cb) && ((purged % EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH) == 0U)) {
+            irq_unlock(irq_key);
+            irq_key = irq_lock();
+        }
     }
 
     if (event_queue_use_op_lock(cb)) {
