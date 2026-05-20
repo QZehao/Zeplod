@@ -246,7 +246,7 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 
 		k_spinlock_key_t lk = k_spin_lock(&ch->lock);
 		data_bus_consumer_t *target = snaps[i].consumer;
-		if (target != NULL && atomic_get(&target->active) && target == snaps[i].consumer) {
+		if (target != NULL && atomic_get(&target->active)) {
 			target->last_seq = block->seq;
 		}
 		k_spin_unlock(&ch->lock, lk);

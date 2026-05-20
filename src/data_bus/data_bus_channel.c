@@ -271,13 +271,6 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
 
     LOG_INF("Channel '%s' destroyed", ch->name);
 
-    /* 队列已空，仅重置消费者与统计；无需再次 drain */
-    for (uint32_t ci = 0; ci < CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL; ci++) {
-        ch->consumer_slot_in_use[ci] = false;
-        memset(&ch->consumers[ci], 0, sizeof(ch->consumers[ci]));
-    }
-    ch->consumer_count = 0;
-
     k_mem_slab_free(&data_bus_channel_slab, ch);
 
     k_mutex_unlock(&g_channels_lock);
