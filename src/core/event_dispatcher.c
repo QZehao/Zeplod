@@ -63,6 +63,7 @@ typedef struct {
     uint32_t       events_in_batch;                   /**< 当前批次处理的事件数 */
     uint64_t       last_event_time;                   /**< 上一个事件处理时间 */
     bool           thread_started;                    /**< 分发线程是否已创建并运行 */
+    bool           ever_started;                      /**< 本轮 init 后是否曾成功 start（用于手动消费判定） */
     uint32_t       thread_gen;                        /**< 当前分发线程世代（stop/join 配对用） */
 } dispatcher_cb_t;
 
@@ -111,6 +112,31 @@ static void process_event(const event_t* event);
  * @return 距上次事件处理的空闲时间（微秒）
  */
 static uint32_t calculate_idle_time_us(uint64_t last_event_time);
+
+/**
+ * @brief 当前上下文是否允许调用 process_one / process_all
+ *
+ * @pre 已持有 g_dispatcher.lock
+ */
+static bool event_dispatcher_process_allowed_locked(dispatcher_state_t state, bool thread_started, bool ever_started) {
+    if (state == DISPATCHER_PAUSED) {
+        return false;
+    }
+
+    if (state == DISPATCHER_RUNNING) {
+        if (thread_started && k_current_get() != &g_dispatcher.thread) {
+            return false;
+        }
+        return true;
+    }
+
+    if (state == DISPATCHER_STOPPED) {
+        /* 仅 init、从未 start：允许外部手动消费；曾 start 后 stop 则禁止 */
+        return !ever_started;
+    }
+
+    return false;
+}
 
 /* =============================================================================
  * 分发器控制 API
@@ -193,6 +219,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     g_dispatcher.state = DISPATCHER_STOPPED;
     g_dispatcher.last_event_time = k_uptime_get();
     g_dispatcher.thread_started = false;
+    g_dispatcher.ever_started = false;
 
     g_event_queue = event_system_get_queue();
     if (g_event_queue == NULL) {
@@ -260,6 +287,7 @@ event_status_t event_dispatcher_start(void) {
 
     k_thread_start(&g_dispatcher.thread);
     g_dispatcher.thread_started = true;
+    g_dispatcher.ever_started = true;
 
     k_mutex_unlock(&g_dispatcher.lock);
 
@@ -436,6 +464,8 @@ void event_dispatcher_clear_filter(void) {
  */
 event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     dispatcher_state_t state;
+    bool               thread_started;
+    bool               ever_started;
     event_filter_t     filter;
     void*              filter_user_data;
     bool               enable_stats;
@@ -443,10 +473,19 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     /* SIL-2: 在持有锁的情况下读取所有需要的状态并检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = g_dispatcher.state;
-    if (state != DISPATCHER_RUNNING) {
+    thread_started = g_dispatcher.thread_started;
+    ever_started = g_dispatcher.ever_started;
+
+    if (!event_dispatcher_process_allowed_locked(state, thread_started, ever_started)) {
         k_mutex_unlock(&g_dispatcher.lock);
+        if (ever_started && state == DISPATCHER_STOPPED) {
+            LOG_WRN("process_one rejected: dispatcher was started and is now stopped");
+        } else if (thread_started && state == DISPATCHER_RUNNING) {
+            LOG_WRN("process_one rejected: dispatcher thread is consuming the queue");
+        }
         return EVENT_ERR_INVALID_ARG;
     }
+
     filter = g_dispatcher.filter;
     filter_user_data = g_dispatcher.filter_user_data;
     enable_stats = g_dispatcher.config.enable_stats;
@@ -461,11 +500,14 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     /* SIL-2: 阻塞期间状态可能已改变（如 stop() 被调用），重新检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = g_dispatcher.state;
-    k_mutex_unlock(&g_dispatcher.lock);
-    if (state != DISPATCHER_RUNNING) {
+    thread_started = g_dispatcher.thread_started;
+    ever_started = g_dispatcher.ever_started;
+    if (!event_dispatcher_process_allowed_locked(state, thread_started, ever_started)) {
+        k_mutex_unlock(&g_dispatcher.lock);
         event_free_data(&event);
         return EVENT_ERR_INVALID_ARG;
     }
+    k_mutex_unlock(&g_dispatcher.lock);
 
     /* 应用过滤器（如果已设置） */
     if (filter != NULL) {

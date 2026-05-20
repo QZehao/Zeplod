@@ -138,9 +138,37 @@ ZTEST(test_event_system, test_event_publish_no_subscriber) {
     event_system_init();
     event_system_start();
 
-    /* 发布到未注册类型（应允许）*/
     status = event_publish(&event);
-    /* 可能返回 OK 或 NO_SUBSCRIBER */
+    zassert_equal(status, EVENT_ERR_NOT_FOUND, "未注册类型应拒绝发布");
+
+    event_system_stop();
+}
+
+/**
+ * @brief 测试发布时 flags/data_len 一致性校验
+ */
+ZTEST(test_event_system, test_event_publish_invalid_payload) {
+    event_t        event = {0};
+    event_status_t status;
+
+    event_system_init();
+    event_system_start();
+    zassert_equal(event_register_type(41, "publish_validate"), EVENT_OK, NULL);
+
+    event.type = 41;
+    event.priority = EVENT_PRIORITY_NORMAL;
+    event.data_len = CONFIG_EVENT_INLINE_DATA_SIZE + 1U;
+    event.flags = EVENT_FLAG_DATA_INLINE;
+
+    status = event_publish(&event);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "INLINE 超长应拒绝");
+
+    event.data_len = 8U;
+    event.flags = EVENT_FLAG_DATA_DYNAMIC;
+    event.data.ptr = NULL;
+
+    status = event_publish(&event);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "DYNAMIC 空指针应拒绝");
 
     event_system_stop();
 }

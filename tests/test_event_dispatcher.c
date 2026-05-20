@@ -107,18 +107,11 @@ ZTEST(event_dispatcher, test_process_one) {
     zassert_equal(event_system_start(), EVENT_OK, NULL);
     zassert_equal(event_register_type(200, "process_one_t200"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
-    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
-
-    /* 发布一个事件 */
+    /* 不启动分发器线程，由本测试线程手动消费 */
     zassert_equal(event_publish_copy(200, EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
 
-    /* 等待事件进入队列 */
-    k_msleep(20);
-
-    /* 手动处理一个事件（可能与分发器线程竞态：已被消费则 EMPTY/TIMEOUT） */
     status = event_dispatcher_process_one(K_MSEC(100));
-    zassert_true(status == EVENT_OK || status == EVENT_ERR_QUEUE_EMPTY || status == EVENT_ERR_TIMEOUT,
-                 "process_one 应返回 OK、EMPTY 或 TIMEOUT (got %d)", status);
+    zassert_equal(status, EVENT_OK, "手动 process_one 应成功处理事件 (got %d)", status);
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
@@ -135,19 +128,14 @@ ZTEST(event_dispatcher, test_process_all) {
     zassert_equal(event_register_type(204, "process_all_204"), EVENT_OK, NULL);
     zassert_equal(event_register_type(205, "process_all_205"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
-    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
-    /* 发布多个事件 */
     for (int i = 0; i < 5; i++) {
         zassert_equal(event_publish_copy((event_type_t)(201 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK,
                       NULL);
     }
 
-    k_msleep(50);
-
-    /* 处理所有事件 */
-    processed = event_dispatcher_process_all(0); /* 0 表示使用默认上限 */
-    zassert_true(processed <= 5, "处理数量不应超过发布数量");
+    processed = event_dispatcher_process_all(0);
+    zassert_equal(processed, 5U, "应处理全部 5 个事件");
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
@@ -393,11 +381,43 @@ ZTEST(event_dispatcher, test_process_one_when_stopped) {
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
-    /* 不启动分发器 */
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
 
-    /* 停止状态下 process_one 应返回错误 */
-    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_INVALID_ARG, "停止时 process_one 应返回错误");
+    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_INVALID_ARG,
+                  "start 后 stop 不得再手动 process_one");
 
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 仅 init、从未 start 时允许手动 process_one（空队列返回 EMPTY）
+ */
+ZTEST(event_dispatcher, test_process_one_manual_without_start) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_QUEUE_EMPTY,
+                  "init 未 start 时可手动 process_one，空队列为 EMPTY");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief 分发器线程 RUNNING 时，其他线程不得调用 process_one
+ */
+ZTEST(event_dispatcher, test_process_one_rejected_while_dispatcher_running) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(206, "process_reject_t206"), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_dispatcher_process_one(K_NO_WAIT), EVENT_ERR_INVALID_ARG,
+                  "分发器 RUNNING 时外部线程不得 process_one");
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
@@ -497,18 +517,13 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
     zassert_equal(event_register_type(228, "process_lim_228"), EVENT_OK, NULL);
     zassert_equal(event_register_type(229, "process_lim_229"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
-    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
-    /* 发布多个事件 */
     for (int i = 0; i < 10; i++) {
         zassert_equal(event_publish_copy((event_type_t)(220 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
     }
 
-    k_msleep(50);
-
-    /* 处理最多 3 个事件 */
     processed = event_dispatcher_process_all(3);
-    zassert_true(processed <= 3, "处理数量不应超过上限");
+    zassert_equal(processed, 3U, "应恰好处理 3 个事件");
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);

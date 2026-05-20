@@ -84,6 +84,9 @@ config EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE
 		help
 		  Evict the queued event with the largest priority value (least important)
 		  to make room. Uses per-queue scratch memory (capacity * sizeof(event_t)).
+		  Thread context only: event_publish_from_isr always uses DROP_NEWEST when
+		  the queue is full (ISR cannot run the reorder path). Do not rely on ISR
+		  to evict low-priority queued events.
 
 	config EVENT_QUEUE_OVERFLOW_BLOCK
 		bool "Block until space available"

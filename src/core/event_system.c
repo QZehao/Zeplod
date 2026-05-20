@@ -168,6 +168,64 @@ static void event_publish_in_flight_wait_zero(void) {
     }
 }
 
+/**
+ * @brief 校验待发布事件的 flags / data_len / 指针一致性
+ */
+static event_status_t event_validate_for_publish(const event_t* event) {
+    if (event == NULL) {
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    const uint32_t len = event->data_len;
+    const uint8_t  flags = event->flags;
+    const uint8_t  storage =
+        flags & (EVENT_FLAG_DATA_INLINE | EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
+
+    if (len == 0U) {
+        if (storage != 0U) {
+            LOG_WRN("publish: data_len=0 but storage flags 0x%02x", storage);
+            return EVENT_ERR_INVALID_ARG;
+        }
+        return EVENT_OK;
+    }
+
+    if ((flags & EVENT_FLAG_DATA_INLINE) && (flags & EVENT_FLAG_DATA_DYNAMIC)) {
+        LOG_WRN("publish: both INLINE and DYNAMIC flags set");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (flags & EVENT_FLAG_DATA_INLINE) {
+        if (len > CONFIG_EVENT_INLINE_DATA_SIZE) {
+            LOG_WRN("publish: INLINE data_len %u exceeds %u", len, CONFIG_EVENT_INLINE_DATA_SIZE);
+            return EVENT_ERR_INVALID_ARG;
+        }
+        return EVENT_OK;
+    }
+
+    if (flags & EVENT_FLAG_DATA_DYNAMIC) {
+        if (event->data.ptr == NULL) {
+            LOG_WRN("publish: DYNAMIC with NULL data.ptr");
+            return EVENT_ERR_INVALID_ARG;
+        }
+        if ((flags & EVENT_FLAG_DATA_FROM_SLAB) && ((flags & EVENT_FLAG_SLAB_MASK) == 0U)) {
+            LOG_WRN("publish: DATA_FROM_SLAB without SLAB_MASK");
+            return EVENT_ERR_INVALID_ARG;
+        }
+        return EVENT_OK;
+    }
+
+    LOG_WRN("publish: data_len=%u without INLINE/DYNAMIC flags", len);
+    return EVENT_ERR_INVALID_ARG;
+}
+
+static bool event_type_is_registered(event_type_t type) {
+    if (type >= MAX_EVENT_TYPES) {
+        return false;
+    }
+
+    return atomic_get(&g_event_system.event_types[type].registered) != 0;
+}
+
 #if EVENT_SLAB_ENABLED
 static const char* event_slab_name_for_priority(event_priority_t priority) {
     switch (priority) {
@@ -351,6 +409,7 @@ static void event_system_cleanup_event_types(void) {
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
         k_mutex_lock(&entry->lock, K_FOREVER);
+        atomic_set(&entry->registered, 0);
         entry->name = NULL;
         entry->name_storage[0] = '\0';
         entry->subscriber_count = 0;
@@ -678,6 +737,7 @@ event_status_t event_register_type(event_type_t type, const char* name) {
     (void) strncpy(entry->name_storage, name, sizeof(entry->name_storage) - 1U);
     entry->name_storage[sizeof(entry->name_storage) - 1U] = '\0';
     entry->name = entry->name_storage;
+    atomic_set(&entry->registered, 1);
     entry->subscriber_count = 0;
     memset(entry->subscribers, 0, sizeof(entry->subscribers));
 
@@ -720,6 +780,7 @@ event_status_t event_unregister_type(event_type_t type) {
         return EVENT_ERR_NO_SUBSCRIBER;
     }
 
+    atomic_set(&entry->registered, 0);
     entry->name = NULL;
     entry->name_storage[0] = '\0';
     entry->subscriber_count = 0;
@@ -917,10 +978,15 @@ event_status_t event_publish(event_t* event) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    /* SIL-2: 拒绝向未注册类型发布事件，避免占用队列槽位（MED-1）。
-     * name 读取无锁，与 unregister 的最坏情况是少量边缘事件仍允许入队，
-     * 分发时 notify_subscribers 返回 NO_SUBSCRIBER，不会泄漏事件数据。 */
-    if (g_event_system.event_types[event->type].name == NULL) {
+    {
+        event_status_t vret = event_validate_for_publish(event);
+        if (vret != EVENT_OK) {
+            atomic_dec(&g_publish_in_flight);
+            return vret;
+        }
+    }
+
+    if (!event_type_is_registered(event->type)) {
         atomic_dec(&g_publish_in_flight);
 #ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
         LOG_WRN("Publishing to unregistered event type: %d", event->type);
@@ -961,14 +1027,20 @@ event_status_t event_publish_from_isr(event_t* event) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    /* SIL-2: 拒绝向未注册类型发布事件（MED-1，ISR 路径同步处理）。
-     * ISR 中不打印日志，但仍返回错误使调用方可感知；name 无锁读取的考量同非 ISR 路径。 */
-    if (g_event_system.event_types[event->type].name == NULL) {
+    {
+        event_status_t vret = event_validate_for_publish(event);
+        if (vret != EVENT_OK) {
+            atomic_dec(&g_publish_in_flight);
+            return vret;
+        }
+    }
+
+    if (!event_type_is_registered(event->type)) {
         atomic_dec(&g_publish_in_flight);
         return EVENT_ERR_NOT_FOUND;
     }
 
-    /* ISR 不支持 DROP_LOWEST；配置为 DROP_LOWEST 时退化为 DROP_NEWEST */
+    /* DROP_LOWEST 仅线程侧重排；ISR 满队列退化为 DROP_NEWEST（见 Kconfig help） */
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
     queue_overflow_policy_t isr_policy = QUEUE_OVERFLOW_DROP_NEWEST;
 #else

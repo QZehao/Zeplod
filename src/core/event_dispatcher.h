@@ -222,8 +222,10 @@ void event_dispatcher_clear_filter(void);
  * @param timeout 等待超时时间
  * @return EVENT_OK 成功处理了事件，其他错误码见 event_status_t
  *
- * @note 仅在 DISPATCHER_RUNNING 下可用；DISPATCHER_PAUSED / STOPPED 返回 EVENT_ERR_INVALID_ARG
- * @note 此函数用于手动控制事件处理流程
+ * @note 分发器线程 RUNNING 时，仅允许分发器线程调用；其他线程返回 EVENT_ERR_INVALID_ARG
+ * @note 仅 init、从未 event_dispatcher_start() 时，可从任意线程手动消费（测试/无 autoinit）
+ * @note 曾 start 后再 stop：外部线程不得调用，返回 EVENT_ERR_INVALID_ARG
+ * @note DISPATCHER_PAUSED 返回 EVENT_ERR_INVALID_ARG
  * @note 返回 EVENT_ERR_QUEUE_EMPTY 表示队列中无事件
  * @note 返回 EVENT_ERR_TIMEOUT 表示在 timeout 内未等到事件
  */
@@ -237,7 +239,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout);
  *
  * @note 此函数会一直处理直到队列为空或达到 max_events 限制
  * @note 返回值包含被过滤器跳过的事件（process_one 对过滤事件亦返回 EVENT_OK）
- * @note 与分发器线程同时调用时会竞争同一队列，仅建议测试或单消费者场景使用
+ * @note 与 process_one 相同的手动消费约束；不得与 RUNNING 的分发器线程并行调用
  */
 uint32_t event_dispatcher_process_all(uint32_t max_events);
 

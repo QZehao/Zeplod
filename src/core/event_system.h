@@ -251,6 +251,7 @@ typedef struct {
     event_type_t       type;                                      /**< 事件类型 ID */
     char               name_storage[CONFIG_EVENT_TYPE_NAME_MAX];  /**< 类型名存储（register 时拷贝） */
     const char*        name;                                      /**< 指向 name_storage，未注册时为 NULL */
+    atomic_t           registered;                                /**< 1=已注册（ISR/线程可无锁读取） */
     subscriber_entry_t subscribers[CONFIG_EVENT_MAX_SUBSCRIBERS]; /**< 订阅者数组 */
     uint32_t           subscriber_count;                          /**< 当前活跃的订阅者数量 */
     struct k_mutex     lock;                                      /**< 保护订阅者列表的互斥锁 */
@@ -429,6 +430,7 @@ void event_unsubscribe_all(uint32_t subscriber_id);
  * @note k_msgq 按值浅拷贝 event_t；成功入队后动态数据由队列内副本持有，勿再 event_free_data
  * @note 成功后可对同一 event 调用 event_free 释放壳体；失败时需自行释放动态数据
  * @note event->type 必须已 register_type，否则返回 EVENT_ERR_NOT_FOUND
+ * @note 会校验 flags/data_len/data.ptr 一致性；手搓 event_t 不一致时返回 EVENT_ERR_INVALID_ARG
  */
 event_status_t event_publish(event_t* event);
 
@@ -444,6 +446,7 @@ event_status_t event_publish(event_t* event);
  * @note 如果队列已满，事件将被丢弃
  * @note 避免在 ISR 中调用 event_publish_copy，因为其中包含 k_malloc
  * @note 与 event_publish 相同：event_system_stop 后 running 为假时返回 EVENT_ERR_NOT_RUNNING
+ * @note 与 event_publish 相同：校验 flags/data_len 一致性
  */
 event_status_t event_publish_from_isr(event_t* event);
 

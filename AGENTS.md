@@ -277,12 +277,21 @@ SYS_INIT(my_module_auto_register, POST_KERNEL, APP_INIT_PRIO_MODULE_MINE);
 // 订阅事件
 event_subscribe(EVENT_TYPE_SENSOR_DATA, my_callback, user_data, &subscriber_id);
 
-// 发布事件
+// 发布事件（推荐 publish_copy / create_with_data，勿手搓不一致的 flags/data_len）
 event_publish_copy(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_NORMAL, &data, sizeof(data));
 
 // ISR 中发布事件
 event_publish_from_isr(&my_event);
 ```
+
+**使用契约（发布 / 卸载 / 手动消费）**
+
+| 场景 | 要求 |
+|------|------|
+| 发布 | 先 `event_register_type`；负载用 `event_create*` / `event_publish_copy`，`event_publish` 会校验 `flags` 与 `data_len` |
+| 模块卸载 | `event_system_stop()` → `event_unsubscribe_all(id)` → 再释放 `user_data`（`unsubscribe` 返回后回调仍可能短暂执行） |
+| 手动 `process_one` / `process_all` | 仅 init 后、首次 `event_dispatcher_start()` 之前；曾 start 后再 stop 或与 RUNNING 的分发器线程并行调用会返回 `EVENT_ERR_INVALID_ARG` |
+| `CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST` | 仅线程侧 `event_publish` 可挤掉低优先级；ISR 满队列仍为 `DROP_NEWEST` |
 
 **自动初始化（标准版，默认启用）**
 

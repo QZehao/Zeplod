@@ -1211,6 +1211,15 @@ static void gpio_callback_manual(const struct device *dev,
 
 ## Best Practices
 
+### Publish, teardown, and manual consumption contract
+
+| Scenario | Requirement |
+|----------|-------------|
+| **Publish** | Call `event_register_type` first; prefer `event_publish_copy` / `event_create_with_data`. `event_publish` / `event_publish_from_isr` validate `flags` and `data_len`; inconsistent hand-built `event_t` values return `EVENT_ERR_INVALID_ARG` |
+| **Module teardown** | `event_system_stop()` → `event_unsubscribe_all(subscriber_id)` → then free `user_data`. After `event_unsubscribe` returns, the dispatcher may still invoke callbacks from an earlier snapshot |
+| **Manual `process_one` / `process_all`** | Use only after **init** and **before the first** `event_dispatcher_start()`. After start→stop, or while the dispatcher thread is `RUNNING`, calls from other threads return `EVENT_ERR_INVALID_ARG` |
+| **`DROP_LOWEST` overflow policy** | Priority eviction applies only to thread-side `event_publish`; `event_publish_from_isr` still uses `DROP_NEWEST` when the queue is full |
+
 ### 1. Event Design Principles
 
 ```c

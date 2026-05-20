@@ -125,6 +125,17 @@ event_subscribe(EVENT_TYPE_MY_EVENT, my_callback, user_data, &id);
 event_publish_copy(EVENT_TYPE_MY_EVENT, EVENT_PRIORITY_NORMAL, &data, sizeof(data));
 ```
 
+**Event system usage contract (required reading)**
+
+| Scenario | Practice |
+|----------|----------|
+| Publish | Register the type first; prefer `event_publish_copy` / `event_create_with_data`. Do not hand-build inconsistent `flags` and `data_len` (`event_publish` validates and returns `EVENT_ERR_INVALID_ARG`) |
+| Module teardown | `event_system_stop()` → `event_unsubscribe_all(subscriber_id)` → then free `user_data` (callbacks may still run briefly after unsubscribe due to dispatcher snapshots) |
+| Manual queue drain | Use `event_dispatcher_process_one` / `process_all` only after **init** and **before the first** `event_dispatcher_start()`; after start→stop, or in parallel with a running dispatcher thread, calls are rejected |
+| Queue full `DROP_LOWEST` | Priority eviction applies only to thread-side `event_publish`; ISR still uses drop-newest when the queue is full |
+
+For the full API reference, see [31-event-system-guide.md](../30-core-modules/31-event-system-guide.md).
+
 ### Modifying Configuration
 
 - `prj.conf` - Zephyr kernel and app merged config (`CONFIG_*`)
