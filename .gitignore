@@ -48,7 +48,6 @@ temp/
 docs/_build/
 docs/api/
 
-.qwen/
 .vscode/*
 .cache/
 
