@@ -36,6 +36,29 @@
 
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
 
+/** 锁外日志/回调使用的模块名副本长度 */
+#define MM_MODULE_NAME_MAX 32
+
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+/** 依赖图邻接矩阵位压缩（行 j→列 i 表示 i 依赖 j） */
+#define MM_ADJ_ROW_WORDS ((CONFIG_MAX_MODULES + 31) / 32)
+#endif
+
+/**
+ * @brief 将模块名复制到局部缓冲区（锁外安全使用）
+ */
+static void mm_copy_module_name(char* dst, const char* src) {
+    if (dst == NULL) {
+        return;
+    }
+    if (src == NULL) {
+        dst[0] = '\0';
+        return;
+    }
+    strncpy(dst, src, MM_MODULE_NAME_MAX - 1U);
+    dst[MM_MODULE_NAME_MAX - 1U] = '\0';
+}
+
 /* =============================================================================
  * 内部数据结构
  * ============================================================================= */
@@ -54,6 +77,9 @@ typedef struct {
     struct k_mutex        lock;                        /**< 保护内部数据的互斥锁 */
     bool                  initialized;                 /**< 管理器是否已初始化 */
     bool                  running;                     /**< 管理器是否正在运行 */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+    uint32_t topo_adj_scratch[CONFIG_MAX_MODULES][MM_ADJ_ROW_WORDS]; /**< 拓扑邻接矩阵；仅持 g_module_mgr.lock 时使用 */
+#endif
 } module_manager_cb_t;
 
 /**
@@ -334,9 +360,6 @@ static void sort_stop_entries_reverse_priority(start_order_entry_t* entries, int
     }
 }
 
-/** 依赖图邻接矩阵位压缩（行 j→列 i 表示 i 依赖 j），降低栈占用 */
-#define MM_ADJ_ROW_WORDS ((CONFIG_MAX_MODULES + 31) / 32)
-
 static void mm_adj_matrix_clear(uint32_t adj[][MM_ADJ_ROW_WORDS]) {
     (void) memset(adj, 0, sizeof(uint32_t) * (size_t) CONFIG_MAX_MODULES * (size_t) MM_ADJ_ROW_WORDS);
 }
@@ -364,7 +387,7 @@ static bool mm_adj_matrix_test(const uint32_t adj[][MM_ADJ_ROW_WORDS], int row, 
  */
 static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
     bool     valid[CONFIG_MAX_MODULES];
-    uint32_t adj[CONFIG_MAX_MODULES][MM_ADJ_ROW_WORDS];
+    uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
     int      n_work;
@@ -456,16 +479,13 @@ static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
         n_work = n2;
     }
 
-    k_mutex_unlock(&g_module_mgr.lock);
-
     if (n_work <= 1) {
+        k_mutex_unlock(&g_module_mgr.lock);
         return n_work;
     }
 
     mm_adj_matrix_clear(adj);
     (void) memset(indegree, 0, sizeof(indegree));
-
-    k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
 
     for (int i = 0; i < n_work; i++) {
         if (entries[i].depends_on == NULL) {
@@ -511,8 +531,6 @@ static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
         }
     }
 
-    k_mutex_unlock(&g_module_mgr.lock);
-
     bool remaining[CONFIG_MAX_MODULES];
 
     for (int i = 0; i < n_work; i++) {
@@ -532,6 +550,7 @@ static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
         }
         if (best < 0) {
             LOG_ERR("Dependency cycle; using priority order for start");
+            k_mutex_unlock(&g_module_mgr.lock);
             sort_start_entries(entries, n_work);
             return n_work;
         }
@@ -543,6 +562,8 @@ static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
             }
         }
     }
+
+    k_mutex_unlock(&g_module_mgr.lock);
 
     start_order_entry_t tmp[CONFIG_MAX_MODULES];
 
@@ -558,7 +579,7 @@ static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
  *        使被依赖模块后停止。仅在本批 RUNNING 子集上建边；成环时退回 priority 降序。
  */
 static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
-    uint32_t adj[CONFIG_MAX_MODULES][MM_ADJ_ROW_WORDS];
+    uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
 
@@ -613,8 +634,6 @@ static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
         }
     }
 
-    k_mutex_unlock(&g_module_mgr.lock);
-
     bool remaining[CONFIG_MAX_MODULES];
 
     for (int i = 0; i < n; i++) {
@@ -634,6 +653,7 @@ static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
         }
         if (best < 0) {
             LOG_ERR("Dependency cycle; using reverse priority order for stop");
+            k_mutex_unlock(&g_module_mgr.lock);
             sort_stop_entries_reverse_priority(entries, n);
             return n;
         }
@@ -645,6 +665,8 @@ static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
             }
         }
     }
+
+    k_mutex_unlock(&g_module_mgr.lock);
 
     start_order_entry_t tmp[CONFIG_MAX_MODULES];
 
@@ -1154,6 +1176,7 @@ void module_manager_foreach(void (*callback)(module_info_t*, void*), void* user_
  */
 int module_manager_start_module(uint32_t module_id) {
     int (*start_fn)(void);
+    char        name_buf[MM_MODULE_NAME_MAX];
     const char* name;
     int         ret = MODULE_OK;
 
@@ -1172,7 +1195,8 @@ int module_manager_start_module(uint32_t module_id) {
     }
 
     start_fn = info->interface->start;
-    name = info->interface->name;
+    mm_copy_module_name(name_buf, info->interface->name);
+    name = name_buf;
 
     k_mutex_unlock(&g_module_mgr.lock);
 
@@ -1216,6 +1240,7 @@ int module_manager_start_module(uint32_t module_id) {
  */
 int module_manager_stop_module(uint32_t module_id) {
     int (*stop_fn)(void);
+    char        name_buf[MM_MODULE_NAME_MAX];
     const char* name;
 
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
@@ -1233,7 +1258,8 @@ int module_manager_stop_module(uint32_t module_id) {
     }
 
     stop_fn = info->interface->stop;
-    name = info->interface->name;
+    mm_copy_module_name(name_buf, info->interface->name);
+    name = name_buf;
 
     k_mutex_unlock(&g_module_mgr.lock);
 
@@ -1390,11 +1416,15 @@ int module_manager_suspend_module(uint32_t module_id) {
         g_module_mgr.stats.active_modules--;
     }
     info->status = MODULE_STATUS_SUSPENDED;
-    const char* name = info->interface->name;
+    char        name_buf[MM_MODULE_NAME_MAX];
+    const char* name;
+
+    mm_copy_module_name(name_buf, info->interface->name);
+    name = name_buf;
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module suspended: %s", name != NULL ? name : "?");
+    LOG_INF("Module suspended: %s", name[0] != '\0' ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STATUS_CHANGED);
     return MODULE_OK;
 }
@@ -1422,11 +1452,15 @@ int module_manager_resume_module(uint32_t module_id) {
 
     info->status = MODULE_STATUS_RUNNING;
     g_module_mgr.stats.active_modules++;
-    const char* name = info->interface->name;
+    char        name_buf[MM_MODULE_NAME_MAX];
+    const char* name;
+
+    mm_copy_module_name(name_buf, info->interface->name);
+    name = name_buf;
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module resumed: %s", name != NULL ? name : "?");
+    LOG_INF("Module resumed: %s", name[0] != '\0' ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STATUS_CHANGED);
     return MODULE_OK;
 }

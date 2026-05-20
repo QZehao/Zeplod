@@ -200,11 +200,15 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 int module_manager_unregister(uint32_t module_id);
 
 /**
- * @brief 获取模块信息（线程安全快照）
+ * @brief 获取模块信息（浅拷贝快照）
  *
  * @param module_id 模块 ID
  * @param out 输出结构指针，不能为 NULL
  * @return 0 成功，-1 未找到或参数无效
+ *
+ * @note 返回的 module_info_t 为槽位内容的按值拷贝；其中 interface 及 interface->name
+ *       仍为指针，仅在对应模块保持已注册期间有效。锁释放后勿长期持有或访问已注销模块的
+ *       interface/name；需要稳定名称时请使用 module_manager_get_id_by_name 或在锁内复制。
  */
 int module_manager_get_module_info(uint32_t module_id, module_info_t* out);
 
@@ -226,6 +230,8 @@ uint32_t module_manager_get_id_by_name(const char* name);
  *
  * @note 回调在管理器锁外执行，可调用 module_manager_* API；
  *       但若回调自行持有其它锁，请注意锁顺序避免与业务代码产生锁反转。
+ * @note 传入回调的 module_info_t 为浅拷贝快照（见 module_manager_get_module_info）；
+ *       回调返回后勿再使用其中的 interface/name 指针。
  */
 void module_manager_foreach(void (*callback)(module_info_t*, void*), void* user_data);
 
@@ -276,7 +282,11 @@ int module_manager_start_all(void);
 int module_manager_stop_all(void);
 
 /**
- * @brief 挂起模块（临时禁用事件处理）
+ * @brief 挂起模块（仅暂停管理器侧事件投递，不调用 stop）
+ *
+ * 将状态设为 SUSPENDED 并减少 active 计数；**不**调用模块的 stop()。
+ * 硬件中断、DMA、定时器等仍可能运行，仅 module_manager_send_to_module /
+ * broadcast 等管理器路由会忽略该模块。需要完全停用时请调用 module_manager_stop_module。
  *
  * @param module_id 模块 ID
  * @return 0 成功，负值错误码失败

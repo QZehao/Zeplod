@@ -189,10 +189,12 @@ typedef struct ipc_service {
     struct k_msgq   request_queue;   /**< 请求消息队列 */
     struct k_msgq   response_queue;  /**< 响应消息队列 */
 
-    /* 请求队列缓冲区 */
-    uint8_t request_queue_buf[CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE * sizeof(ipc_request_msg_t)];
+    /* 请求队列缓冲区（k_msgq 要求与 msg_size 指针对齐） */
+    __aligned(sizeof(void*)) uint8_t
+        request_queue_buf[CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE * sizeof(ipc_request_msg_t)];
     /* 响应队列缓冲区 */
-    uint8_t response_queue_buf[CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE * sizeof(ipc_response_msg_t)];
+    __aligned(sizeof(void*)) uint8_t
+        response_queue_buf[CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE * sizeof(ipc_response_msg_t)];
 
     /* 工作线程栈 */
     K_KERNEL_STACK_MEMBER(worker_stack, CONFIG_THREAD_IPC_SERVICE_STACK_SIZE);
@@ -210,9 +212,9 @@ typedef struct ipc_service {
     ipc_future_t  futures[CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS];
     ipc_future_t* free_futures; /**< 空闲 Future 链表头 */
 
-    struct k_mutex state_lock; /**< 保护 running/shutdown 的互斥锁 */
+    struct k_mutex state_lock; /**< 保护 running 的互斥锁 */
     bool           running;    /**< 服务是否正在运行 */
-    volatile bool  shutdown;   /**< 服务是否正在关闭 */
+    atomic_t       shutdown;   /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     ipc_shm_pool_t shm_pool; /**< 共享内存池（引用计数管理） */

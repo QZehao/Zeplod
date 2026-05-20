@@ -185,6 +185,10 @@ int module_compat_get_module_info(uint32_t module_id, module_info_t* out) {
 uint32_t module_compat_get_id_by_name(const char* name) {
     ARG_UNUSED(name);
     (void) module_compat_pro_std_only("module_compat_get_id_by_name");
+    /*
+     * PRO 模式：注册/按名查询须使用 module_manager_pro_*；此处恒返回 0（未找到）。
+     * 调用方必须检查返回值，不可假定与标准版 module_manager_get_id_by_name 行为一致。
+     */
     return 0U;
 }
 

@@ -65,6 +65,13 @@ LOG_MODULE_REGISTER(thread_ipc_svc, CONFIG_THREAD_IPC_SERVICE_LOG_LEVEL);
 #endif
 
 /**
+ * @brief 判断 k_timeout_t 是否为「零等待」（兼容不同 Zephyr 版本的 k_timeout_t 布局）
+ */
+static inline bool ipc_timeout_is_zero(k_timeout_t timeout) {
+    return K_TIMEOUT_EQ(timeout, K_NO_WAIT);
+}
+
+/**
  * @brief 全局单调递增请求 ID 计数器
  * @note 跳过 0，避免与未初始化状态混淆
  */
@@ -293,24 +300,14 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
         int ret = k_msgq_get(&service->request_queue, &request_msg, K_MSEC(IPC_SERVICE_MSGQ_TIMEOUT_MS));
 
         if (ret != 0) {
-            /* 超时，检查 shutdown 标志 */
-            k_mutex_lock(&service->state_lock, K_FOREVER);
-            bool should_exit = service->shutdown;
-            k_mutex_unlock(&service->state_lock);
-
-            if (should_exit) {
+            if (atomic_get(&service->shutdown) != 0) {
                 LOG_INF("Worker thread exiting on shutdown signal");
                 break;
             }
             continue;
         }
 
-        /* SIL-2: 再次检查 shutdown 标志 */
-        k_mutex_lock(&service->state_lock, K_FOREVER);
-        bool should_exit = service->shutdown;
-        k_mutex_unlock(&service->state_lock);
-
-        if (should_exit) {
+        if (atomic_get(&service->shutdown) != 0) {
             LOG_INF("Worker thread detected shutdown after receiving request");
             break;
         }
@@ -375,7 +372,6 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
         /* 输入侧随请求传递的句柄；否则若 out_data 在池内则解析 service 新分配的块 */
         response_msg.shm_handle = request_msg.shm_handle;
-        request_msg.shm_handle = 0;
         if (response_msg.shm_handle == 0 && out_data != NULL) {
             ipc_shm_handle_t out_handle = ipc_shm_lookup_handle_by_ptr(service, out_data);
 
@@ -431,24 +427,14 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
         int ret = k_msgq_get(&service->response_queue, &response_msg, K_MSEC(IPC_SERVICE_MSGQ_TIMEOUT_MS));
 
         if (ret != 0) {
-            /* 超时，检查 shutdown 标志 */
-            k_mutex_lock(&service->state_lock, K_FOREVER);
-            bool should_exit = service->shutdown;
-            k_mutex_unlock(&service->state_lock);
-
-            if (should_exit) {
+            if (atomic_get(&service->shutdown) != 0) {
                 LOG_INF("Dispatcher thread exiting on shutdown signal");
                 break;
             }
             continue;
         }
 
-        /* SIL-2: 检查 shutdown 标志 */
-        k_mutex_lock(&service->state_lock, K_FOREVER);
-        bool should_exit = service->shutdown;
-        k_mutex_unlock(&service->state_lock);
-
-        if (should_exit) {
+        if (atomic_get(&service->shutdown) != 0) {
             LOG_INF("Dispatcher thread detected shutdown");
             break;
         }
@@ -567,7 +553,7 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
     service->service_func = service_func;
     service->priority = priority;
     service->running = false;
-    service->shutdown = false;
+    atomic_set(&service->shutdown, 0);
     k_mutex_init(&service->state_lock);
 
     /* 初始化请求队列 */
@@ -628,7 +614,7 @@ int ipc_service_start(ipc_service_t* service) {
         return -EALREADY;
     }
 
-    service->shutdown = false;
+    atomic_set(&service->shutdown, 0);
 
     /* 创建工作线程 */
     k_thread_create(&service->thread, service->worker_stack, K_KERNEL_STACK_SIZEOF(service->worker_stack),
@@ -669,8 +655,7 @@ int ipc_service_stop(ipc_service_t* service) {
         return 0;
     }
 
-    /* SIL-2: 设置 shutdown 标志 */
-    service->shutdown = true;
+    atomic_set(&service->shutdown, 1);
     k_mutex_unlock(&service->state_lock);
 
     /* SIL-2: 非阻塞投递哑消息，唤醒可能阻塞在 k_msgq_get 的 worker/dispatcher */
@@ -707,7 +692,7 @@ int ipc_service_stop(ipc_service_t* service) {
     /* SIL-2: 无论线程是否成功退出，都清理状态 */
     k_mutex_lock(&service->state_lock, K_FOREVER);
     service->running = false;
-    service->shutdown = true;
+    atomic_set(&service->shutdown, 1);
     k_mutex_unlock(&service->state_lock);
 
     /* SIL-2: 清理所有 pending 请求，防止资源泄漏 */
@@ -760,7 +745,7 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
         return -EINVAL;
     }
 
-    if (timeout.ticks == 0) {
+    if (ipc_timeout_is_zero(timeout)) {
         LOG_WRN("ipc_call_sync called with zero timeout");
         return -EINVAL;
     }

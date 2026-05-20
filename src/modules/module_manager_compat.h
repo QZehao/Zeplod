@@ -124,13 +124,19 @@ int      module_compat_start_all(void);
 int      module_compat_stop_all(void);
 int      module_compat_suspend_module(uint32_t module_id);
 int      module_compat_resume_module(uint32_t module_id);
+/**
+ * @brief PRO 模式下按名查 ID（桩实现）
+ *
+ * @return 恒为 0（未找到）；请使用 module_manager_pro_get_id_by_name 或检查 MODULE_COMPAT_USE_PRO
+ */
+uint32_t module_compat_get_id_by_name(const char* name);
+
 int      module_compat_subscribe(uint32_t module_id, event_type_t event_type);
 int      module_compat_unsubscribe(uint32_t module_id, event_type_t event_type);
 int      module_compat_send_to_module(uint32_t module_id, const event_t* event);
 int      module_compat_broadcast(const event_t* event);
 void     module_compat_dump_info(void);
 int      module_compat_set_callback(module_mgr_callback_t callback, void* user_data);
-uint32_t module_compat_get_id_by_name(const char* name);
 
 #endif /* MODULE_COMPAT_USE_PRO */
 

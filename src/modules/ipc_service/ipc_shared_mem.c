@@ -57,22 +57,32 @@ LOG_MODULE_REGISTER(ipc_shm, CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_LOG_LEVEL);
  * ============================================================================= */
 
 /**
+ * @brief 句柄校验盐（与池实例地址绑定，降低相邻索引伪造句柄的概率）
+ */
+static uint32_t shm_handle_salt(const ipc_shm_pool_t* pool) {
+    const uintptr_t addr = (uintptr_t) pool;
+
+    return ((uint32_t) (addr >> 4) & 0xFFFFU) ^ 0xA5A5U;
+}
+
+/**
  * @brief 从句柄解码块索引
  *
  * 句柄格式：[31:16] = 校验码, [15:0] = 块索引
- * 校验码 = 块索引 ^ 0xFFFF（简单验证）
+ * 校验码 = index ^ shm_handle_salt(pool)
  *
+ * @param pool 共享内存池
  * @param handle 共享内存句柄
  * @return 块索引，句柄无效返回 UINT32_MAX
  */
-static uint32_t decode_block_index(ipc_shm_handle_t handle) {
-    if (handle == IPC_SHM_HANDLE_INVALID) {
+static uint32_t decode_block_index(const ipc_shm_pool_t* pool, ipc_shm_handle_t handle) {
+    if (handle == IPC_SHM_HANDLE_INVALID || pool == NULL) {
         return UINT32_MAX;
     }
 
-    uint32_t index = handle & 0xFFFFU;
-    uint32_t checksum = (handle >> 16U) & 0xFFFFU;
-    uint32_t expected_checksum = index ^ 0xFFFFU;
+    const uint32_t index = handle & 0xFFFFU;
+    const uint32_t checksum = (handle >> 16U) & 0xFFFFU;
+    const uint32_t expected_checksum = index ^ shm_handle_salt(pool);
 
     if (checksum != expected_checksum) {
         LOG_ERR("Invalid handle checksum: handle=0x%08X, expected=0x%04X, got=0x%04X", handle, expected_checksum,
@@ -86,11 +96,13 @@ static uint32_t decode_block_index(ipc_shm_handle_t handle) {
 /**
  * @brief 从块索引编码句柄
  *
+ * @param pool 共享内存池
  * @param index 块索引
  * @return 编码后的句柄
  */
-static ipc_shm_handle_t encode_handle(uint32_t index) {
-    uint32_t checksum = index ^ 0xFFFFU;
+static ipc_shm_handle_t encode_handle(const ipc_shm_pool_t* pool, uint32_t index) {
+    const uint32_t checksum = index ^ shm_handle_salt(pool);
+
     return (ipc_shm_handle_t) ((checksum << 16U) | index);
 }
 
@@ -288,7 +300,7 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
                 }
             }
 
-            handle = encode_handle(i);
+            handle = encode_handle(pool, i);
 
             LOG_DBG("Allocated block %u: handle=0x%08X, size=%u, alloc_id=%u", i, handle, size, block->alloc_id);
 
@@ -316,12 +328,13 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
         return;
     }
 
-    uint32_t index = decode_block_index(handle);
+    ipc_shm_pool_t* pool = &service->shm_pool;
+
+    const uint32_t index = decode_block_index(pool, handle);
+
     if (index == UINT32_MAX) {
         return; /* 无效句柄，静默忽略 */
     }
-
-    ipc_shm_pool_t* pool = &service->shm_pool;
 
     /* SIL-2: 验证索引范围 */
     if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
@@ -363,12 +376,13 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
         return -EINVAL;
     }
 
-    uint32_t index = decode_block_index(handle);
+    ipc_shm_pool_t* pool = &service->shm_pool;
+
+    const uint32_t index = decode_block_index(pool, handle);
+
     if (index == UINT32_MAX) {
         return -EINVAL;
     }
-
-    ipc_shm_pool_t* pool = &service->shm_pool;
 
     /* SIL-2: 验证索引范围 */
     if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
@@ -434,26 +448,25 @@ void* ipc_shm_get_ptr(ipc_service_t* service, ipc_shm_handle_t handle) {
         return NULL;
     }
 
-    uint32_t index = decode_block_index(handle);
-    if (index == UINT32_MAX) {
-        return NULL;
-    }
-
     ipc_shm_pool_t* pool = &service->shm_pool;
 
-    /* SIL-2: 验证索引范围和块有效性 */
-    if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
+    const uint32_t index = decode_block_index(pool, handle);
+
+    if (index == UINT32_MAX || index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
         return NULL;
     }
 
     ipc_shm_block_t* block = &pool->blocks[index];
+    void*             ptr = NULL;
 
-    /* 只有已分配的块才能获取指针 */
-    if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
-        return NULL;
+    k_mutex_lock(&block->lock, K_FOREVER);
+
+    if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
+        ptr = block->ptr;
     }
 
-    return block->ptr;
+    k_mutex_unlock(&block->lock);
+    return ptr;
 }
 
 /**
@@ -464,25 +477,25 @@ size_t ipc_shm_get_size(ipc_service_t* service, ipc_shm_handle_t handle) {
         return 0;
     }
 
-    uint32_t index = decode_block_index(handle);
-    if (index == UINT32_MAX) {
-        return 0;
-    }
-
     ipc_shm_pool_t* pool = &service->shm_pool;
 
-    if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
+    const uint32_t index = decode_block_index(pool, handle);
+
+    if (index == UINT32_MAX || index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
         return 0;
     }
 
     ipc_shm_block_t* block = &pool->blocks[index];
+    size_t           size = 0;
 
-    /* 只有已分配的块才能获取大小 */
-    if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
-        return 0;
+    k_mutex_lock(&block->lock, K_FOREVER);
+
+    if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
+        size = block->size;
     }
 
-    return block->size;
+    k_mutex_unlock(&block->lock);
+    return size;
 }
 
 /**
@@ -493,12 +506,13 @@ bool ipc_shm_is_valid(ipc_service_t* service, ipc_shm_handle_t handle) {
         return false;
     }
 
-    uint32_t index = decode_block_index(handle);
+    ipc_shm_pool_t* pool = &service->shm_pool;
+
+    const uint32_t index = decode_block_index(pool, handle);
+
     if (index == UINT32_MAX) {
         return false;
     }
-
-    ipc_shm_pool_t* pool = &service->shm_pool;
 
     if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
         return false;
@@ -515,9 +529,10 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
         return IPC_SHM_HANDLE_INVALID;
     }
 
-    ipc_shm_pool_t*        pool = &service->shm_pool;
-    const uint8_t*         pool_start = pool->mem_pool;
-    const uint8_t*         pool_end = pool_start + sizeof(pool->mem_pool);
+    ipc_shm_pool_t* pool = &service->shm_pool;
+    /* mem_pool 为 ipc_shm_pool_t 数组成员；需 ipc_service.h 完整类型（本文件经 ipc_shared_mem.h 已包含） */
+    const uint8_t*  pool_start = pool->mem_pool;
+    const uint8_t*  pool_end = pool_start + sizeof(pool->mem_pool);
     const uint8_t*         p = (const uint8_t*) ptr;
 
     if (p < pool_start || p >= pool_end) {
@@ -547,7 +562,7 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
         return IPC_SHM_HANDLE_INVALID;
     }
 
-    return encode_handle(index);
+    return encode_handle(pool, index);
 }
 
 /**
