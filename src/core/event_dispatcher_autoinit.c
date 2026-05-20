@@ -54,11 +54,14 @@ static int event_dispatcher_auto_init(void) {
                                              .max_events_per_cycle = CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE};
     if (event_dispatcher_init(&dispatcher_config) != EVENT_OK) {
         LOG_ERR("event_dispatcher_init failed");
+        (void) event_system_stop();
         return -EIO;
     }
 
     if (event_dispatcher_start() != EVENT_OK) {
         LOG_ERR("event_dispatcher_start failed");
+        (void) event_dispatcher_stop();
+        (void) event_system_stop();
         return -EIO;
     }
 

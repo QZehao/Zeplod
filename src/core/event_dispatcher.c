@@ -430,10 +430,10 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     enable_stats = g_dispatcher.config.enable_stats;
     k_mutex_unlock(&g_dispatcher.lock);
 
-    event_t event;
-    int     ret = k_msgq_get(g_event_queue, &event, timeout);
-    if (ret != 0) {
-        return EVENT_ERR_QUEUE_EMPTY;
+    event_t        event;
+    event_status_t dq_st = event_queue_dequeue(g_event_queue, &event, timeout);
+    if (dq_st != EVENT_OK) {
+        return dq_st;
     }
 
     /* SIL-2: 阻塞期间状态可能已改变（如 stop() 被调用），重新检查 */

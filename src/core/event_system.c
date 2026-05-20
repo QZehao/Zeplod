@@ -151,6 +151,9 @@ static atomic_t g_event_dropped_count;
  */
 static atomic_t g_publish_in_flight;
 
+/** 串行化订阅者 ID 分配与全局唯一性检查，消除 subscriber_id_in_use 的 TOCTOU */
+static K_MUTEX_DEFINE(g_subscriber_id_lock);
+
 static void event_publish_in_flight_wait_zero(void) {
     while (atomic_get(&g_publish_in_flight) != 0) {
         k_yield();
@@ -310,15 +313,27 @@ static bool subscriber_id_in_use(uint32_t id) {
  * ============================================================================= */
 
 /**
+ * @brief 回滚未完成的 event_system_init（内部）
+ *
+ * 在设置 magic / initialized 之前失败时调用，保证重试可安全 memset + k_mutex_init。
+ */
+static void event_system_init_rollback(void) {
+    event_queue_deinit(&g_event_msgq);
+    memset(&g_event_system, 0, sizeof(g_event_system));
+    atomic_set(&g_publish_in_flight, 0);
+    g_restart_dispatcher_on_start = false;
+}
+
+/**
  * @brief 初始化事件系统
  *
  * 初始化步骤：
  * 1. 检查是否已初始化（幂等性）
- * 2. 清零控制块并设置魔术字
+ * 2. 清零控制块（magic 在全部步骤成功后再设置）
  * 3. 初始化统计信息互斥锁
  * 4. 初始化所有事件类型条目的互斥锁
  * 5. 初始化消息队列
- * 6. 设置初始状态
+ * 6. 设置魔术字与 initial 状态
  *
  * @return EVENT_OK 成功
  */
@@ -337,9 +352,8 @@ event_status_t event_system_init(void) {
         return EVENT_OK;
     }
 
-    /* 初始化控制块 */
+    /* 初始化控制块（成功前不设置 magic，失败后可完整重试） */
     memset(&g_event_system, 0, sizeof(g_event_system));
-    g_event_system.magic = EVENT_SYSTEM_MAGIC;
     atomic_set(&g_publish_in_flight, 0);
 
     /* 初始化互斥锁 */
@@ -357,10 +371,13 @@ event_status_t event_system_init(void) {
     /* 注册队列到 event_queue 管理层（内部 k_msgq_init + 溢出策略统计） */
     event_status_t qret = event_queue_init(&g_event_msgq, g_event_msgq_buffer, CONFIG_EVENT_QUEUE_SIZE);
     if (qret != EVENT_OK) {
+        event_system_init_rollback();
         atomic_clear_bit(&g_init_lock, 0);
+        LOG_ERR("event_queue_init failed: %d", qret);
         return qret;
     }
 
+    g_event_system.magic = EVENT_SYSTEM_MAGIC;
     atomic_set(&g_event_system.next_subscriber_id, 1);
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
@@ -668,13 +685,12 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
     /* 查找空闲槽位 */
     for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
         if (!entry->subscribers[i].is_active) {
-            entry->subscribers[i].callback = callback;
-            entry->subscribers[i].user_data = user_data;
-            /* SIL-2: 使用原子操作分配全局唯一的订阅者 ID，避免跨类型竞态。
-             * HIGH-NEW-4: do-while 同时跳过 0 和已存在的 ID，防止计数器回绕后
-             * 与长期未取消的订阅者发生真实碰撞。 */
             uint32_t new_id;
             uint32_t attempts = 0;
+
+            /* SIL-2: g_subscriber_id_lock 串行化「检查 in_use + 写入 subscriber_id」，
+             * 消除跨线程 TOCTOU；entry->lock 保护本类型的槽位与订阅表。 */
+            k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
             do {
                 new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
                 if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
@@ -682,18 +698,20 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
                 }
                 if (++attempts > UINT16_MAX) {
                     LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
+                    k_mutex_unlock(&g_subscriber_id_lock);
                     k_mutex_unlock(&entry->lock);
                     return EVENT_ERR_NO_MEM;
                 }
             } while (subscriber_id_in_use(new_id));
+
+            entry->subscribers[i].callback = callback;
+            entry->subscribers[i].user_data = user_data;
             entry->subscribers[i].subscriber_id = new_id;
             entry->subscribers[i].is_active = true;
             entry->subscriber_count++;
+            *subscriber_id = new_id;
 
-            if (subscriber_id != NULL) {
-                *subscriber_id = new_id;
-            }
-
+            k_mutex_unlock(&g_subscriber_id_lock);
             k_mutex_unlock(&entry->lock);
             LOG_DBG("Subscriber %d registered for event type %d", new_id, type);
             return EVENT_OK;

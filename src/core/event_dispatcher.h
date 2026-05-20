@@ -224,7 +224,8 @@ void event_dispatcher_clear_filter(void);
  *
  * @note 仅在 DISPATCHER_RUNNING 下可用；DISPATCHER_PAUSED / STOPPED 返回 EVENT_ERR_INVALID_ARG
  * @note 此函数用于手动控制事件处理流程
- * @note 返回 EVENT_ERR_QUEUE_EMPTY 表示队列中无事件或超时
+ * @note 返回 EVENT_ERR_QUEUE_EMPTY 表示队列中无事件
+ * @note 返回 EVENT_ERR_TIMEOUT 表示在 timeout 内未等到事件
  */
 event_status_t event_dispatcher_process_one(k_timeout_t timeout);
 

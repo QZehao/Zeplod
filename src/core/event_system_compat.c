@@ -177,6 +177,7 @@ static int event_compat_auto_init(void) {
 
     if (event_compat_start() != 0) {
         LOG_ERR("event_compat_start failed");
+        (void) event_compat_shutdown();
         return -EIO;
     }
 

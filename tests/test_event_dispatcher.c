@@ -105,18 +105,20 @@ ZTEST(event_dispatcher, test_process_one) {
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(200, "process_one_t200"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
     /* 发布一个事件 */
-    event_publish_copy(200, EVENT_PRIORITY_NORMAL, "test", 4);
+    zassert_equal(event_publish_copy(200, EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
 
     /* 等待事件进入队列 */
     k_msleep(20);
 
-    /* 手动处理一个事件 */
+    /* 手动处理一个事件（可能与分发器线程竞态：已被消费则 EMPTY/TIMEOUT） */
     status = event_dispatcher_process_one(K_MSEC(100));
-    zassert_true(status == EVENT_OK || status == EVENT_ERR_QUEUE_EMPTY, "process_one 应返回 OK 或 EMPTY");
+    zassert_true(status == EVENT_OK || status == EVENT_ERR_QUEUE_EMPTY || status == EVENT_ERR_TIMEOUT,
+                 "process_one 应返回 OK、EMPTY 或 TIMEOUT (got %d)", status);
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
@@ -127,12 +129,18 @@ ZTEST(event_dispatcher, test_process_all) {
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(201, "process_all_201"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(202, "process_all_202"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(203, "process_all_203"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(204, "process_all_204"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(205, "process_all_205"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
     /* 发布多个事件 */
     for (int i = 0; i < 5; i++) {
-        event_publish_copy(201 + i, EVENT_PRIORITY_NORMAL, "test", 4);
+        zassert_equal(event_publish_copy((event_type_t)(201 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK,
+                      NULL);
     }
 
     k_msleep(50);
@@ -167,12 +175,13 @@ ZTEST(event_dispatcher, test_stats_comprehensive) {
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(50, "stats_t50"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
     /* 发布并处理一些事件 */
     for (int i = 0; i < 10; i++) {
-        event_publish_copy(50, EVENT_PRIORITY_NORMAL, "stats", 5);
+        zassert_equal(event_publish_copy(50, EVENT_PRIORITY_NORMAL, "stats", 5), EVENT_OK, NULL);
     }
 
     k_msleep(100);
@@ -477,12 +486,22 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(220, "process_lim_220"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(221, "process_lim_221"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(222, "process_lim_222"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(223, "process_lim_223"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(224, "process_lim_224"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(225, "process_lim_225"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(226, "process_lim_226"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(227, "process_lim_227"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(228, "process_lim_228"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(229, "process_lim_229"), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
     /* 发布多个事件 */
     for (int i = 0; i < 10; i++) {
-        event_publish_copy(220 + i, EVENT_PRIORITY_NORMAL, "test", 4);
+        zassert_equal(event_publish_copy((event_type_t)(220 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
     }
 
     k_msleep(50);
