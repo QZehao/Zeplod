@@ -74,6 +74,13 @@ The Module System provides a dynamic, extensible component management framework 
                      └──────────────────┘
 ```
 
+**Suspend semantics**
+
+- `module_manager_suspend_module` only sets manager state to `SUSPENDED` and blocks manager-routed `send_to_module`, `broadcast`, and `subscribe` delivery; it does **not** call the module `stop()`.
+- Module-owned hardware (interrupts, DMA, timers, etc.) and direct calls outside the manager may still run.
+- To invoke business `stop()` for full shutdown: call `module_manager_resume_module` first, then `module_manager_stop_module`; calling `stop_module` while `SUSPENDED` returns 0 idempotently without calling `stop()`.
+- `module_manager_stop_all` stops only `RUNNING` slots, not `SUSPENDED` ones.
+
 ---
 
 ## Application Startup and Initialization Order (Zephyr SYS_INIT)
@@ -431,7 +438,8 @@ int module_manager_start_module(uint32_t module_id);
  * @brief Stop a single module
  * @param module_id Module ID
  * @return 0 on success (including idempotent calls in non-RUNNING state), negative value is error code
- * @note Repeated stop is safe - if module status is not RUNNING, returns 0 and does not call business stop
+ * @note Repeated stop is safe - if module status is not RUNNING (including SUSPENDED), returns 0
+ *       without calling business stop; after suspend, resume then stop to invoke business stop()
  */
 int module_manager_stop_module(uint32_t module_id);
 
@@ -442,15 +450,16 @@ int module_manager_stop_module(uint32_t module_id);
 int module_manager_start_all(void);
 
 /**
- * @brief Stop all modules
+ * @brief Stop all modules (RUNNING only, not SUSPENDED)
  * @return Number of modules successfully stopped
  */
 int module_manager_stop_all(void);
 
 /**
- * @brief Suspend a module (pause event processing)
+ * @brief Suspend a module (pause manager-side event delivery only, no stop())
  * @param module_id Module ID
  * @return 0 on success, negative value is error code
+ * @note Does not call stop(); hardware IRQ/DMA may remain active. For full shutdown, resume then stop
  */
 int module_manager_suspend_module(uint32_t module_id);
 

@@ -206,9 +206,11 @@ int module_manager_unregister(uint32_t module_id);
  * @param out 输出结构指针，不能为 NULL
  * @return 0 成功，-1 未找到或参数无效
  *
- * @note 返回的 module_info_t 为槽位内容的按值拷贝；其中 interface 及 interface->name
- *       仍为指针，仅在对应模块保持已注册期间有效。锁释放后勿长期持有或访问已注销模块的
- *       interface/name；需要稳定名称时请使用 module_manager_get_id_by_name 或在锁内复制。
+ * @note 返回的 module_info_t 为槽位内容的按值拷贝；其中的指针字段（interface、config、
+ *       internal_data 等）均为浅拷贝，调用者不应在管理器锁外解引用这些指针（含
+ *       interface->name）。仅在对应模块保持已注册、且由调用方自行持锁或同步的前提下才可
+ *       安全访问；锁释放后勿长期持有快照中的指针。需要稳定名称时请使用
+ *       module_manager_get_id_by_name，或在持锁期间复制所需字段。
  */
 int module_manager_get_module_info(uint32_t module_id, module_info_t* out);
 
@@ -231,7 +233,8 @@ uint32_t module_manager_get_id_by_name(const char* name);
  * @note 回调在管理器锁外执行，可调用 module_manager_* API；
  *       但若回调自行持有其它锁，请注意锁顺序避免与业务代码产生锁反转。
  * @note 传入回调的 module_info_t 为浅拷贝快照（见 module_manager_get_module_info）；
- *       回调返回后勿再使用其中的 interface/name 指针。
+ *       指针字段（interface、config、internal_data 等）不得在锁外解引用；回调返回后勿再
+ *       使用快照中的任何指针成员。
  */
 void module_manager_foreach(void (*callback)(module_info_t*, void*), void* user_data);
 
@@ -253,6 +256,8 @@ int module_manager_start_module(uint32_t module_id);
  * @param module_id 模块 ID
  * @return 0 表示成功，或**幂等**：模块当前非 RUNNING 时亦返回 0（未再次调用业务 stop 回调）；
  *         未找到或参数无效时返回 -1
+ * @note 含 SUSPENDED：挂起后直接 stop 亦返回 0 且不调业务 stop()；须先 resume 再 stop，
+ *       或由模块在 control/shutdown 中自行收尾硬件。
  */
 int module_manager_stop_module(uint32_t module_id);
 
@@ -273,7 +278,7 @@ int module_manager_start_all(void);
 /**
  * @brief 停止所有模块
  *
- * 停止所有正在运行的模块。
+ * 停止所有正在运行的模块（仅 RUNNING；SUSPENDED 槽位不在此路径内）。
  * 若启用 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES：在当前 RUNNING 集合上按依赖
  * 求拓扑序后逆序停止；否则保持内部槽位遍历顺序。
  *
@@ -285,8 +290,10 @@ int module_manager_stop_all(void);
  * @brief 挂起模块（仅暂停管理器侧事件投递，不调用 stop）
  *
  * 将状态设为 SUSPENDED 并减少 active 计数；**不**调用模块的 stop()。
- * 硬件中断、DMA、定时器等仍可能运行，仅 module_manager_send_to_module /
- * broadcast 等管理器路由会忽略该模块。需要完全停用时请调用 module_manager_stop_module。
+ * 硬件中断、DMA、定时器等仍可能运行；经 module_manager_subscribe 注册的路由亦会
+ * 在 module_event_handler 中因非 RUNNING 而忽略。需要调用业务 stop() 完全停用时，
+ * 须先 module_manager_resume_module 再 module_manager_stop_module（对 SUSPENDED
+ * 直接 stop_module 幂等返回 0 且不调 stop()）。
  *
  * @param module_id 模块 ID
  * @return 0 成功，负值错误码失败

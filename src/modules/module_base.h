@@ -52,7 +52,7 @@ typedef enum {
     MODULE_STATUS_RUNNING,           /**< 正在运行 */
     MODULE_STATUS_STOPPED,           /**< 已停止 */
     MODULE_STATUS_ERROR,             /**< 错误状态 */
-    MODULE_STATUS_SUSPENDED          /**< 已挂起（暂停） */
+    MODULE_STATUS_SUSPENDED /**< 已挂起：管理器暂停事件路由，不调用 stop()，硬件仍可能活跃 */
 } module_status_t;
 
 /**

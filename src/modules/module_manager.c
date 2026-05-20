@@ -1392,10 +1392,11 @@ int module_manager_stop_all(void) {
 }
 
 /**
- * @brief 挂起模块
+ * @brief 挂起模块（仅管理器状态与事件路由，不调用 stop）
  *
  * @param module_id 模块 ID
  * @return MODULE_OK 成功，MODULE_ERR_NOT_FOUND 模块未找到，MODULE_ERR_INVALID_ARG 无效状态
+ * @see module_manager.h module_manager_suspend_module 契约说明
  */
 int module_manager_suspend_module(uint32_t module_id) {
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
