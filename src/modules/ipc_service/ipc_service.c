@@ -7,12 +7,12 @@
  * - 分发线程（dispatcher）：从响应队列取消息，根据 request_id 查找 pending 表投递响应
  * - 请求队列：调用者 -> 工作线程
  * - 响应队列：工作线程 -> 分发线程 -> 调用者
- * 
+ *
  * 设计要点：
  * - 无堆分配：所有内存静态分配
  * - pending 表与 future 空闲链表受 pending_lock 保护
  * - 停止时向两队列投递哑包以唤醒阻塞的 k_msgq_get
- * 
+ *
  * 三种调用模式：
  * - SYNC：使用 response_sem 信号量同步
  * - ASYNC：直接在分发线程中调用回调
@@ -25,7 +25,8 @@
  *
  *    Date         Version        Author          Description
  * 2026-04-01       1.0            zeh            正式发布
- * 2026-05-09       1.1            zeh            stop：join 超时后 abort 并重试 join；worker：取消后跳过请求；dispatcher：无 pending 降级日志
+ * 2026-05-09       1.1            zeh            stop：join 超时后 abort 并重试
+ * join；worker：取消后跳过请求；dispatcher：无 pending 降级日志
  *
  */
 
@@ -81,10 +82,10 @@ ipc_request_id_t ipc_generate_request_id(void) {
     ipc_request_id_t id;
 
     do {
-        id = (ipc_request_id_t)atomic_inc(&s_request_id_counter);
+        id = (ipc_request_id_t) atomic_inc(&s_request_id_counter);
         /* SIL-2: 跳过 0 值（跳过一次意味着需要再次递增） */
         if (id == 0U) {
-            id = (ipc_request_id_t)atomic_inc(&s_request_id_counter);
+            id = (ipc_request_id_t) atomic_inc(&s_request_id_counter);
         }
     } while (id == 0U);
 
@@ -706,8 +707,7 @@ int ipc_service_stop(ipc_service_t* service) {
     ipc_shm_deinit(service);
 #endif
 
-    LOG_INF("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2,
-            stop_err);
+    LOG_INF("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2, stop_err);
 
     return stop_err;
 }
@@ -877,7 +877,7 @@ int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size
 
     *out_data = (void*) entry->response_data;
     *out_data_size = entry->response_data_size;
-    int result = entry->result;
+    int              result = entry->result;
     ipc_shm_handle_t shm_handle = entry->shm_handle;
     entry->shm_handle = 0;
 

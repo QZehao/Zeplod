@@ -3,7 +3,7 @@
  * @brief 事件队列实现
  *
  * 基于优先级的队列实现，支持可配置的溢出处理。
- * 
+ *
  * 实现说明：
  * - 基于 Zephyr k_msgq 实现
  * - 支持多种溢出策略
@@ -276,8 +276,7 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
              * 容量决定 drop_lowest_scratch 大小，静默忽略会在 enqueue_drop_lowest 中越界。 */
             if (g_queue_cb[i].capacity != capacity) {
                 k_mutex_unlock(&g_queue_cb_lock);
-                LOG_ERR("Queue already initialized with capacity %u, refusing %zu",
-                        g_queue_cb[i].capacity, capacity);
+                LOG_ERR("Queue already initialized with capacity %u, refusing %zu", g_queue_cb[i].capacity, capacity);
                 return EVENT_ERR_INVALID_ARG;
             }
             k_mutex_unlock(&g_queue_cb_lock);

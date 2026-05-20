@@ -16,7 +16,8 @@
  *
  *    Date         Version        Author          Description
  * 2026-04-13     1.0            zeh            初始版本
- * 2026-05-09     1.1            zeh            active_count 原子化避免与 block 锁逆向嵌套 pool 锁；k_mutex_init 用法修正
+ * 2026-05-09     1.1            zeh            active_count 原子化避免与 block 锁逆向嵌套 pool 锁；k_mutex_init
+ * 用法修正
  *
  */
 
@@ -74,8 +75,8 @@ static uint32_t decode_block_index(ipc_shm_handle_t handle) {
     uint32_t expected_checksum = index ^ 0xFFFFU;
 
     if (checksum != expected_checksum) {
-        LOG_ERR("Invalid handle checksum: handle=0x%08X, expected=0x%04X, got=0x%04X",
-                handle, expected_checksum, checksum);
+        LOG_ERR("Invalid handle checksum: handle=0x%08X, expected=0x%04X, got=0x%04X", handle, expected_checksum,
+                checksum);
         return UINT32_MAX;
     }
 
@@ -90,7 +91,7 @@ static uint32_t decode_block_index(ipc_shm_handle_t handle) {
  */
 static ipc_shm_handle_t encode_handle(uint32_t index) {
     uint32_t checksum = index ^ 0xFFFFU;
-    return (ipc_shm_handle_t)((checksum << 16U) | index);
+    return (ipc_shm_handle_t) ((checksum << 16U) | index);
 }
 
 /**
@@ -128,26 +129,24 @@ static bool is_block_valid(const ipc_shm_pool_t* pool, uint32_t index) {
     if (block->state == IPC_SHM_STATE_FREE) {
         /* 空闲块引用计数必须为 0 */
         if (atomic_get(&block->ref_count) != 0) {
-            LOG_ERR("Block %u: FREE state but ref_count=%ld", index, (long)atomic_get(&block->ref_count));
+            LOG_ERR("Block %u: FREE state but ref_count=%ld", index, (long) atomic_get(&block->ref_count));
             return false;
         }
     } else {
         /* 已分配块引用计数必须 >= 1 */
         if (atomic_get(&block->ref_count) < 1) {
-            LOG_ERR("Block %u: ALLOCATED/SHARED state but ref_count=%ld",
-                    index, (long)atomic_get(&block->ref_count));
+            LOG_ERR("Block %u: ALLOCATED/SHARED state but ref_count=%ld", index, (long) atomic_get(&block->ref_count));
             return false;
         }
     }
 
     /* 验证指针在池范围内 */
-    void* ptr = block->ptr;
+    void*          ptr = block->ptr;
     const uint8_t* pool_start = pool->mem_pool;
     const uint8_t* pool_end = pool_start + sizeof(pool->mem_pool);
 
-    if (ptr < (void*)pool_start || ptr >= (void*)pool_end) {
-        LOG_ERR("Block %u: ptr %p out of pool range [%p, %p)",
-                index, ptr, (void*)pool_start, (void*)pool_end);
+    if (ptr < (void*) pool_start || ptr >= (void*) pool_end) {
+        LOG_ERR("Block %u: ptr %p out of pool range [%p, %p)", index, ptr, (void*) pool_start, (void*) pool_end);
         return false;
     }
 
@@ -169,15 +168,14 @@ int ipc_shm_init(ipc_service_t* service) {
 
     /* SIL-2: 验证配置合理性 */
     if (CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE > IPC_SHM_MAX_POOL_SIZE) {
-        LOG_ERR("Pool size %u exceeds maximum %u",
-                CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE, IPC_SHM_MAX_POOL_SIZE);
+        LOG_ERR("Pool size %u exceeds maximum %u", CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE,
+                IPC_SHM_MAX_POOL_SIZE);
         return -EINVAL;
     }
 
     if (CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE > IPC_SHM_MAX_BLOCK_SIZE ||
         CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE < IPC_SHM_MIN_BLOCK_SIZE) {
-        LOG_ERR("Block size %u out of range [%u, %u]",
-                CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE,
+        LOG_ERR("Block size %u out of range [%u, %u]", CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE,
                 IPC_SHM_MIN_BLOCK_SIZE, IPC_SHM_MAX_BLOCK_SIZE);
         return -EINVAL;
     }
@@ -207,8 +205,7 @@ int ipc_shm_init(ipc_service_t* service) {
     atomic_set(&pool->active_count, 0);
     pool->peak_count = 0;
 
-    LOG_INF("Shared memory pool initialized: %u blocks x %u bytes",
-            CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE,
+    LOG_INF("Shared memory pool initialized: %u blocks x %u bytes", CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE,
             CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE);
 
     return 0;
@@ -225,7 +222,7 @@ void ipc_shm_deinit(ipc_service_t* service) {
     ipc_shm_pool_t* pool = &service->shm_pool;
 
     /* SIL-2: 检查是否有未释放的块（active_count 为原子，无需先取 pool_lock） */
-    uint32_t leaked = (uint32_t)atomic_get(&pool->active_count);
+    uint32_t leaked = (uint32_t) atomic_get(&pool->active_count);
 
     if (leaked > 0) {
         LOG_WRN("Shared memory pool has %u leaked blocks on deinit", leaked);
@@ -234,9 +231,8 @@ void ipc_shm_deinit(ipc_service_t* service) {
         for (uint32_t i = 0; i < CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE; i++) {
             ipc_shm_block_t* block = &pool->blocks[i];
             if (block->state != IPC_SHM_STATE_FREE) {
-                LOG_WRN("Leaked block %u: state=%d, ref_count=%ld, alloc_id=%u, size=%u",
-                        i, block->state, (long)atomic_get(&block->ref_count),
-                        block->alloc_id, block->size);
+                LOG_WRN("Leaked block %u: state=%d, ref_count=%ld, alloc_id=%u, size=%u", i, block->state,
+                        (long) atomic_get(&block->ref_count), block->alloc_id, block->size);
             }
         }
     }
@@ -254,12 +250,11 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
     }
 
     if (size == 0 || size > CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE) {
-        LOG_ERR("Invalid alloc size %u (max %u)", size,
-                CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE);
+        LOG_ERR("Invalid alloc size %u (max %u)", size, CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE);
         return IPC_SHM_HANDLE_INVALID;
     }
 
-    ipc_shm_pool_t* pool = &service->shm_pool;
+    ipc_shm_pool_t*  pool = &service->shm_pool;
     ipc_shm_handle_t handle = IPC_SHM_HANDLE_INVALID;
 
     k_mutex_lock(&pool->pool_lock, K_FOREVER);
@@ -286,8 +281,8 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
             block->alloc_id = pool->alloc_counter;
 
             {
-                uint32_t prev = (uint32_t)atomic_inc(&pool->active_count);
-                uint32_t now  = prev + 1U;
+                uint32_t prev = (uint32_t) atomic_inc(&pool->active_count);
+                uint32_t now = prev + 1U;
                 if (now > pool->peak_count) {
                     pool->peak_count = now;
                 }
@@ -295,8 +290,7 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
 
             handle = encode_handle(i);
 
-            LOG_DBG("Allocated block %u: handle=0x%08X, size=%u, alloc_id=%u",
-                    i, handle, size, block->alloc_id);
+            LOG_DBG("Allocated block %u: handle=0x%08X, size=%u, alloc_id=%u", i, handle, size, block->alloc_id);
 
             k_mutex_unlock(&block->lock);
             break;
@@ -306,8 +300,8 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
     k_mutex_unlock(&pool->pool_lock);
 
     if (handle == IPC_SHM_HANDLE_INVALID) {
-        LOG_WRN("Shared memory pool exhausted (active=%u, peak=%u)",
-                (unsigned int)atomic_get(&pool->active_count), (unsigned int)pool->peak_count);
+        LOG_WRN("Shared memory pool exhausted (active=%u, peak=%u)", (unsigned int) atomic_get(&pool->active_count),
+                (unsigned int) pool->peak_count);
     }
 
     return handle;
@@ -348,7 +342,7 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
     /* SIL-2: 原子增加引用计数 */
-    uint32_t old_ref = (uint32_t)atomic_inc(&block->ref_count);
+    uint32_t old_ref = (uint32_t) atomic_inc(&block->ref_count);
 
     /* 更新状态 */
     if (old_ref == 1) {
@@ -383,7 +377,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
     ipc_shm_block_t* block = &pool->blocks[index];
-    int ret = 0;
+    int              ret = 0;
 
     k_mutex_lock(&block->lock, K_FOREVER);
 
@@ -395,7 +389,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
     /* SIL-2: 验证引用计数不会下溢 */
-    uint32_t current_ref = (uint32_t)atomic_get(&block->ref_count);
+    uint32_t current_ref = (uint32_t) atomic_get(&block->ref_count);
     if (current_ref == 0) {
         LOG_ERR("Block %u: ref_count underflow detected", index);
         block->state = IPC_SHM_STATE_INVALID;
@@ -404,7 +398,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
     /* SIL-2: 原子减少引用计数 */
-    uint32_t old_ref = (uint32_t)atomic_dec(&block->ref_count);
+    uint32_t old_ref = (uint32_t) atomic_dec(&block->ref_count);
     uint32_t new_ref = old_ref - 1;
 
     LOG_DBG("Released block %u: ref_count %u -> %u", index, old_ref, new_ref);
@@ -419,7 +413,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
         block->size = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE;
 
         /* active_count 原子递减：避免在持有 block->lock 时再取 pool_lock（与 ipc_shm_alloc 锁序冲突） */
-        (void)atomic_dec(&pool->active_count);
+        (void) atomic_dec(&pool->active_count);
 
         LOG_DBG("Block %u recycled (alloc_id=%u)", index, block->alloc_id);
     } else if (new_ref == 1) {
@@ -516,8 +510,8 @@ bool ipc_shm_is_valid(ipc_service_t* service, ipc_shm_handle_t handle) {
 /**
  * @brief 获取共享内存池统计信息
  */
-void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count,
-                       uint32_t* out_peak_count, uint32_t* out_free_count) {
+void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count, uint32_t* out_peak_count,
+                       uint32_t* out_free_count) {
     /* SIL-2: 验证 service */
     if (service == NULL) {
         return;
@@ -528,7 +522,7 @@ void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count,
     k_mutex_lock(&pool->pool_lock, K_FOREVER);
 
     if (out_active_count != NULL) {
-        *out_active_count = (uint32_t)atomic_get(&pool->active_count);
+        *out_active_count = (uint32_t) atomic_get(&pool->active_count);
     }
 
     if (out_peak_count != NULL) {
@@ -536,8 +530,7 @@ void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count,
     }
 
     if (out_free_count != NULL) {
-        *out_free_count =
-            CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE - (uint32_t)atomic_get(&pool->active_count);
+        *out_free_count = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE - (uint32_t) atomic_get(&pool->active_count);
     }
 
     k_mutex_unlock(&pool->pool_lock);

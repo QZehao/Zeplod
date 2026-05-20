@@ -165,7 +165,7 @@ static sys_log_level_t effective_level_for_module_locked(const char* module) {
 static void add_entry(sys_log_level_t level, const char* module, const char* msg, uint32_t timestamp) {
     k_mutex_lock(&g_sys_log.lock, K_FOREVER);
 
-    const uint32_t cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
+    const uint32_t   cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
     sys_log_entry_t* entry = &g_sys_log.buffer[g_sys_log.write_idx];
 
     entry->timestamp = timestamp;
@@ -280,16 +280,16 @@ int sys_log_init(const sys_log_config_t* config) {
     g_sys_log.total_count = 0;
 
     {
-        size_t ring_bytes = (size_t)g_sys_log.config.memory_buffer_size;
+        size_t ring_bytes = (size_t) g_sys_log.config.memory_buffer_size;
         if (ring_bytes < sizeof(sys_log_entry_t)) {
-            ring_bytes = (size_t)sizeof(sys_log_entry_t) * SYS_LOG_MIN_BUFFER_SIZE;
+            ring_bytes = (size_t) sizeof(sys_log_entry_t) * SYS_LOG_MIN_BUFFER_SIZE;
         }
-        uint32_t cap = (uint32_t)(ring_bytes / sizeof(sys_log_entry_t));
-        if (cap > (uint32_t)MAX_LOG_ENTRIES) {
-            cap = (uint32_t)MAX_LOG_ENTRIES;
+        uint32_t cap = (uint32_t) (ring_bytes / sizeof(sys_log_entry_t));
+        if (cap > (uint32_t) MAX_LOG_ENTRIES) {
+            cap = (uint32_t) MAX_LOG_ENTRIES;
         }
         if (cap < SYS_LOG_MIN_BUFFER_SIZE) {
-            cap = MIN((uint32_t)MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE);
+            cap = MIN((uint32_t) MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE);
         }
         if (cap == 0U) {
             cap = 1U;
@@ -302,7 +302,7 @@ int sys_log_init(const sys_log_config_t* config) {
         LOG_WRN("MAX_LOG_ENTRIES %u outside reasonable range [%u, %u]", MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE,
                 SYS_LOG_MAX_BUFFER_SIZE);
     }
-    LOG_INF("System log ring capacity: %u entries (static max %u)", g_sys_log.log_cap, (uint32_t)MAX_LOG_ENTRIES);
+    LOG_INF("System log ring capacity: %u entries (static max %u)", g_sys_log.log_cap, (uint32_t) MAX_LOG_ENTRIES);
 
     k_mutex_init(&g_sys_log.lock);
 
@@ -470,8 +470,8 @@ uint32_t sys_log_get_entries(sys_log_entry_t* entries, uint32_t count, bool olde
 
     k_mutex_lock(&g_sys_log.lock, K_FOREVER);
 
-    uint32_t available = g_sys_log.count;
-    uint32_t to_read = MIN(count, available);
+    uint32_t       available = g_sys_log.count;
+    uint32_t       to_read = MIN(count, available);
     const uint32_t cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
 
     if (to_read == 0) {
@@ -527,7 +527,7 @@ void sys_log_dump(sys_log_level_t level_filter) {
     cap_snapshot = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
     k_mutex_unlock(&g_sys_log.lock);
     uint32_t max_iterations = (cap_snapshot + 31U) / 32U; /* SIL-2: 防止无限循环 */
-    uint32_t        iterations = 0;
+    uint32_t iterations = 0;
 
     printk("\n=== Log Dump (min level: %d) ===\n", level_filter);
 

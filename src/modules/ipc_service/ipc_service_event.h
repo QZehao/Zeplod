@@ -6,11 +6,11 @@
  * - 将 IPC 服务的处理结果发布到事件总线
  * - 其他模块可通过订阅事件来获取 IPC 处理结果
  * - 实现模块间松耦合通信
- * 
+ *
  * 配置要求：
  * - CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE=y
  * - 需要 EVENT_SYSTEM 支持
- * 
+ *
  * 典型用法：
  * 1. 在系统初始化时调用 thread_ipc_event_register_types()
  * 2. 在 IPC 服务函数末尾调用 thread_ipc_event_publish_result()

@@ -24,8 +24,7 @@ LOG_MODULE_REGISTER(module_manager_compat, CONFIG_SYS_LOG_LEVEL);
 #if MODULE_COMPAT_USE_PRO
 #include "module_manager_pro.h"
 
-static int module_compat_map_pro_err(int pr)
-{
+static int module_compat_map_pro_err(int pr) {
     return pr == MODULE_MANAGER_PRO_OK ? 0 : pr;
 }
 
@@ -33,8 +32,7 @@ static int module_compat_map_pro_err(int pr)
 #include "module_manager.h"
 #endif
 
-int module_compat_init(const module_compat_config_t* config)
-{
+int module_compat_init(const module_compat_config_t* config) {
 #if MODULE_COMPAT_USE_PRO
     module_manager_pro_config_t pro_config;
 
@@ -71,8 +69,7 @@ int module_compat_init(const module_compat_config_t* config)
 #endif
 }
 
-int module_compat_start(void)
-{
+int module_compat_start(void) {
 #if MODULE_COMPAT_USE_PRO
     return module_compat_map_pro_err(module_manager_pro_start_all());
 #else
@@ -86,8 +83,7 @@ int module_compat_start(void)
 #endif
 }
 
-int module_compat_stop(void)
-{
+int module_compat_stop(void) {
 #if MODULE_COMPAT_USE_PRO
     return module_compat_map_pro_err(module_manager_pro_stop_all());
 #else
@@ -101,8 +97,7 @@ int module_compat_stop(void)
 #endif
 }
 
-int module_compat_shutdown(void)
-{
+int module_compat_shutdown(void) {
 #if MODULE_COMPAT_USE_PRO
     module_manager_pro_deinit();
     return 0;
@@ -117,8 +112,7 @@ int module_compat_shutdown(void)
 #endif
 }
 
-void module_compat_get_stats(module_compat_stats_t* stats)
-{
+void module_compat_get_stats(module_compat_stats_t* stats) {
     if (stats == NULL) {
         return;
     }
@@ -153,8 +147,7 @@ void module_compat_get_stats(module_compat_stats_t* stats)
 #endif
 }
 
-void module_compat_reset_stats(void)
-{
+void module_compat_reset_stats(void) {
 #if MODULE_COMPAT_USE_PRO
     (void) module_manager_pro_reset_stats();
 #else
@@ -164,118 +157,100 @@ void module_compat_reset_stats(void)
 
 #if MODULE_COMPAT_USE_PRO
 
-static int module_compat_pro_std_only(const char* api_name)
-{
+static int module_compat_pro_std_only(const char* api_name) {
     LOG_WRN("%s: use module_manager_pro_* APIs in PRO build", api_name);
     return -ENOTSUP;
 }
 
-int module_compat_register(const module_interface_t* interface, void* config, uint32_t* module_id)
-{
+int module_compat_register(const module_interface_t* interface, void* config, uint32_t* module_id) {
     ARG_UNUSED(interface);
     ARG_UNUSED(config);
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_register");
 }
 
-int module_compat_unregister(uint32_t module_id)
-{
+int module_compat_unregister(uint32_t module_id) {
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_unregister");
 }
 
-int module_compat_get_module_info(uint32_t module_id, module_info_t* out)
-{
+int module_compat_get_module_info(uint32_t module_id, module_info_t* out) {
     ARG_UNUSED(module_id);
     ARG_UNUSED(out);
     return module_compat_pro_std_only("module_compat_get_module_info");
 }
 
-uint32_t module_compat_get_id_by_name(const char* name)
-{
+uint32_t module_compat_get_id_by_name(const char* name) {
     ARG_UNUSED(name);
     (void) module_compat_pro_std_only("module_compat_get_id_by_name");
     return 0U;
 }
 
-int module_compat_foreach(void (*callback)(module_info_t*, void*), void* user_data)
-{
+int module_compat_foreach(void (*callback)(module_info_t*, void*), void* user_data) {
     ARG_UNUSED(callback);
     ARG_UNUSED(user_data);
     return module_compat_pro_std_only("module_compat_foreach");
 }
 
-int module_compat_start_module(uint32_t module_id)
-{
+int module_compat_start_module(uint32_t module_id) {
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_start_module");
 }
 
-int module_compat_stop_module(uint32_t module_id)
-{
+int module_compat_stop_module(uint32_t module_id) {
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_stop_module");
 }
 
-int module_compat_suspend_module(uint32_t module_id)
-{
+int module_compat_suspend_module(uint32_t module_id) {
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_suspend_module");
 }
 
-int module_compat_resume_module(uint32_t module_id)
-{
+int module_compat_resume_module(uint32_t module_id) {
     ARG_UNUSED(module_id);
     return module_compat_pro_std_only("module_compat_resume_module");
 }
 
-int module_compat_subscribe(uint32_t module_id, event_type_t event_type)
-{
+int module_compat_subscribe(uint32_t module_id, event_type_t event_type) {
     ARG_UNUSED(module_id);
     ARG_UNUSED(event_type);
     return module_compat_pro_std_only("module_compat_subscribe");
 }
 
-int module_compat_unsubscribe(uint32_t module_id, event_type_t event_type)
-{
+int module_compat_unsubscribe(uint32_t module_id, event_type_t event_type) {
     ARG_UNUSED(module_id);
     ARG_UNUSED(event_type);
     return module_compat_pro_std_only("module_compat_unsubscribe");
 }
 
-int module_compat_send_to_module(uint32_t module_id, const event_t* event)
-{
+int module_compat_send_to_module(uint32_t module_id, const event_t* event) {
     ARG_UNUSED(module_id);
     ARG_UNUSED(event);
     return module_compat_pro_std_only("module_compat_send_to_module");
 }
 
-int module_compat_broadcast(const event_t* event)
-{
+int module_compat_broadcast(const event_t* event) {
     ARG_UNUSED(event);
     return module_compat_pro_std_only("module_compat_broadcast");
 }
 
-int module_compat_set_callback(module_mgr_callback_t callback, void* user_data)
-{
+int module_compat_set_callback(module_mgr_callback_t callback, void* user_data) {
     ARG_UNUSED(callback);
     ARG_UNUSED(user_data);
     LOG_WRN("module_compat_set_callback: use module_manager_pro_register_state_callback with PRO");
     return -ENOTSUP;
 }
 
-int module_compat_start_all(void)
-{
+int module_compat_start_all(void) {
     return module_compat_map_pro_err(module_manager_pro_start_all());
 }
 
-int module_compat_stop_all(void)
-{
+int module_compat_stop_all(void) {
     return module_compat_map_pro_err(module_manager_pro_stop_all());
 }
 
-void module_compat_dump_info(void)
-{
+void module_compat_dump_info(void) {
     module_manager_pro_print_module_list();
 }
 
@@ -285,8 +260,7 @@ void module_compat_dump_info(void)
  * SYS_INIT 自动注册
  * ============================================================================= */
 
-static int module_compat_auto_register(void)
-{
+static int module_compat_auto_register(void) {
     int ret = module_compat_init(NULL);
 
     if (ret != 0) {

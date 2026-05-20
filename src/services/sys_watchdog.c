@@ -440,13 +440,12 @@ static void wdt_monitor_thread(void* p1, void* p2, void* p3) {
             break;
         }
 
-        uint32_t now = k_uptime_get_32();
-        uint32_t time_since_feed = now - g_wdt.last_feed_time;
-        uint32_t timeout_ms = g_wdt.config.timeout_ms;
-        uint32_t feed_margin_ms = g_wdt.config.feed_margin_ms;
-        uint32_t feed_threshold = timeout_ms / 2U;
-        uint32_t expire_threshold =
-            (timeout_ms > feed_margin_ms) ? (timeout_ms - feed_margin_ms) : timeout_ms;
+        uint32_t          now = k_uptime_get_32();
+        uint32_t          time_since_feed = now - g_wdt.last_feed_time;
+        uint32_t          timeout_ms = g_wdt.config.timeout_ms;
+        uint32_t          feed_margin_ms = g_wdt.config.feed_margin_ms;
+        uint32_t          feed_threshold = timeout_ms / 2U;
+        uint32_t          expire_threshold = (timeout_ms > feed_margin_ms) ? (timeout_ms - feed_margin_ms) : timeout_ms;
         sys_wdt_user_cb_t pre_cb = g_wdt.config.pre_expire_callback;
         void*             cb_ud = g_wdt.config.callback_user_data;
 

@@ -3,7 +3,7 @@
  * @brief 核心事件系统实现
  *
  * 基于发布 - 订阅模式的线程安全高性能事件系统。
- * 
+ *
  * 架构说明：
  * - 事件队列：使用 Zephyr k_msgq 实现，支持多生产者单消费者
  * - 事件分发：由 event_dispatcher 模块中的线程消费队列并调用 event_notify_subscribers
@@ -21,10 +21,10 @@
  *
  */
 #include "event_system.h"
-#include <string.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
+#include <string.h>
 #include "event_dispatcher.h"
 #include "event_memory.h"
 #include "event_queue.h"
@@ -168,8 +168,7 @@ static void event_publish_in_flight_wait_zero(void) {
 }
 
 #if EVENT_SLAB_ENABLED
-static const char* event_slab_name_for_priority(event_priority_t priority)
-{
+static const char* event_slab_name_for_priority(event_priority_t priority) {
     switch (priority) {
 #if EVENT_SLAB_CRITICAL_AVAILABLE
     case EVENT_PRIORITY_CRITICAL:

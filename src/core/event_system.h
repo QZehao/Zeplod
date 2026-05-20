@@ -4,7 +4,7 @@
  *
  * 为 Zephyr RTOS 设计的高性能实时事件系统。
  * 提供发布 - 订阅模式，支持线程安全操作。
- * 
+ *
  * 主要特性：
  * - 支持最多 256 种事件类型
  * - 支持多个订阅者 per 事件类型
@@ -91,12 +91,12 @@ extern "C" {
 
 /** 内联数据大小（从 Kconfig 获取，默认 48 字节） */
 #ifndef CONFIG_EVENT_INLINE_DATA_SIZE
-#define CONFIG_EVENT_INLINE_DATA_SIZE   48
+#define CONFIG_EVENT_INLINE_DATA_SIZE 48
 #endif
 
 /** 事件结构体大小（从 Kconfig 获取，默认 64 字节） */
 #ifndef CONFIG_EVENT_STRUCT_SIZE
-#define CONFIG_EVENT_STRUCT_SIZE        64
+#define CONFIG_EVENT_STRUCT_SIZE 64
 #endif
 
 /* =============================================================================
@@ -107,22 +107,22 @@ extern "C" {
 #define EVENT_SUBSCRIBER_ID_INVALID 0U
 
 /** 数据内联存储 */
-#define EVENT_FLAG_DATA_INLINE   0x01U
+#define EVENT_FLAG_DATA_INLINE      0x01U
 
 /** 数据动态分配 */
-#define EVENT_FLAG_DATA_DYNAMIC  0x02U
+#define EVENT_FLAG_DATA_DYNAMIC     0x02U
 
 /** event_t 来自 slab 池 */
-#define EVENT_FLAG_FROM_SLAB     0x04U
+#define EVENT_FLAG_FROM_SLAB        0x04U
 
 /** 动态数据来自 slab 池（与 EVENT_FLAG_DATA_DYNAMIC 配合使用） */
-#define EVENT_FLAG_DATA_FROM_SLAB 0x08U
+#define EVENT_FLAG_DATA_FROM_SLAB   0x08U
 
 /** 数据 slab 大小标记（CRIT-NEW-1：记录实际分配来源，避免级联 fallback 释放时配对错误） */
-#define EVENT_FLAG_SLAB_256       0x10U  /**< 数据来自 256B slab */
-#define EVENT_FLAG_SLAB_1K        0x20U  /**< 数据来自 1KB slab */
-#define EVENT_FLAG_SLAB_4K        0x40U  /**< 数据来自 4KB slab */
-#define EVENT_FLAG_SLAB_MASK      0x70U  /**< slab 标记位掩码 (bits 4-6) */
+#define EVENT_FLAG_SLAB_256         0x10U /**< 数据来自 256B slab */
+#define EVENT_FLAG_SLAB_1K          0x20U /**< 数据来自 1KB slab */
+#define EVENT_FLAG_SLAB_4K          0x40U /**< 数据来自 4KB slab */
+#define EVENT_FLAG_SLAB_MASK        0x70U /**< slab 标记位掩码 (bits 4-6) */
 
 /* =============================================================================
  * 类型定义
@@ -151,7 +151,7 @@ typedef uint8_t event_type_t;
  * @brief Data Bus 可用通知（与 CONFIG_DATA_BUS_EVENT_TYPE_ID 默认 30 对齐）
  * @note 启用 CONFIG_DATA_BUS_EVENT_BRIDGE 时由桥接模块注册该类型
  */
-#define EVENT_TYPE_DATA_BUS_AVAILABLE 30U
+#define EVENT_TYPE_DATA_BUS_AVAILABLE  30U
 
 /**
  * @brief 事件优先级枚举
@@ -200,22 +200,21 @@ typedef enum {
  * @note 结构体大小由 CONFIG_EVENT_STRUCT_SIZE 控制
  */
 typedef struct {
-    uint8_t          type;           /**< 事件类型标识符 */
-    uint8_t          priority;       /**< 事件优先级 */
-    uint8_t          flags;          /**< 标志位 (EVENT_FLAG_*) */
-    uint8_t          reserved;       /**< 预留扩展：必须初始化为 0，为未来版本保留 */
-    uint32_t         timestamp;      /**< 事件创建时间戳（毫秒 uptime） */
-    uint32_t         source_id;      /**< 源模块/组件 ID */
-    uint32_t         data_len;       /**< 事件数据长度（字节） */
+    uint8_t  type;      /**< 事件类型标识符 */
+    uint8_t  priority;  /**< 事件优先级 */
+    uint8_t  flags;     /**< 标志位 (EVENT_FLAG_*) */
+    uint8_t  reserved;  /**< 预留扩展：必须初始化为 0，为未来版本保留 */
+    uint32_t timestamp; /**< 事件创建时间戳（毫秒 uptime） */
+    uint32_t source_id; /**< 源模块/组件 ID */
+    uint32_t data_len;  /**< 事件数据长度（字节） */
     union {
-        uint8_t  inline_data[CONFIG_EVENT_INLINE_DATA_SIZE]; /**< 内联数据 */
-        void*    ptr;                                             /**< 外部数据指针 */
+        uint8_t inline_data[CONFIG_EVENT_INLINE_DATA_SIZE]; /**< 内联数据 */
+        void*   ptr;                                        /**< 外部数据指针 */
     } data;
 } event_t;
 
 /* 编译时验证结构体大小 */
-BUILD_ASSERT(sizeof(event_t) == CONFIG_EVENT_STRUCT_SIZE,
-             "event_t size mismatch with CONFIG_EVENT_STRUCT_SIZE");
+BUILD_ASSERT(sizeof(event_t) == CONFIG_EVENT_STRUCT_SIZE, "event_t size mismatch with CONFIG_EVENT_STRUCT_SIZE");
 
 /**
  * @brief 事件回调函数类型
@@ -258,7 +257,7 @@ typedef struct {
 } event_type_entry_t;
 
 /* =============================================================================
- * 核心 API 
+ * 核心 API
  * 初始化和控制系统的主要接口
  * ============================================================================= */
 
@@ -464,7 +463,7 @@ event_status_t event_publish_from_isr(event_t* event);
 event_status_t event_publish_copy(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /* =============================================================================
- * 实时安全 API 
+ * 实时安全 API
  * 用于 ISR 上下文和实时关键任务的确定性内存分配
  * ============================================================================= */
 
@@ -496,8 +495,7 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority);
  *   - 无可用 slab 或 slab 满: 返回 NULL
  * @note 完全实时安全，永不回退 k_malloc
  */
-event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
-                                    const void* data, size_t data_len);
+event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /**
  * @brief 发布事件并复制数据（实时安全）
@@ -510,8 +508,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
  *
  * @note 完全实时安全，内存不足时返回错误
  */
-event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priority,
-                                      const void* data, size_t data_len);
+event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /**
  * @brief 从 ISR 创建事件（实时安全）
@@ -524,8 +521,7 @@ event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priorit
  *
  * @note 等同于 event_create_with_data_rt，明确 ISR 上下文使用
  */
-event_t* event_create_from_isr(event_type_t type, event_priority_t priority,
-                                const void* data, size_t data_len);
+event_t* event_create_from_isr(event_type_t type, event_priority_t priority, const void* data, size_t data_len);
 
 /* =============================================================================
  * 事件创建与内存管理

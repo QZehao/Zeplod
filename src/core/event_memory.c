@@ -30,38 +30,32 @@ LOG_MODULE_REGISTER(event_memory, CONFIG_SYS_LOG_LEVEL);
 
 #if EVENT_SLAB_CRITICAL_AVAILABLE
 /** CRITICAL 优先级事件 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_critical, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_CRITICAL_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_critical, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_CRITICAL_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_HIGH_AVAILABLE
 /** HIGH 优先级事件 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_high, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_HIGH_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_high, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_HIGH_COUNT, sizeof(void*));
 #endif
 
 /** NORMAL/LOW 优先级事件 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_normal, CONFIG_EVENT_STRUCT_SIZE,
-                  CONFIG_EVENT_SLAB_NORMAL_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_normal, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_NORMAL_COUNT, sizeof(void*));
 
 #if EVENT_SLAB_LARGE_AVAILABLE
 
 #if EVENT_SLAB_256_AVAILABLE
 /** 256 字节数据块 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_data_256, 256,
-                  CONFIG_EVENT_SLAB_LARGE_256_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_data_256, 256, CONFIG_EVENT_SLAB_LARGE_256_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_1K_AVAILABLE
 /** 1KB 数据块 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_data_1k, 1024,
-                  CONFIG_EVENT_SLAB_LARGE_1K_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_data_1k, 1024, CONFIG_EVENT_SLAB_LARGE_1K_COUNT, sizeof(void*));
 #endif
 
 #if EVENT_SLAB_4K_AVAILABLE
 /** 4KB 数据块 Slab 池定义 */
-K_MEM_SLAB_DEFINE(event_slab_data_4k, 4096,
-                  CONFIG_EVENT_SLAB_LARGE_4K_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(event_slab_data_4k, 4096, CONFIG_EVENT_SLAB_LARGE_4K_COUNT, sizeof(void*));
 #endif
 
 #endif /* EVENT_SLAB_LARGE_AVAILABLE */
@@ -88,8 +82,7 @@ static atomic_t g_fallback_count = ATOMIC_INIT(0);
 /** Slab 耗尽回调函数指针 */
 static event_slab_exhausted_cb_t g_slab_exhausted_cb = NULL;
 
-void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb)
-{
+void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb) {
     /* 无锁写入：须在系统启动、并发分配前注册（通常为单线程 init 阶段） */
     g_slab_exhausted_cb = cb;
 }
@@ -100,8 +93,7 @@ void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb)
  * @param priority 触发耗尽的优先级
  * @param slab_name Slab 名称
  */
-static inline void notify_slab_exhausted(event_priority_t priority, const char* slab_name)
-{
+static inline void notify_slab_exhausted(event_priority_t priority, const char* slab_name) {
     if (g_slab_exhausted_cb != NULL) {
         g_slab_exhausted_cb(priority, slab_name);
     }
@@ -110,16 +102,14 @@ static inline void notify_slab_exhausted(event_priority_t priority, const char* 
 #else /* !CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
 /** 空实现的耗尽通知（编译优化后会被移除） */
-static inline void notify_slab_exhausted(event_priority_t priority, const char* slab_name)
-{
-    (void)priority;
-    (void)slab_name;
+static inline void notify_slab_exhausted(event_priority_t priority, const char* slab_name) {
+    (void) priority;
+    (void) slab_name;
 }
 
 #endif /* CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
-void event_memory_notify_slab_exhausted(event_priority_t priority, const char* slab_name)
-{
+void event_memory_notify_slab_exhausted(event_priority_t priority, const char* slab_name) {
     notify_slab_exhausted(priority, slab_name);
 }
 
@@ -129,8 +119,7 @@ void event_memory_notify_slab_exhausted(event_priority_t priority, const char* s
 
 #if EVENT_SLAB_ENABLED
 
-struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority)
-{
+struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
     switch (priority) {
 #if EVENT_SLAB_CRITICAL_AVAILABLE
     case EVENT_PRIORITY_CRITICAL:
@@ -151,8 +140,7 @@ struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority)
     }
 }
 
-struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
-{
+struct k_mem_slab* event_memory_select_data_slab(size_t data_len) {
     if (data_len == 0) {
         return NULL;
     }
@@ -179,8 +167,7 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
     return NULL;
 }
 
-struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
-{
+struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len) {
     if (data_len == 0) {
         return NULL;
     }
@@ -209,22 +196,19 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
 
 #else /* !EVENT_SLAB_ENABLED */
 
-struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority)
-{
+struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
     ARG_UNUSED(priority);
     return NULL;
 }
 
-struct k_mem_slab* event_memory_select_data_slab(size_t data_len)
-{
+struct k_mem_slab* event_memory_select_data_slab(size_t data_len) {
     if (data_len == 0) {
         return NULL;
     }
     return NULL;
 }
 
-struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
-{
+struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len) {
     if (data_len == 0) {
         return NULL;
     }
@@ -237,8 +221,7 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len)
  * 回退计数 API (Fallback Count API)
  * ============================================================================= */
 
-void event_memory_inc_fallback_count(void)
-{
+void event_memory_inc_fallback_count(void) {
 #if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
     atomic_inc(&g_fallback_count);
 #else
@@ -253,8 +236,7 @@ void event_memory_inc_fallback_count(void)
 
 #if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
 
-bool event_slab_available(event_priority_t priority)
-{
+bool event_slab_available(event_priority_t priority) {
     struct k_mem_slab* slab = event_memory_select_event_slab(priority);
 
     if (slab == NULL) {
@@ -264,8 +246,7 @@ bool event_slab_available(event_priority_t priority)
     return k_mem_slab_num_free_get(slab) > 0;
 }
 
-uint32_t event_slab_remaining(event_priority_t priority)
-{
+uint32_t event_slab_remaining(event_priority_t priority) {
     struct k_mem_slab* slab = event_memory_select_event_slab(priority);
 
     if (slab == NULL) {
@@ -275,8 +256,7 @@ uint32_t event_slab_remaining(event_priority_t priority)
     return k_mem_slab_num_free_get(slab);
 }
 
-void event_get_slab_stats(event_slab_stats_t* stats)
-{
+void event_get_slab_stats(event_slab_stats_t* stats) {
     if (stats == NULL) {
         return;
     }
@@ -330,11 +310,11 @@ void event_get_slab_stats(event_slab_stats_t* stats)
 
 /** 调试跟踪条目 */
 typedef struct debug_track_entry {
-    void*                  ptr;        /**< 分配的内存指针 */
-    size_t                 size;       /**< 分配大小 */
-    event_priority_t       priority;   /**< 事件优先级 */
-    uint32_t               timestamp;  /**< 分配时间戳 */
-    struct debug_track_entry* next;    /**< 链表下一项 */
+    void*                     ptr;       /**< 分配的内存指针 */
+    size_t                    size;      /**< 分配大小 */
+    event_priority_t          priority;  /**< 事件优先级 */
+    uint32_t                  timestamp; /**< 分配时间戳 */
+    struct debug_track_entry* next;      /**< 链表下一项 */
 } debug_track_entry_t;
 
 /** 调试跟踪链表头 */
@@ -349,8 +329,7 @@ static struct k_mutex g_debug_track_lock;
 #endif
 
 /** 调试跟踪池 */
-K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t),
-                  CONFIG_EVENT_DEBUG_TRACK_COUNT, sizeof(void*));
+K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t), CONFIG_EVENT_DEBUG_TRACK_COUNT, sizeof(void*));
 
 /** 调试模块是否已初始化 */
 static bool g_debug_initialized = false;
@@ -368,8 +347,7 @@ static atomic_t g_debug_track_misses = ATOMIC_INIT(0);
  *
  * 使用原子标志保护，防止多线程竞争初始化。
  */
-static void event_debug_init(void)
-{
+static void event_debug_init(void) {
     if (!g_debug_initialized) {
         while (atomic_test_and_set_bit(&g_debug_init_flag, 0)) {
             k_yield();
@@ -389,8 +367,7 @@ static void event_debug_init(void)
  * @param size 分配大小
  * @param priority 事件优先级
  */
-void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority)
-{
+void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority) {
     if (ptr == NULL) {
         return;
     }
@@ -399,7 +376,7 @@ void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority)
 
     debug_track_entry_t* entry = NULL;
 
-    if (k_mem_slab_alloc(&debug_track_slab, (void**)&entry, K_NO_WAIT) != 0) {
+    if (k_mem_slab_alloc(&debug_track_slab, (void**) &entry, K_NO_WAIT) != 0) {
         /* LOW-1: 累计追踪缺口，使 dump_leaks 可暴露统计不完整的事实 */
         atomic_inc(&g_debug_track_misses);
         LOG_WRN("Debug track slab exhausted");
@@ -422,8 +399,7 @@ void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority)
  *
  * @param ptr 要取消跟踪的内存指针
  */
-void event_debug_untrack_alloc(void* ptr)
-{
+void event_debug_untrack_alloc(void* ptr) {
     if (ptr == NULL) {
         return;
     }
@@ -449,8 +425,7 @@ void event_debug_untrack_alloc(void* ptr)
     LOG_WRN("Ptr %p not found in debug track", ptr);
 }
 
-uint32_t event_check_leaks(void)
-{
+uint32_t event_check_leaks(void) {
     event_debug_init();
 
     uint32_t count = 0;
@@ -466,28 +441,25 @@ uint32_t event_check_leaks(void)
     /* LOW-1: 若曾发生追踪缺口，警告调用方：返回值低估真实泄漏数 */
     uint32_t misses = (uint32_t) atomic_get(&g_debug_track_misses);
     if (misses > 0) {
-        LOG_WRN("Leak count may be incomplete: %u allocations untracked due to slab exhaustion",
-                misses);
+        LOG_WRN("Leak count may be incomplete: %u allocations untracked due to slab exhaustion", misses);
     }
 
     return count;
 }
 
-void event_dump_leaks(void)
-{
+void event_dump_leaks(void) {
     event_debug_init();
 
     k_mutex_lock(&g_debug_track_lock, K_FOREVER);
 
     debug_track_entry_t* entry = g_debug_track_head;
-    uint32_t count = 0;
+    uint32_t             count = 0;
     /* LOW-1: 在锁外读取原子计数器即可，但放在此处便于与 leak 报告关联输出 */
     uint32_t misses = (uint32_t) atomic_get(&g_debug_track_misses);
 
     if (entry == NULL) {
         if (misses > 0) {
-            LOG_WRN("No tracked leaks, but %u allocations were untracked (slab exhausted)",
-                    misses);
+            LOG_WRN("No tracked leaks, but %u allocations were untracked (slab exhausted)", misses);
         } else {
             LOG_INF("No memory leaks detected");
         }
@@ -498,17 +470,15 @@ void event_dump_leaks(void)
     LOG_INF("=== Memory Leak Report ===");
 
     while (entry != NULL) {
-        LOG_INF("Leak #%u: ptr=%p, size=%zu, priority=%d, time=%u",
-                count + 1, entry->ptr, entry->size,
-                entry->priority, entry->timestamp);
+        LOG_INF("Leak #%u: ptr=%p, size=%zu, priority=%d, time=%u", count + 1, entry->ptr, entry->size, entry->priority,
+                entry->timestamp);
         entry = entry->next;
         count++;
     }
 
     LOG_INF("Total leaks: %u", count);
     if (misses > 0) {
-        LOG_WRN("Untracked allocations (slab exhausted): %u — total leaks may exceed %u",
-                misses, count);
+        LOG_WRN("Untracked allocations (slab exhausted): %u — total leaks may exceed %u", misses, count);
     }
     k_mutex_unlock(&g_debug_track_lock);
 }

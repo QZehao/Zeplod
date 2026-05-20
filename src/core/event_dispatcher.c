@@ -3,7 +3,7 @@
  * @brief 事件分发器实现
  *
  * 高性能事件分发器，支持优先级调度和统计功能。
- * 
+ *
  * 主要功能：
  * - 事件分发线程管理
  * - 事件过滤
@@ -34,13 +34,13 @@ LOG_MODULE_REGISTER(event_dispatcher, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 /** 默认栈大小（使用 Kconfig 配置） */
-#define DEFAULT_STACK_SIZE              CONFIG_EVENT_DISPATCHER_STACK_SIZE
+#define DEFAULT_STACK_SIZE       CONFIG_EVENT_DISPATCHER_STACK_SIZE
 
 /** 默认优先级（使用 Kconfig 配置） */
-#define DEFAULT_PRIORITY                CONFIG_EVENT_DISPATCHER_PRIORITY
+#define DEFAULT_PRIORITY         CONFIG_EVENT_DISPATCHER_PRIORITY
 
 /** 每个周期默认最大处理事件数（使用 Kconfig 配置） */
-#define DEFAULT_MAX_EVENTS_CYCLE        CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE
+#define DEFAULT_MAX_EVENTS_CYCLE CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE
 
 /* =============================================================================
  * 内部数据结构
@@ -685,7 +685,7 @@ static void process_event(const event_t* event) {
             g_dispatcher.stats.avg_latency_us = latency_us;
         } else {
             g_dispatcher.stats.avg_latency_us =
-                (uint32_t)(((uint64_t)g_dispatcher.stats.avg_latency_us * 7 + latency_us) / 8);
+                (uint32_t) (((uint64_t) g_dispatcher.stats.avg_latency_us * 7 + latency_us) / 8);
         }
     }
 

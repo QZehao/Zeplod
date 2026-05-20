@@ -5,7 +5,7 @@
  * 功能：
  * - 注册事件类型 EVENT_TYPE_THREAD_IPC_RESPONSE
  * - 发布 IPC 处理结果到事件总线
- * 
+ *
  * 工作流程：
  * 1. 调用 thread_ipc_event_register_types() 注册事件类型
  * 2. IPC 服务处理完成后调用 thread_ipc_event_publish_result()

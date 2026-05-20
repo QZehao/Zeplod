@@ -556,15 +556,15 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
         }
 
         if (timer->status == SYS_TIMER_STOPPED) {
-            (void)k_sem_take(&timer->sem, K_FOREVER);
+            (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
         if (timer->status == SYS_TIMER_PAUSED) {
-            (void)k_sem_take(&timer->sem, K_FOREVER);
+            (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
         if (timer->status == SYS_TIMER_EXPIRED) {
-            (void)k_sem_take(&timer->sem, K_FOREVER);
+            (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
         if (timer->status != SYS_TIMER_RUNNING) {
@@ -575,7 +575,7 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
         uint32_t wait_time = (timer->next_fire_time > now) ? (timer->next_fire_time - now) : 0U;
 
         if (wait_time > 0U) {
-            (void)k_sem_take(&timer->sem, K_MSEC(wait_time));
+            (void) k_sem_take(&timer->sem, K_MSEC(wait_time));
         }
 
         if (!timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate) {

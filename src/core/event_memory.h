@@ -4,7 +4,7 @@
  *
  * 提供 Slab 池定义和内存管理函数声明。
  * 支持优先级分层和大数据块分配。
- * 
+ *
  * 主要特性：
  * - 优先级分层 Slab 池（CRITICAL/HIGH/NORMAL）
  * - 大数据 Slab 池（256B/1KB/4KB）
@@ -88,17 +88,14 @@ extern "C" {
  * 禁用 slab 时该 Kconfig 可能未定义或为 0，无条件断言会破坏构建。 */
 #if EVENT_SLAB_ENABLED
 /** NORMAL Slab 数量至少为 4 */
-BUILD_ASSERT(CONFIG_EVENT_SLAB_NORMAL_COUNT >= 4,
-             "CONFIG_EVENT_SLAB_NORMAL_COUNT must be at least 4");
+BUILD_ASSERT(CONFIG_EVENT_SLAB_NORMAL_COUNT >= 4, "CONFIG_EVENT_SLAB_NORMAL_COUNT must be at least 4");
 #endif
 
 /** 内联数据大小至少为 4 字节 */
-BUILD_ASSERT(CONFIG_EVENT_INLINE_DATA_SIZE >= 4,
-             "CONFIG_EVENT_INLINE_DATA_SIZE must be at least 4");
+BUILD_ASSERT(CONFIG_EVENT_INLINE_DATA_SIZE >= 4, "CONFIG_EVENT_INLINE_DATA_SIZE must be at least 4");
 
 /** 内联数据大小不超过 128 字节 */
-BUILD_ASSERT(CONFIG_EVENT_INLINE_DATA_SIZE <= 128,
-             "CONFIG_EVENT_INLINE_DATA_SIZE must not exceed 128");
+BUILD_ASSERT(CONFIG_EVENT_INLINE_DATA_SIZE <= 128, "CONFIG_EVENT_INLINE_DATA_SIZE must not exceed 128");
 
 /* =============================================================================
  * Slab 池声明 (Slab Pool Declarations)
@@ -226,19 +223,19 @@ uint32_t event_slab_remaining(event_priority_t priority);
  * @brief Slab 统计信息结构体
  */
 typedef struct {
-    uint32_t critical_used;     /**< CRITICAL 池已用块数 */
-    uint32_t critical_total;    /**< CRITICAL 池总块数 */
-    uint32_t high_used;         /**< HIGH 池已用块数 */
-    uint32_t high_total;        /**< HIGH 池总块数 */
-    uint32_t normal_used;       /**< NORMAL 池已用块数 */
-    uint32_t normal_total;      /**< NORMAL 池总块数 */
-    uint32_t data_256_used;     /**< 256B 数据池已用块数 */
-    uint32_t data_256_total;    /**< 256B 数据池总块数 */
-    uint32_t data_1k_used;      /**< 1KB 数据池已用块数 */
-    uint32_t data_1k_total;     /**< 1KB 数据池总块数 */
-    uint32_t data_4k_used;      /**< 4KB 数据池已用块数 */
-    uint32_t data_4k_total;     /**< 4KB 数据池总块数 */
-    uint32_t fallback_count;    /**< 回退到 k_malloc 的次数 */
+    uint32_t critical_used;  /**< CRITICAL 池已用块数 */
+    uint32_t critical_total; /**< CRITICAL 池总块数 */
+    uint32_t high_used;      /**< HIGH 池已用块数 */
+    uint32_t high_total;     /**< HIGH 池总块数 */
+    uint32_t normal_used;    /**< NORMAL 池已用块数 */
+    uint32_t normal_total;   /**< NORMAL 池总块数 */
+    uint32_t data_256_used;  /**< 256B 数据池已用块数 */
+    uint32_t data_256_total; /**< 256B 数据池总块数 */
+    uint32_t data_1k_used;   /**< 1KB 数据池已用块数 */
+    uint32_t data_1k_total;  /**< 1KB 数据池总块数 */
+    uint32_t data_4k_used;   /**< 4KB 数据池已用块数 */
+    uint32_t data_4k_total;  /**< 4KB 数据池总块数 */
+    uint32_t fallback_count; /**< 回退到 k_malloc 的次数 */
 } event_slab_stats_t;
 
 /**

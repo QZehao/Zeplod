@@ -56,9 +56,8 @@ int event_compat_init(const event_compat_config_t* config) {
     return 0;
 #else
     /* SIL-2: 检测配置请求了专业版功能，但在标准版下被静默忽略 */
-    if (config != NULL && (config->enable_playback || config->enable_persist ||
-                           config->enable_profiling || config->enable_security ||
-                           config->enable_rate_limit || config->enable_batch)) {
+    if (config != NULL && (config->enable_playback || config->enable_persist || config->enable_profiling ||
+                           config->enable_security || config->enable_rate_limit || config->enable_batch)) {
         LOG_WRN("Config requests pro features, falling back to standard implementation");
     }
     event_status_t ret = event_system_init();

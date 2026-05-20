@@ -34,11 +34,11 @@ LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
 
 /* 当内存池禁用时，减少跟踪记录数以节省内存 */
 #if defined(CONFIG_SYS_MEMORY_ENABLE) && (CONFIG_SYS_MEMORY_POOL_SIZE > 0)
-#define DEFAULT_POOL_SIZE  CONFIG_SYS_MEMORY_POOL_SIZE                 ///< 默认池大小（字节）
-#define MAX_ALLOCATIONS    256                                         ///< 最大跟踪分配数
+#define DEFAULT_POOL_SIZE CONFIG_SYS_MEMORY_POOL_SIZE ///< 默认池大小（字节）
+#define MAX_ALLOCATIONS   256                         ///< 最大跟踪分配数
 #else
-#define DEFAULT_POOL_SIZE  0                                           ///< 内存池禁用
-#define MAX_ALLOCATIONS    8                                           ///< 最小跟踪记录数
+#define DEFAULT_POOL_SIZE 0 ///< 内存池禁用
+#define MAX_ALLOCATIONS   8 ///< 最小跟踪记录数
 #endif
 
 #define MEMORY_MAGIC       0x4D454D30U                                 ///< 魔数 - 有效分配标识（"MEM0"）
@@ -92,13 +92,13 @@ typedef struct mem_pool {
  * 每条记录独立 slot_active[i]，移除时不清尾紧凑，避免与 head 游标冲突。
  */
 typedef struct mem_tracker {
-    sys_mem_alloc_info_t records[MAX_ALLOCATIONS]; ///< 记录数组
+    sys_mem_alloc_info_t records[MAX_ALLOCATIONS];     ///< 记录数组
     bool                 slot_active[MAX_ALLOCATIONS]; ///< 槽位是否表示当前有效分配
-    uint32_t             head;                       ///< 下次写入位置（环形）
-    uint32_t             count;                      ///< slot_active 为 true 的槽位数
-    uint32_t             max_records;                ///< 最大记录数
-    bool                 tracking_enabled;           ///< 跟踪是否启用
-    struct k_mutex       lock;                       ///< 跟踪器互斥锁
+    uint32_t             head;                         ///< 下次写入位置（环形）
+    uint32_t             count;                        ///< slot_active 为 true 的槽位数
+    uint32_t             max_records;                  ///< 最大记录数
+    bool                 tracking_enabled;             ///< 跟踪是否启用
+    struct k_mutex       lock;                         ///< 跟踪器互斥锁
 } mem_tracker_t;
 
 /**

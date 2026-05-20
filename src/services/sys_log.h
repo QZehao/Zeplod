@@ -72,7 +72,7 @@ typedef struct {
     bool                enable_colors;
     bool                enable_module_name;
     /** 环形内存日志区字节数，用于推导实际使用的条目数（不超过静态缓冲上限） */
-    uint32_t            memory_buffer_size;
+    uint32_t memory_buffer_size;
 } sys_log_config_t;
 
 /* =============================================================================

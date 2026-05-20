@@ -8,11 +8,11 @@
  * - 双消息队列设计（请求队列 + 响应队列）
  * - 无堆内存分配（队列和栈嵌入结构体）
  * - 支持三种调用模式：SYNC（阻塞）、ASYNC（回调）、FUTURE（未来值）
- * 
+ *
  * 配置要求：CONFIG_THREAD_IPC_SERVICE=y
- * 
+ *
  * 注意：与 Zephyr 子系统 IPC_SERVICE（核间 IPC）无关
- * 
+ *
  * 典型使用流程：
  * 1. 定义服务函数 ipc_service_func_t
  * 2. 调用 ipc_service_init() 初始化服务
@@ -114,7 +114,7 @@ typedef struct ipc_future {
     atomic_t           completed;  /**< 是否已完成（原子变量） */
     struct ipc_future* next;       /**< 空闲链表下一节点 */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-    ipc_shm_handle_t   shm_handle; /**< 共享内存句柄（0=未使用） */
+    ipc_shm_handle_t shm_handle; /**< 共享内存句柄（0=未使用） */
 #endif
 } ipc_future_t;
 
@@ -137,7 +137,7 @@ typedef struct ipc_pending_request {
     size_t               response_data_size; /**< 响应数据大小 */
     bool                 in_use;             /**< 槽位是否在使用中 */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-    ipc_shm_handle_t     shm_handle;         /**< 共享内存句柄（0=未使用） */
+    ipc_shm_handle_t shm_handle; /**< 共享内存句柄（0=未使用） */
 #endif
 } ipc_pending_request_t;
 
@@ -154,7 +154,7 @@ typedef struct ipc_request_msg {
     void*                callback_user_data; /**< 回调用户数据 */
     struct k_thread*     caller_thread;      /**< 调用者线程 */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-    ipc_shm_handle_t     shm_handle;         /**< 共享内存句柄（0=未使用） */
+    ipc_shm_handle_t shm_handle; /**< 共享内存句柄（0=未使用） */
 #endif
 } ipc_request_msg_t;
 
@@ -170,7 +170,7 @@ typedef struct ipc_response_msg {
     size_t           data_size;     /**< 输出数据大小 */
     struct k_thread* caller_thread; /**< 调用者线程 */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-    ipc_shm_handle_t shm_handle;    /**< 共享内存句柄（0=未使用） */
+    ipc_shm_handle_t shm_handle; /**< 共享内存句柄（0=未使用） */
 #endif
 } ipc_response_msg_t;
 

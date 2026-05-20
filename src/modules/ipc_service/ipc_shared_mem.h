@@ -6,7 +6,7 @@
  * - 解决调用者与服务函数之间的数据所有权不明确问题
  * - 提供引用计数自动管理，确保缓冲区在请求处理期间有效
  * - 提供安全的跨线程数据共享机制
- * 
+ *
  * SIL-2 合规：
  * - 所有输入参数验证
  * - 原子操作保护引用计数
@@ -30,44 +30,60 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #if !IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
 /* 当未启用共享内存时提供空实现（编译占位；调用方应在 Kconfig 关闭 SHARED_MEM 时不走分配路径） */
 typedef uint32_t ipc_shm_handle_t;
 struct ipc_service;
 
-#define IPC_SHM_HANDLE_INVALID ((ipc_shm_handle_t)0xFFFFFFFFU)
+#define IPC_SHM_HANDLE_INVALID ((ipc_shm_handle_t) 0xFFFFFFFFU)
 
 static inline ipc_shm_handle_t ipc_shm_alloc(struct ipc_service* service, size_t size) {
-    (void)service;
-    (void)size;
+    (void) service;
+    (void) size;
     return IPC_SHM_HANDLE_INVALID;
 }
 static inline void ipc_shm_acquire(struct ipc_service* service, ipc_shm_handle_t handle) {
-    (void)service; (void)handle;
+    (void) service;
+    (void) handle;
 }
 static inline int ipc_shm_release(struct ipc_service* service, ipc_shm_handle_t handle) {
-    (void)service; (void)handle; return 0;
+    (void) service;
+    (void) handle;
+    return 0;
 }
 static inline void* ipc_shm_get_ptr(struct ipc_service* service, ipc_shm_handle_t handle) {
-    (void)service; (void)handle; return NULL;
+    (void) service;
+    (void) handle;
+    return NULL;
 }
 static inline size_t ipc_shm_get_size(struct ipc_service* service, ipc_shm_handle_t handle) {
-    (void)service; (void)handle; return 0;
+    (void) service;
+    (void) handle;
+    return 0;
 }
 static inline int ipc_shm_init(struct ipc_service* service) {
-    (void)service; return 0;
+    (void) service;
+    return 0;
 }
 static inline void ipc_shm_deinit(struct ipc_service* service) {
-    (void)service;
+    (void) service;
 }
 static inline bool ipc_shm_is_valid(struct ipc_service* service, ipc_shm_handle_t handle) {
-    (void)service; (void)handle; return false;
+    (void) service;
+    (void) handle;
+    return false;
 }
 static inline void ipc_shm_get_stats(struct ipc_service* service, uint32_t* a, uint32_t* p, uint32_t* f) {
-    (void)service; if(a) *a=0; if(p) *p=0; if(f) *f=0;
+    (void) service;
+    if (a)
+        *a = 0;
+    if (p)
+        *p = 0;
+    if (f)
+        *f = 0;
 }
 #else
 
@@ -115,11 +131,11 @@ typedef struct ipc_shm_block {
 typedef struct ipc_shm_pool {
     ipc_shm_block_t blocks[CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE]; /**< 静态分配的块数组 */
     uint8_t         mem_pool[CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE *
-                             CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE]; /**< 实际内存池 */
+                     CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE]; /**< 实际内存池 */
     struct k_mutex  pool_lock;                                                 /**< 保护池分配的互斥锁 */
     uint32_t        alloc_counter;                                             /**< 分配计数器（用于生成唯一 ID） */
     atomic_t        active_count; /**< 当前活跃（已分配）块数量（原子：release 末路与 alloc 无需反向嵌套锁） */
-    uint32_t        peak_count;                                                /**< 峰值活跃块数量 */
+    uint32_t        peak_count;   /**< 峰值活跃块数量 */
 } ipc_shm_pool_t;
 
 /**
