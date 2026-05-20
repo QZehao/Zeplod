@@ -74,9 +74,9 @@ typedef uint32_t ipc_request_id_t;
  * @note 服务函数在工作线程上下文中执行
  * @note out_data 可以是：
  *       - 输入数据的指针（零拷贝回显）
- *       - 通过 ipc_shm_alloc() 分配的共享内存（推荐）
+ *       - 通过 ipc_shm_alloc() 分配的共享内存（推荐；框架按指针解析句柄）
  *       - 服务线程的静态缓冲区（需谨慎管理生命周期）
- * @note 如果使用共享内存，框架会自动管理引用计数
+ * @note 共享内存：输入句柄由 ipc_call_* 的 in_shm_handle 传入；输出由框架解析 out_data 或透传输入句柄
  */
 typedef int (*ipc_service_func_t)(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
                                   size_t* out_data_size);
@@ -277,7 +277,7 @@ int ipc_service_stop(ipc_service_t* service);
  *         k_sem_take 返回值（Zephyr 下超时常见 -EAGAIN，以所用内核版本为准）
  *
  * @note 调用线程将阻塞直到收到响应或超时
- * @note 如果服务返回的是共享内存，调用者需要通过 ipc_shm_release() 释放
+ * @note 若响应携带共享内存句柄，须使用 ipc_call_sync_shm()；ipc_call_sync() 将返回 -ENOTSUP
  * @warning 超时返回后，out_data 指向的数据可能已被释放，调用者不应使用超时返回后的数据
  */
 int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, void** out_data, size_t* out_data_size,
@@ -285,23 +285,22 @@ int ipc_call_sync(ipc_service_t* service, const void* data, size_t data_size, vo
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
 /**
- * @brief 同步调用 IPC 服务（带共享内存句柄返回）
- *
- * 与 ipc_call_sync 相同，但额外返回共享内存句柄（如果有）。
+ * @brief 同步调用 IPC 服务（带共享内存句柄输入/输出）
  *
  * @param service 服务实例指针
  * @param data 输入数据
  * @param data_size 输入数据大小
+ * @param in_shm_handle 输入共享内存句柄（0 表示无）
  * @param out_data 输出数据指针
  * @param out_data_size 输出数据大小
- * @param out_shm_handle 输出：共享内存句柄（可为 NULL）
+ * @param out_shm_handle 输出：共享内存句柄（可为 NULL，为 NULL 且存在输出句柄时自动 release）
  * @param timeout 超时时间
  * @return 语义同 ipc_call_sync；额外通过 out_shm_handle 返回共享内存句柄（若有）
  *
- * @note 如果 out_shm_handle 非零，调用者必须在使用完 out_data 后调用 ipc_shm_release()
+ * @note 若 out_shm_handle 非 NULL 且返回值非零句柄，调用者须在使用完 out_data 后 ipc_shm_release()
  */
-int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size, void** out_data,
-                      size_t* out_data_size, ipc_shm_handle_t* out_shm_handle, k_timeout_t timeout);
+int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size, ipc_shm_handle_t in_shm_handle,
+                      void** out_data, size_t* out_data_size, ipc_shm_handle_t* out_shm_handle, k_timeout_t timeout);
 #endif
 
 /**
@@ -314,6 +313,7 @@ int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size
  * @param data_size 输入数据大小（data 为 NULL 时应为 0）
  * @param callback 回调函数
  * @param user_data 回调用户数据
+ * @param in_shm_handle 输入共享内存句柄（仅 SHARED_MEM=y；0 表示无）
  * @param out_request_id 输出：请求 ID（可为 NULL）
  * @return 0 成功，负值错误码失败
  *
@@ -321,7 +321,11 @@ int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size
  * @note 回调在分发器线程中执行
  */
 int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, ipc_async_callback_t callback,
-                   void* user_data, ipc_request_id_t* out_request_id);
+                   void* user_data,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                   ipc_shm_handle_t in_shm_handle,
+#endif
+                   ipc_request_id_t* out_request_id);
 
 /**
  * @brief Future 模式调用 IPC 服务
@@ -331,17 +335,23 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
  * @param service 服务实例指针
  * @param data 输入数据（可为 NULL，表示无输入数据）
  * @param data_size 输入数据大小（data 为 NULL 时应为 0）
+ * @param in_shm_handle 输入共享内存句柄（仅 SHARED_MEM=y；0 表示无）
  * @param out_future 输出：future 对象指针
  * @return 0 成功，负值错误码失败
  *
  * @note 调用线程立即返回，不阻塞
  * @note 使用 ipc_future_wait 或 ipc_future_is_ready 获取结果
  */
-int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size, ipc_future_t** out_future);
+int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                    ipc_shm_handle_t in_shm_handle,
+#endif
+                    ipc_future_t** out_future);
 
 /**
  * @brief 等待 Future 结果
  *
+ * @param service 所属 IPC 服务实例（用于校验 future 归属）
  * @param future Future 对象指针
  * @param out_result 输出：服务函数返回值
  * @param out_data 输出：输出数据指针
@@ -350,9 +360,10 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size, 
  * @return 0 成功，负值错误码失败
  *
  * @note 阻塞直到 future 完成或超时
+ * @note 完成后须 ipc_future_release()；若 future 带 shm_handle，release 时一并释放
  */
-int ipc_future_wait(ipc_future_t* future, int* out_result, const void** out_data, size_t* out_data_size,
-                    k_timeout_t timeout);
+int ipc_future_wait(ipc_service_t* service, ipc_future_t* future, int* out_result, const void** out_data,
+                    size_t* out_data_size, k_timeout_t timeout);
 
 /**
  * @brief 检查 Future 是否就绪

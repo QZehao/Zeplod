@@ -749,9 +749,8 @@ int module_manager_stop(void) {
  * @return MODULE_OK 成功，MODULE_ERR_NOT_INITIALIZED 未初始化
  */
 int module_manager_shutdown(void) {
-    int (*shutdown_fn[CONFIG_MAX_MODULES])(void);
-    bool     need_shutdown[CONFIG_MAX_MODULES];
-    uint32_t shutdown_count = 0;
+    start_order_entry_t entries[CONFIG_MAX_MODULES];
+    int                 n = 0;
 
     LOG_INF("Shutting down module manager...");
 
@@ -763,9 +762,6 @@ int module_manager_shutdown(void) {
 
     (void) module_manager_stop();
 
-    (void) memset(need_shutdown, 0, sizeof(need_shutdown));
-    (void) memset(shutdown_fn, 0, sizeof(shutdown_fn));
-
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
 
     for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
@@ -774,27 +770,55 @@ int module_manager_shutdown(void) {
         /* 清除所有事件订阅 */
         module_event_clear_all_locked(info);
 
-        /* 收集需要 shutdown 的模块 */
         if (info->status != MODULE_STATUS_UNINITIALIZED && info->interface != NULL &&
             info->interface->shutdown != NULL) {
-            shutdown_fn[i] = info->interface->shutdown;
-            need_shutdown[i] = true;
-            shutdown_count++;
+            entries[n].id = info->id;
+            entries[n].priority = info->interface->priority;
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+            entries[n].depends_on = info->interface->depends_on;
+#endif
+            n++;
         }
     }
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    /* SIL-2: 在锁外调用 shutdown 函数，避免重入死锁 */
-    if (shutdown_count > 0) {
-        LOG_INF("Calling shutdown for %u modules", shutdown_count);
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+    n = dependency_order_stop_batch(entries, n);
+#else
+    sort_start_entries(entries, n);
+    for (int i = 0; i < n / 2; i++) {
+        const int           j = n - 1 - i;
+        start_order_entry_t t = entries[i];
+
+        entries[i] = entries[j];
+        entries[j] = t;
+    }
+#endif
+
+    if (n > 0) {
+        LOG_INF("Calling shutdown for %d modules", n);
     }
 
-    for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
-        if (need_shutdown[i] && shutdown_fn[i] != NULL) {
-            int ret = shutdown_fn[i]();
+    /* SIL-2: 在锁外按停止序（依赖逆序）调用 shutdown，避免重入死锁 */
+    for (int i = 0; i < n; i++) {
+        int (*shutdown_fn)(void) = NULL;
+
+        k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+
+        module_info_t* info = find_module_by_id_locked(entries[i].id);
+
+        if (info != NULL && info->interface != NULL) {
+            shutdown_fn = info->interface->shutdown;
+        }
+
+        k_mutex_unlock(&g_module_mgr.lock);
+
+        if (shutdown_fn != NULL) {
+            const int ret = shutdown_fn();
+
             if (ret != MODULE_OK) {
-                LOG_WRN("Module shutdown at index %d returned %d", i, ret);
+                LOG_WRN("Module shutdown id=%u returned %d", (unsigned int) entries[i].id, ret);
             }
         }
     }

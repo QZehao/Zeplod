@@ -39,12 +39,14 @@ int module_compat_init(const module_compat_config_t* config) {
     (void) memset(&pro_config, 0, sizeof(pro_config));
 
     if (config != NULL) {
-        /* 字段语义映射（compat 配置 → PRO Kconfig/结构） */
+        /* 字段语义映射（compat → PRO；名称不完全一致，见 module_compat_config_t） */
         pro_config.enable_hot_reload = config->enable_hotplug;
         pro_config.enable_health_check = config->enable_health_monitor;
+        /* enable_auto_deps：映射到 PRO 自动恢复，非运行时 depends_on 拓扑 */
         pro_config.enable_auto_recovery = config->enable_auto_deps;
         pro_config.enable_statistics = config->enable_lifecycle_hooks;
         pro_config.health_check_interval_ms = 1000U;
+        /* max_dependencies：复用为 PRO max_restart_count 的启发值，非依赖个数上限 */
         pro_config.max_restart_count = (config->max_dependencies != 0U) ? (uint32_t) config->max_dependencies : 3U;
     } else {
         pro_config.enable_hot_reload = false;

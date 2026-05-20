@@ -131,6 +131,9 @@ static void example_async_call(void) {
     /* 异步调用：立即返回，回调将在服务完成后执行 */
     int result = ipc_call_async(&g_example_service, input_data, strlen(input_data) + 1, async_callback,
                                 (void*) 0x12345678, /* 用户数据 */
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                                0,
+#endif
                                 &request_id);
 
     if (result == 0) {
@@ -160,7 +163,11 @@ static void example_future_call(void) {
     ipc_future_t* future = NULL;
 
     /* Future 模式调用：返回 future 对象，可稍后获取结果 */
-    int result = ipc_call_future(&g_example_service, input_data, strlen(input_data) + 1, &future);
+    int result = ipc_call_future(&g_example_service, input_data, strlen(input_data) + 1,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                                 0,
+#endif
+                                 &future);
 
     if (result == 0 && future != NULL) {
         LOG_INF("FUTURE call sent, waiting for result...");
@@ -169,7 +176,7 @@ static void example_future_call(void) {
         const void* output_data;
         size_t      output_size;
 
-        result = ipc_future_wait(future, &future_result, &output_data, &output_size, K_SECONDS(1));
+        result = ipc_future_wait(&g_example_service, future, &future_result, &output_data, &output_size, K_SECONDS(1));
 
         if (result == 0) {
             LOG_INF("FUTURE call succeeded: result=%d, data=%s", future_result, (char*) output_data);

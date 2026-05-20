@@ -191,7 +191,11 @@ ZTEST(ipc_service, test_async_call) {
     r = ipc_service_start(&g_ipc);
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
-    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL, &request_id);
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
     zassert_not_equal(request_id, 0, "request_id 不应为 0");
 
@@ -219,7 +223,11 @@ ZTEST(ipc_service, test_async_call_with_delayed_handler) {
     r = ipc_service_start(&g_ipc);
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
-    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL, &request_id);
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
     /* 等待延迟处理完成 */
@@ -248,11 +256,15 @@ ZTEST(ipc_service, test_future_call) {
     r = ipc_service_start(&g_ipc);
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
-    r = ipc_call_future(&g_ipc, payload, sizeof(payload), &future);
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
     zassert_equal(r, 0, "ipc_call_future failed: %d", r);
     zassert_not_null(future, "future 不应为 NULL");
 
-    r = ipc_future_wait(future, &result, &out_data, &out_size, K_SECONDS(2));
+    r = ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_SECONDS(2));
     zassert_equal(r, 0, "ipc_future_wait failed: %d", r);
     zassert_equal(result, 0, "result 应为 0");
     zassert_equal(out_size, sizeof(payload), "数据大小应匹配");
@@ -275,7 +287,11 @@ ZTEST(ipc_service, test_future_is_ready) {
     r = ipc_service_start(&g_ipc);
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
-    r = ipc_call_future(&g_ipc, payload, sizeof(payload), &future);
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
     zassert_equal(r, 0, "ipc_call_future failed: %d", r);
 
     /* 立即检查，应未就绪 */
@@ -306,16 +322,20 @@ ZTEST(ipc_service, test_future_wait_timeout) {
     r = ipc_service_start(&g_ipc);
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
-    r = ipc_call_future(&g_ipc, payload, sizeof(payload), &future);
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
     zassert_equal(r, 0, "ipc_call_future failed: %d", r);
 
     /* 使用很短的超时，应超时 */
-    r = ipc_future_wait(future, &result, &out_data, &out_size, K_MSEC(10));
+    r = ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_MSEC(10));
     zassert_equal(r, -EAGAIN, "应返回 -EAGAIN，实际: %d", r);
 
     /* 等待实际完成后再释放 */
     k_msleep(200);
-    ipc_future_wait(future, &result, &out_data, &out_size, K_SECONDS(1));
+    ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_SECONDS(1));
     ipc_future_release(&g_ipc, future);
     ipc_service_stop(&g_ipc);
 }
@@ -340,7 +360,11 @@ ZTEST(ipc_service, test_get_pending_count) {
     zassert_equal(count, 0, "初始 pending 数量应为 0");
 
     /* 发送异步请求 */
-    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL, &request_id);
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
     /* 短暂等待请求入队 */
@@ -371,7 +395,11 @@ ZTEST(ipc_service, test_cancel_request) {
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
     /* 发送异步请求 */
-    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL, &request_id);
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
     /* 尝试取消请求（可能已在处理中，所以结果不确定） */
@@ -528,7 +556,11 @@ ZTEST(ipc_service, test_async_null_callback) {
     zassert_equal(r, 0, "ipc_service_start failed: %d", r);
 
     /* NULL callback 应该被允许（fire-and-forget 模式） */
-    r = ipc_call_async(&g_ipc, payload, sizeof(payload), NULL, NULL, &request_id);
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), NULL, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
     /* 允许成功或失败，取决于实现 */
     zassert_true(r == 0 || r != 0, "NULL callback 行为实现定义");
 
@@ -542,20 +574,58 @@ ZTEST(ipc_service, test_async_null_callback) {
  * 共享内存引用计数测试
  * ============================================================================= */
 
-/* 服务函数：分配共享内存并返回 */
+/* 服务函数：分配共享内存并返回（通过测试全局 g_ipc） */
 static int ipc_shm_alloc_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
-                                  size_t* out_data_size) {
-    (void)request_id;
-    (void)data;
-    (void)data_size;
+                                 size_t* out_data_size) {
+    (void) request_id;
+    (void) data;
+    (void) data_size;
 
-    /* 注意：服务函数没有 service 指针，无法直接分配共享内存
-     * 实际使用中，服务函数需要通过用户数据或全局变量获取 service
-     * 这里我们简单返回输入数据（零拷贝）
-     */
-    *out_data = (void*)data;
-    *out_data_size = data_size;
+    ipc_shm_handle_t handle = ipc_shm_alloc(&g_ipc, 32);
+
+    if (handle == IPC_SHM_HANDLE_INVALID) {
+        return -ENOMEM;
+    }
+
+    void* ptr = ipc_shm_get_ptr(&g_ipc, handle);
+
+    if (ptr == NULL) {
+        (void) ipc_shm_release(&g_ipc, handle);
+        return -EIO;
+    }
+
+    (void) memset(ptr, 0, 32);
+    (void) memcpy(ptr, "shm_out", 8);
+
+    *out_data = ptr;
+    *out_data_size = 32;
     return 0;
+}
+
+/* 测试 sync_shm 端到端：service 分配 shm，调用方通过句柄释放 */
+ZTEST(ipc_service, test_sync_call_shm_output) {
+    void*            out_data = NULL;
+    size_t           out_size = 0;
+    ipc_shm_handle_t out_handle = IPC_SHM_HANDLE_INVALID;
+    int              r;
+
+    r = ipc_service_init(&g_ipc, "shm_sync", ipc_shm_alloc_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_start failed: %d", r);
+
+    r = ipc_call_sync_shm(&g_ipc, NULL, 0, 0, &out_data, &out_size, &out_handle, K_SECONDS(2));
+    zassert_equal(r, 0, "ipc_call_sync_shm failed: %d", r);
+    zassert_true(out_handle != IPC_SHM_HANDLE_INVALID, "expected valid out shm handle");
+    zassert_not_null(out_data, "expected out_data");
+    zassert_equal(out_size, 32, "unexpected out_size");
+    zassert_mem_equal(out_data, "shm_out", 7, "unexpected shm payload");
+
+    r = ipc_shm_release(&g_ipc, out_handle);
+    zassert_equal(r, 0, "shm_release failed: %d", r);
+
+    ipc_service_stop(&g_ipc);
 }
 
 /* 测试共享内存基本功能 */

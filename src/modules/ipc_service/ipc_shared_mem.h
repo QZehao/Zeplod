@@ -76,6 +76,11 @@ static inline bool ipc_shm_is_valid(struct ipc_service* service, ipc_shm_handle_
     (void) handle;
     return false;
 }
+static inline ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(struct ipc_service* service, const void* ptr) {
+    (void) service;
+    (void) ptr;
+    return IPC_SHM_HANDLE_INVALID;
+}
 static inline void ipc_shm_get_stats(struct ipc_service* service, uint32_t* a, uint32_t* p, uint32_t* f) {
     (void) service;
     if (a)
@@ -251,6 +256,17 @@ size_t ipc_shm_get_size(struct ipc_service* service, ipc_shm_handle_t handle);
  * @return true 有效，false 无效
  */
 bool ipc_shm_is_valid(struct ipc_service* service, ipc_shm_handle_t handle);
+
+/**
+ * @brief 根据池内指针查找共享内存句柄
+ *
+ * 当 service_func 通过 ipc_shm_alloc() 返回 out_data 时，框架用此函数解析句柄。
+ *
+ * @param service IPC 服务实例指针
+ * @param ptr 指向池内已分配块的指针
+ * @return 有效句柄；ptr 不在池中或无效时返回 IPC_SHM_HANDLE_INVALID
+ */
+ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(struct ipc_service* service, const void* ptr);
 
 /**
  * @brief 获取共享内存池统计信息

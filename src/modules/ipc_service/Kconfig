@@ -90,7 +90,7 @@ config THREAD_IPC_SERVICE_EVENT_BRIDGE
     default n
     depends on THREAD_IPC_SERVICE && EVENT_SYSTEM
     help
-      Provides ipc_service_event.h/c: register event type THREAD_IPC_EVENT_TYPE_RESPONSE
+      Provides ipc_service_event.h/c: register EVENT_TYPE_THREAD_IPC_RESPONSE
       and thread_ipc_event_publish_result() for use inside ipc_service_func_t.
 
 config THREAD_IPC_SERVICE_SHARED_MEM
