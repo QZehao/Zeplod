@@ -56,12 +56,17 @@ typedef struct {
 
 static app_cb_t g_app;
 
+#if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
+static sys_timer_handle_t g_heartbeat_timer;
+#endif
+
 /* =============================================================================
  * 前置声明
  * ============================================================================= */
 
 static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_data);
 static void app_print_banner(void);
+static void app_apply_runtime_config(void);
 
 static int app_init_apply_cb(void);
 #if APP_CONFIG_ENABLE_APP_KV
@@ -324,6 +329,11 @@ static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 #else
     if (argc > 1) {
         int level = atoi(argv[1]);
+        if (level < (int) SYS_LOG_LEVEL_OFF) {
+            level = (int) SYS_LOG_LEVEL_OFF;
+        } else if (level >= (int) SYS_LOG_LEVEL_MAX) {
+            level = (int) SYS_LOG_LEVEL_DBG;
+        }
         sys_log_dump((sys_log_level_t) level);
     } else {
         sys_log_dump(SYS_LOG_LEVEL_INF);
@@ -383,6 +393,19 @@ static void app_apply_config(const app_config_t* config) {
     }
 }
 
+static void app_apply_runtime_config(void) {
+#if APP_CONFIG_ENABLE_LOGGING
+    if (g_app.config.enable_logging) {
+        sys_log_level_t lv = (sys_log_level_t) g_app.config.log_level;
+
+        if (lv >= SYS_LOG_LEVEL_MAX) {
+            lv = SYS_LOG_LEVEL_DBG;
+        }
+        sys_log_set_level(NULL, lv);
+    }
+#endif
+}
+
 static int app_init_apply_cb(void) {
     LOG_INF("========================================");
     LOG_INF("Application Initializing...");
@@ -398,14 +421,14 @@ static int app_init_apply_cb(void) {
 #if APP_CONFIG_ENABLE_APP_KV
 static int app_init_kv_step(void) {
     app_kv_init();
-    (void) app_kv_set("build.target", APP_TARGET_NAME);
+    (void) app_kv_set("build.target", BUILD_TARGET);
     return 0;
 }
 #endif
 
 static int app_init_finalize(void) {
     g_app.initialized = true;
-    g_app.start_time = k_uptime_get_32();
+    app_apply_runtime_config();
     LOG_INF("Application initialization complete");
     return 0;
 }
@@ -415,9 +438,17 @@ static int app_init_finalize(void) {
  * ============================================================================= */
 
 int app_init(const app_config_t* config) {
-    ARG_UNUSED(config);
-    /* 子系统与模块由本文件及各模块内的 SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*) 在 main 之前完成。 */
-    return g_app.initialized ? APP_OK : APP_ERR_INIT;
+    if (!g_app.initialized) {
+        return APP_ERR_INIT;
+    }
+
+    /* 子系统与模块由 SYS_INIT(POST_KERNEL) 在 main 之前完成；此处仅应用可选运行时配置。 */
+    if (config != NULL) {
+        app_apply_config(config);
+        app_apply_runtime_config();
+    }
+
+    return APP_OK;
 }
 
 int app_start(void) {
@@ -433,35 +464,38 @@ int app_start(void) {
 
     LOG_INF("Starting application...");
 
-    /* 事件系统和事件分发器已由各自的 SYS_INIT 自动启动，此处不再重复调用 */
+    /* 事件系统/分发器已由 SYS_INIT 启动；module_compat SYS_INIT 仅启动管理器本身。 */
 
-    /* 模块管理器已由 module_manager_compat.c 的 SYS_INIT 自动启动，此处不再重复调用 */
-
-    /* 启动所有已注册模块 */
+    /* 启动各已注册业务模块（INITIALIZED/STOPPED → RUNNING） */
     int started = module_compat_start_all();
     LOG_INF("Started %d modules", started);
 
-    /* 启动看门狗 */
 #if APP_CONFIG_ENABLE_WATCHDOG
-    sys_wdt_start();
+    if (g_app.config.enable_watchdog) {
+        sys_wdt_start();
+    }
 #endif
 
-    /* 创建心跳定时器（仅在启用定时器服务且间隔 > 0 时） */
 #if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
-    sys_timer_config_t heartbeat_config = {.mode = SYS_TIMER_PERIODIC,
-                                           .delay_ms = APP_HEARTBEAT_INTERVAL_MS,
-                                           .period_ms = APP_HEARTBEAT_INTERVAL_MS,
-                                           .callback = app_heartbeat_timer_callback,
-                                           .user_data = NULL,
-                                           .name = "heartbeat",
-                                           .priority = APP_PRIORITY_MODULE_LOW};
-    sys_timer_handle_t heartbeat = sys_timer_create(&heartbeat_config);
-    if (heartbeat != NULL) {
-        sys_timer_start(heartbeat);
+    if (g_heartbeat_timer == NULL) {
+        sys_timer_config_t heartbeat_config = {.mode = SYS_TIMER_PERIODIC,
+                                               .delay_ms = APP_HEARTBEAT_INTERVAL_MS,
+                                               .period_ms = APP_HEARTBEAT_INTERVAL_MS,
+                                               .callback = app_heartbeat_timer_callback,
+                                               .user_data = NULL,
+                                               .name = "heartbeat",
+                                               .priority = APP_PRIORITY_MODULE_LOW};
+        g_heartbeat_timer = sys_timer_create(&heartbeat_config);
+        if (g_heartbeat_timer != NULL) {
+            (void) sys_timer_start(g_heartbeat_timer);
+        } else {
+            LOG_WRN("Heartbeat timer create failed");
+        }
     }
 #endif
 
     g_app.running = true;
+    g_app.start_time = k_uptime_get_32();
 
     app_print_banner();
     LOG_INF("Application started successfully");
@@ -493,9 +527,18 @@ int app_stop(void) {
         LOG_ERR("event_compat_stop failed");
     }
 
-    /* 停止看门狗 */
 #if APP_CONFIG_ENABLE_WATCHDOG
-    sys_wdt_stop();
+    if (g_app.config.enable_watchdog) {
+        sys_wdt_stop();
+    }
+#endif
+
+#if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
+    if (g_heartbeat_timer != NULL) {
+        (void) sys_timer_stop(g_heartbeat_timer);
+        (void) sys_timer_delete(g_heartbeat_timer);
+        g_heartbeat_timer = NULL;
+    }
 #endif
 
     LOG_INF("Application stopped");
@@ -503,7 +546,7 @@ int app_stop(void) {
 }
 
 uint32_t app_get_uptime(void) {
-    if (!g_app.initialized) {
+    if (!g_app.initialized || !g_app.running) {
         return 0;
     }
     return k_uptime_get_32() - g_app.start_time;
@@ -547,7 +590,7 @@ static void app_print_banner(void) {
  * ============================================================================= */
 
 int main(void) {
-    LOG_ERR("FW_MARKER: %s | %s", GIT_COMMIT_HASH, BUILD_TIMESTAMP);
+    LOG_INF("FW_MARKER: %s | %s", GIT_COMMIT_HASH, BUILD_TIMESTAMP);
     /* 初始化应用 */
     if (app_init(NULL) != APP_OK) {
         LOG_ERR("Application initialization failed");

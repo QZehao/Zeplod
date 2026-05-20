@@ -200,9 +200,12 @@ extern "C" {
 #define APP_BUILD_TYPE "Debug"
 #endif
 
-/* 目标信息（由构建系统设置）*/
+/* 目标板名：与 CMake BUILD_TARGET / app_version 一致 */
+#ifndef BUILD_TARGET
+#define BUILD_TARGET "generic"
+#endif
 #ifndef APP_TARGET_NAME
-#define APP_TARGET_NAME "generic"
+#define APP_TARGET_NAME BUILD_TARGET
 #endif
 
 #ifdef __cplusplus

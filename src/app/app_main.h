@@ -38,8 +38,12 @@ typedef struct {
  * ============================================================================= */
 
 /**
- * @brief 查询应用是否已由 SYS_INIT 完成初始化（在 main 之前执行）
- * @param config 保留；运行时传入的配置当前不参与 SYS_INIT 路径
+ * @brief 查询 SYS_INIT 是否已完成，并可选应用运行时配置
+ *
+ * 子系统在 main 之前由 SYS_INIT 初始化。若 config 非 NULL，更新 g_app.config 并
+ * 应用日志级别等（见 app_apply_runtime_config）；须在 app_start() 之前调用。
+ *
+ * @param config NULL 表示仅检查初始化状态
  * @return APP_OK 若已初始化，否则 APP_ERR_INIT
  */
 int app_init(const app_config_t* config);
@@ -57,8 +61,8 @@ int app_start(void);
 int app_stop(void);
 
 /**
- * @brief 获取应用运行时间
- * @return 运行时间（毫秒）
+ * @brief 获取自 app_start() 成功以来的运行时间
+ * @return 运行时间（毫秒）；未 start 时返回 0
  */
 uint32_t app_get_uptime(void);
 
