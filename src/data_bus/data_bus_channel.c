@@ -12,6 +12,7 @@
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
+ * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
  *
  */
 
@@ -230,6 +231,9 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
     }
+
+    /* 先关闭发布入口，再移出全局表，避免悬空 ch 指针继续入队 */
+    atomic_set(&ch->active, 0);
 
     /* 从表中移除 */
     for (uint32_t i = 0; i < g_channel_count; i++) {

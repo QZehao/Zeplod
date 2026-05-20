@@ -54,6 +54,8 @@ typedef struct data_bus_consumer data_bus_consumer_t;
  * @note 框架在回调返回后自动调用 data_bus_block_release()。
  *       如需在回调外继续持有数据块（例如传给另一个线程），
  *       在回调内调用 data_bus_block_retain()，用完后自行 release。
+ * @note 回调中勿调用 data_bus_channel_create/destroy 或 data_bus_consumer_unregister，
+ *       以免与分发线程争用 g_channels_lock 导致死锁。
  */
 typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
                                        data_bus_block_t* block,
@@ -188,6 +190,7 @@ int data_bus_channel_create(const char* name,
  * 若仍有活跃消费者返回 -EBUSY；
  * 若队列非空或分发器仍在为此通道投递数据块返回 -EAGAIN（稍后重试）。
  * 调用者必须先注销所有消费者并等待队列排空。
+ * 通过检查后会先将通道置为非 active，再从全局表移除，避免销毁窗口内继续 publish。
  *
  * @return 成功返回 0，失败返回负 errno
  */

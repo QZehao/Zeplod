@@ -12,13 +12,15 @@
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
+ * 2026-05-19       2.1            zeh            SYS_INIT 注册事件类型；publish 失败打日志
  *
  */
 
 #include "data_bus.h"
 #include "data_bus_internal.h"
-#include "data_bus_memory.h"
+#include "app_config.h"
 #include "event_system.h"
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/logging/log.h>
@@ -26,19 +28,40 @@
 
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 
+static atomic_t g_event_type_registered;
+
 typedef struct {
 	char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
 	uint32_t seq;
 	uint32_t len;
 } data_bus_event_notification_t;
 
-/* 来自事件系统的前向声明 */
-event_status_t event_publish_copy(event_type_t type, event_priority_t priority,
-				  const void *data, size_t data_len);
+static int data_bus_event_bridge_init(void)
+{
+	event_status_t st = event_register_type((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
+						"DATA_BUS_AVAILABLE");
+
+	if (st != EVENT_OK) {
+		LOG_ERR("event_register_type(%u) failed: %d", CONFIG_DATA_BUS_EVENT_TYPE_ID, st);
+		return -EIO;
+	}
+
+	atomic_set(&g_event_type_registered, 1);
+	LOG_INF("Data bus event bridge: type %u registered", CONFIG_DATA_BUS_EVENT_TYPE_ID);
+	return 0;
+}
+
+SYS_INIT(data_bus_event_bridge_init, POST_KERNEL, APP_INIT_PRIO_DATA_BUS + 1);
 
 void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t len)
 {
+	event_status_t st;
+
 	if (ch == NULL || ch->name == NULL) {
+		return;
+	}
+
+	if (!atomic_get(&g_event_type_registered)) {
 		return;
 	}
 
@@ -57,7 +80,11 @@ void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t l
 	LOG_DBG("Bridge notify ch='%s' seq=%u len=%u",
 		notification.channel_name, seq, (uint32_t)len);
 
-	event_publish_copy((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
-			   EVENT_PRIORITY_NORMAL,
-			   &notification, sizeof(notification));
+	st = event_publish_copy((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
+				EVENT_PRIORITY_NORMAL,
+				&notification, sizeof(notification));
+	if (st != EVENT_OK) {
+		LOG_WRN("Bridge publish failed ch='%s' seq=%u: %d",
+			notification.channel_name, seq, st);
+	}
 }

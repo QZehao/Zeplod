@@ -13,6 +13,7 @@
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 分发模型
  * 2026-05-15       2.1            zeh            分发线程：queue 非空时无消费者也出队并 release，避免块泄漏
+ * 2026-05-19       2.2            zeh            init 校验分发线程；排空快照释放全局锁
  *
  */
 
@@ -52,16 +53,22 @@ int data_bus_require_initialized(void)
 
 static void data_bus_drain_all_channels(bool run_dispatch)
 {
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
-	uint32_t n = g_channel_count;
-	for (uint32_t i = 0; i < n; i++) {
-		data_bus_channel_t *ch = g_channels[i];
+	data_bus_channel_t *snap[CONFIG_DATA_BUS_MAX_CHANNELS];
+	uint32_t n;
 
-		if (ch != NULL) {
-			data_bus_channel_drain_pending(ch, run_dispatch);
-		}
+	/* 快照后释放全局锁，避免回调内 create/unregister 与 g_channels_lock 死锁 */
+	k_mutex_lock(&g_channels_lock, K_FOREVER);
+	n = g_channel_count;
+	for (uint32_t i = 0; i < n; i++) {
+		snap[i] = g_channels[i];
 	}
 	k_mutex_unlock(&g_channels_lock);
+
+	for (uint32_t i = 0; i < n; i++) {
+		if (snap[i] != NULL) {
+			data_bus_channel_drain_pending(snap[i], run_dispatch);
+		}
+	}
 }
 
 struct k_thread g_dispatcher_thread_data;
@@ -137,15 +144,20 @@ int data_bus_init(void)
 	atomic_set(&g_shutting_down, 0);
 
 	/* 创建分发线程 */
-	k_thread_create(&g_dispatcher_thread_data,
-			    g_dispatcher_stack,
-			    K_THREAD_STACK_SIZEOF(g_dispatcher_stack),
-			    data_bus_dispatcher_thread,
-			    NULL, NULL, NULL,
-			    CONFIG_DATA_BUS_DISPATCHER_PRIORITY,
-			    0, K_NO_WAIT);
+	k_tid_t tid = k_thread_create(&g_dispatcher_thread_data,
+				      g_dispatcher_stack,
+				      K_THREAD_STACK_SIZEOF(g_dispatcher_stack),
+				      data_bus_dispatcher_thread,
+				      NULL, NULL, NULL,
+				      CONFIG_DATA_BUS_DISPATCHER_PRIORITY,
+				      0, K_NO_WAIT);
 
-	k_thread_name_set(&g_dispatcher_thread_data, "data_bus_disp");
+	if (tid == NULL) {
+		LOG_ERR("Failed to create data bus dispatcher thread");
+		return -ENOMEM;
+	}
+
+	k_thread_name_set(tid, "data_bus_disp");
 
 	atomic_set(&g_initialized, 1);
 	LOG_INF("Data bus initialized (disp stack=%d prio=%d)",

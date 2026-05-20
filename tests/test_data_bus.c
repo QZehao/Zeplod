@@ -653,7 +653,9 @@ ZTEST(test_data_bus, test_publish_block_rejects_nonzero_ref)
 }
 
 /**
- * @brief 单通道突发入队超过旧版 8 块批处理上限时应全部投递
+ * @brief 单通道连续填满队列深度，验证分发线程能排空（回归旧版每轮仅处理 8 块）
+ *
+ * 入队数量不得超过 CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH，否则返回 -ENOBUFS。
  */
 ZTEST(test_data_bus, test_dispatch_burst_drain)
 {
@@ -673,22 +675,52 @@ ZTEST(test_data_bus, test_dispatch_burst_drain)
 	ret = data_bus_consumer_register(ch, &cfg, NULL);
 	zassert_equal(ret, 0, "消费者注册失败");
 
-	const int burst_count = CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH + 4;
+	const int burst_count = CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
 
-	for (int i = 0; i < burst_count; i++) {
-		const uint8_t payload[] = {(uint8_t)i, 0xEE};
-		ret = data_bus_publish(ch, payload, sizeof(payload));
-		zassert_equal(ret, 0, "突发发布 %d 失败", i);
+	for (int round = 0; round < 2; round++) {
+		atomic_set(&g_call_count, 0);
+
+		for (int i = 0; i < burst_count; i++) {
+			const uint8_t payload[] = {(uint8_t)(round * 16 + i), 0xEE};
+			ret = data_bus_publish(ch, payload, sizeof(payload));
+			zassert_equal(ret, 0, "第 %d 轮发布 %d 失败", round, i);
+		}
+
+		for (int i = 0; i < burst_count; i++) {
+			ret = k_sem_take(&g_test_sem, K_MSEC(500));
+			zassert_equal(ret, 0, "第 %d 轮投递 %d 超时", round, i);
+		}
+
+		zassert_equal(atomic_get(&g_call_count), burst_count,
+			      "第 %d 轮应投递全部 %d 块", round, burst_count);
 	}
-
-	for (int i = 0; i < burst_count; i++) {
-		ret = k_sem_take(&g_test_sem, K_MSEC(500));
-		zassert_equal(ret, 0, "突发投递 %d 超时", i);
-	}
-
-	zassert_equal(atomic_get(&g_call_count), burst_count, "应投递全部突发块");
 
 	data_bus_channel_destroy(ch);
+	data_bus_deinit();
+}
+
+/**
+ * @brief 非 active 通道应拒绝 publish（与 destroy 前置 active=0 语义一致）
+ */
+ZTEST(test_data_bus, test_inactive_channel_rejects_publish)
+{
+	data_bus_test_setup();
+	data_bus_init();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("inactive_ch", &ch);
+	zassert_equal(ret, 0, "通道创建失败");
+
+	atomic_set(&ch->active, 0);
+
+	const uint8_t payload[] = {0x01, 0x02};
+	ret = data_bus_publish(ch, payload, sizeof(payload));
+	zassert_equal(ret, -ESHUTDOWN, "非 active 通道应返回 -ESHUTDOWN");
+
+	atomic_set(&ch->active, 1);
+	ret = data_bus_channel_destroy(ch);
+	zassert_equal(ret, 0, "通道销毁失败");
+
 	data_bus_deinit();
 }
 
