@@ -14,6 +14,7 @@
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 分发模型
  * 2026-05-15       2.1            zeh            分发线程：queue 非空时无消费者也出队并 release，避免块泄漏
  * 2026-05-19       2.2            zeh            init 校验分发线程；排空快照释放全局锁
+ * 2026-05-20       2.3            zeh            init/deinit 互斥锁消除并发初始化竞态
  *
  */
 
@@ -39,6 +40,8 @@ uint32_t g_channel_count;
 struct k_mutex g_channels_lock;
 atomic_t g_initialized;
 atomic_t g_shutting_down;
+
+K_MUTEX_DEFINE(g_init_lock);
 
 int data_bus_require_initialized(void)
 {
@@ -127,8 +130,13 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 
 int data_bus_init(void)
 {
+	int ret = 0;
+
+	k_mutex_lock(&g_init_lock, K_FOREVER);
+
 	if (atomic_get(&g_initialized)) {
-		return 0; /* 已初始化 */
+		k_mutex_unlock(&g_init_lock);
+		return 0;
 	}
 
 	/* 初始化全局信号量 */
@@ -144,33 +152,32 @@ int data_bus_init(void)
 	atomic_set(&g_shutting_down, 0);
 
 	/* 创建分发线程 */
-	k_tid_t tid = k_thread_create(&g_dispatcher_thread_data,
-				      g_dispatcher_stack,
+	k_tid_t tid = k_thread_create(&g_dispatcher_thread_data, g_dispatcher_stack,
 				      K_THREAD_STACK_SIZEOF(g_dispatcher_stack),
-				      data_bus_dispatcher_thread,
-				      NULL, NULL, NULL,
-				      CONFIG_DATA_BUS_DISPATCHER_PRIORITY,
-				      0, K_NO_WAIT);
+				      data_bus_dispatcher_thread, NULL, NULL, NULL,
+				      CONFIG_DATA_BUS_DISPATCHER_PRIORITY, 0, K_NO_WAIT);
 
 	if (tid == NULL) {
 		LOG_ERR("Failed to create data bus dispatcher thread");
-		return -ENOMEM;
+		ret = -ENOMEM;
+	} else {
+		k_thread_name_set(tid, "data_bus_disp");
+		atomic_set(&g_initialized, 1);
+		LOG_INF("Data bus initialized (disp stack=%d prio=%d)",
+			CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE, CONFIG_DATA_BUS_DISPATCHER_PRIORITY);
 	}
 
-	k_thread_name_set(tid, "data_bus_disp");
-
-	atomic_set(&g_initialized, 1);
-	LOG_INF("Data bus initialized (disp stack=%d prio=%d)",
-		CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE,
-		CONFIG_DATA_BUS_DISPATCHER_PRIORITY);
-
-	return 0;
+	k_mutex_unlock(&g_init_lock);
+	return ret;
 }
 
 int data_bus_deinit(void)
 {
+	k_mutex_lock(&g_init_lock, K_FOREVER);
+
 	if (!atomic_get(&g_initialized)) {
-		return 0; /* 未初始化 */
+		k_mutex_unlock(&g_init_lock);
+		return 0;
 	}
 
 	/* 发出关闭信号 */
@@ -204,8 +211,10 @@ int data_bus_deinit(void)
 	k_mutex_unlock(&g_channels_lock);
 
 	atomic_set(&g_initialized, 0);
+	atomic_set(&g_shutting_down, 0);
 	LOG_INF("Data bus deinitialized");
 
+	k_mutex_unlock(&g_init_lock);
 	return 0;
 }
 

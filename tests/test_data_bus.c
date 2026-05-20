@@ -14,6 +14,7 @@
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：删除 COPY 模式测试，添加 retain 测试
  * 2026-05-15       2.1            zeh            无消费者时队列排空回归测试
+ * 2026-05-20       2.2            zeh            消费者固定槽位：交错注销不使 out_consumer 指针错位
  *
  */
 
@@ -489,6 +490,57 @@ ZTEST(test_data_bus, test_consumer_unregister)
 	/* 给分发线程足够时间：无消费者时仍应出队并释放块（不触发回调） */
 	k_sleep(K_MSEC(100));
 	zassert_equal(atomic_get(&g_call_count), 0, "注销后回调不应触发");
+
+	data_bus_channel_destroy(ch);
+	data_bus_deinit();
+}
+
+/**
+ * @brief 先注销槽位 0 时，槽位 1 的 out_consumer 指针仍指向原对象
+ */
+ZTEST(test_data_bus, test_consumer_slot_stable)
+{
+	data_bus_test_setup();
+	data_bus_init();
+
+	data_bus_channel_t *ch = NULL;
+	int ret = data_bus_channel_create("slot_stable_ch", &ch);
+	zassert_equal(ret, 0, NULL);
+
+	data_bus_consumer_t *cons_a = NULL;
+	data_bus_consumer_t *cons_b = NULL;
+	data_bus_consumer_cfg_t cfg_a = {
+		.name = "consumer_a",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
+		.user_data = NULL,
+	};
+	data_bus_consumer_cfg_t cfg_b = {
+		.name = "consumer_b",
+		.manual_release = false,
+		.callback = auto_consumer_cb,
+		.user_data = NULL,
+	};
+
+	ret = data_bus_consumer_register(ch, &cfg_a, &cons_a);
+	zassert_equal(ret, 0, NULL);
+	ret = data_bus_consumer_register(ch, &cfg_b, &cons_b);
+	zassert_equal(ret, 0, NULL);
+	zassert_not_equal(cons_a, cons_b, "两个消费者应为不同槽位");
+
+	data_bus_consumer_t *cons_b_saved = cons_b;
+
+	ret = data_bus_consumer_unregister(cons_a);
+	zassert_equal(ret, 0, NULL);
+
+	/* cons_b 地址必须不变，且仍可正常注销 */
+	zassert_equal(cons_b, cons_b_saved, "注销其他槽位后指针不应被数组压缩覆盖");
+	ret = data_bus_consumer_unregister(cons_b);
+	zassert_equal(ret, 0, NULL);
+
+	/* 已注销的 cons_a 不可再次注销 */
+	ret = data_bus_consumer_unregister(cons_a);
+	zassert_equal(ret, -EINVAL, NULL);
 
 	data_bus_channel_destroy(ch);
 	data_bus_deinit();

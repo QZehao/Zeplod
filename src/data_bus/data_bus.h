@@ -54,8 +54,8 @@ typedef struct data_bus_consumer data_bus_consumer_t;
  * @note 框架在回调返回后自动调用 data_bus_block_release()。
  *       如需在回调外继续持有数据块（例如传给另一个线程），
  *       在回调内调用 data_bus_block_retain()，用完后自行 release。
- * @note 回调中勿调用 data_bus_channel_create/destroy 或 data_bus_consumer_unregister，
- *       以免与分发线程争用 g_channels_lock 导致死锁。
+ * @note 回调中勿调用 data_bus_channel_create/destroy、data_bus_consumer_unregister
+ *       或 data_bus_deinit()，以免与分发线程争用 g_channels_lock 或 k_thread_join 死锁。
  */
 typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
                                        data_bus_block_t* block,
@@ -67,8 +67,9 @@ typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
 
 typedef struct {
     const char*             name;           /**< 消费者名称（调试用）；注册时拷贝 */
-    bool                    manual_release; /**< 默认 false（启用自动释放）。
-                                                  若在回调内自行调用 data_bus_block_release() 则设为 true */
+    bool                    manual_release; /**< 默认 false（框架在回调返回后自动 release）。
+                                                  若为 true，回调必须在返回前调用 data_bus_block_release(block)，
+                                                  否则该消费者分得的引用将泄漏。 */
     data_bus_consume_fn_t   callback;       /**< 数据到达回调 */
     void*                   user_data;      /**< 回调用户数据 */
 } data_bus_consumer_cfg_t;
@@ -113,7 +114,8 @@ struct data_bus_channel {
     atomic_t        active;
 
     data_bus_consumer_t consumers[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
-    uint32_t        consumer_count;
+    bool            consumer_slot_in_use[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
+    uint32_t        consumer_count;     /**< 当前已注册消费者数量 */
 
     uint32_t        next_seq;           /**< 下一个序列号（2^32 处回绕） */
     uint32_t        publish_count;
@@ -158,6 +160,8 @@ int data_bus_init(void);
  * 停止接收新发布，排空所有通道队列，
  * 释放所有挂起的数据块，销毁所有通道。
  *
+ * @warning 切勿在消费者回调或任何由分发线程调用的上下文中调用本函数，
+ *          否则 k_thread_join() 将等待分发线程结束而导致死锁。
  * @warning 无法回收应用线程通过 retain() 持有的数据块。
  *          调用者必须确保所有异步消费者已 release。
  *
@@ -199,6 +203,9 @@ int data_bus_channel_destroy(data_bus_channel_t* ch);
 /**
  * @brief 按名称查找通道
  * @return 通道指针，未找到返回 NULL
+ *
+ * @warning 返回指针仅在通道未被 destroy 期间有效；勿跨线程长期缓存。
+ *          其他线程 destroy 同名通道后，已保存的指针将悬空（UAF）。
  */
 data_bus_channel_t* data_bus_channel_find(const char* name);
 
@@ -224,6 +231,7 @@ data_bus_channel_t* data_bus_channel_find(const char* name);
  * @note ISR 路径中 slab 耗尽返回 -ENOMEM（无 k_malloc 兜底）
  * @note 数据被拷贝到内部管理的块中
  * @note 无已注册消费者时仍会入队；分发线程会排空队列并 release 块，避免块滞留泄漏
+ * @note len 必须大于 0；不支持零长度载荷（无心跳语义）
  */
 int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
 
@@ -254,7 +262,7 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
  *
  * @param ch            目标通道
  * @param cfg           消费者配置
- * @param out_consumer  输出：消费者对象指针（可选，可为 NULL）
+ * @param out_consumer  输出：消费者对象指针（可选，可为 NULL）；槽位地址固定，注销后勿再使用
  * @return 成功返回 0，-EINVAL 配置非法，-ENOMEM 消费者表满
  */
 int data_bus_consumer_register(data_bus_channel_t* ch,
@@ -264,8 +272,8 @@ int data_bus_consumer_register(data_bus_channel_t* ch,
 /**
  * @brief 注销消费者
  *
- * 立即从通道消费者列表中移除。若消费者当前正在回调中处理数据
- *（且已 retain 了数据块），后续 release 不受影响，因为引用计数在块上。
+ * 将槽位标记为空闲，不移动其他消费者对象，out_consumer 指针在注销后失效。
+ * 若消费者当前正在回调中处理数据（且已 retain 了数据块），后续 release 不受影响。
  */
 int data_bus_consumer_unregister(data_bus_consumer_t* consumer);
 

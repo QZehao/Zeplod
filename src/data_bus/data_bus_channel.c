@@ -13,13 +13,13 @@
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
  * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
+ * 2026-05-20       2.2            zeh            obj_init 运行时校验；消费者固定槽位 reset/destroy
  *
  */
 
 #include "data_bus_channel.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/__assert.h>
 #include <stdio.h>
 #include <string.h>
 #include "data_bus_consumer.h"
@@ -64,8 +64,9 @@ static data_bus_channel_t* find_in_table(const char* name) {
  * ============================================================================ */
 
 int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
-    __ASSERT(ch != NULL, "NULL channel pointer");
-    __ASSERT(name != NULL, "NULL name");
+    if (ch == NULL || name == NULL) {
+        return -EINVAL;
+    }
 
     memset(ch, 0, sizeof(*ch));
 
@@ -125,10 +126,14 @@ void data_bus_channel_obj_reset(data_bus_channel_t* ch) {
 
     data_bus_channel_drain_pending(ch, false);
 
-    /* 注销所有消费者 */
-    for (uint32_t i = 0; i < ch->consumer_count; i++) {
-        atomic_set(&ch->consumers[i].active, 0);
-        ch->consumers[i].channel = NULL;
+    /* 清空所有消费者槽位 */
+    for (uint32_t i = 0; i < CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL; i++) {
+        if (ch->consumer_slot_in_use[i]) {
+            atomic_set(&ch->consumers[i].active, 0);
+            ch->consumers[i].channel = NULL;
+        }
+        ch->consumer_slot_in_use[i] = false;
+        memset(&ch->consumers[i], 0, sizeof(ch->consumers[i]));
     }
     ch->consumer_count = 0;
 
@@ -208,13 +213,12 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         return -EINVAL;
     }
 
-    /* 检查活跃消费者 */
-    for (uint32_t i = 0; i < ch->consumer_count; i++) {
-        if (atomic_get(&ch->consumers[i].active)) {
-            LOG_WRN("Channel '%s' destroy failed: active consumers remain", ch->name);
-            k_mutex_unlock(&g_channels_lock);
-            return -EBUSY;
-        }
+    /* 检查是否仍有已注册消费者 */
+    if (ch->consumer_count > 0) {
+        LOG_WRN("Channel '%s' destroy failed: consumers remain (count=%u)", ch->name,
+                ch->consumer_count);
+        k_mutex_unlock(&g_channels_lock);
+        return -EBUSY;
     }
 
     /* 检查挂起的数据 */
@@ -249,8 +253,14 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
 
     LOG_INF("Channel '%s' destroyed", ch->name);
 
-    /* 重置并释放 */
-    data_bus_channel_obj_reset(ch);
+    /* 队列已空，仅重置消费者与统计；无需再次 drain */
+    for (uint32_t ci = 0; ci < CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL; ci++) {
+        ch->consumer_slot_in_use[ci] = false;
+        memset(&ch->consumers[ci], 0, sizeof(ch->consumers[ci]));
+    }
+    ch->consumer_count = 0;
+    atomic_set(&ch->active, 0);
+
     k_mem_slab_free(&data_bus_channel_slab, ch);
 
     k_mutex_unlock(&g_channels_lock);
