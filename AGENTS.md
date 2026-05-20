@@ -284,6 +284,17 @@ event_publish_copy(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_NORMAL, &data, sizeof(
 event_publish_from_isr(&my_event);
 ```
 
+**自动初始化（标准版，默认启用）**
+
+| 阶段 | SYS_INIT 回调 | 优先级 |
+|------|----------------|--------|
+| 事件系统 init+start | `event_compat_auto_init` | `APP_INIT_PRIO_EVENT_SYS` (40) |
+| 分发器 init+start | `event_dispatcher_auto_init` | `APP_INIT_PRIO_DISPATCHER` (45) |
+
+- 链接了 autoinit 时，应用层**不要**再手动 `event_dispatcher_init()` / `event_dispatcher_start()`，以免重复创建分发线程。
+- 单元测试若需独占队列消费者，应 `event_system_shutdown()` 收尾（见 `test_event_dispatcher.c`）。
+- `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK=y` 时，`event_publish` 入队使用 `K_FOREVER` 阻塞等待空位；ISR 仍使用 `K_NO_WAIT`。
+
 ---
 
 ## 4. 项目结构

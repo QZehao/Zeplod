@@ -106,6 +106,13 @@ static bool g_restart_dispatcher_on_start;
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_NEWEST
 #endif
 
+#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
+/** BLOCK 策略下 publish 入队应阻塞等待空位，不可使用 K_NO_WAIT */
+#define EVENT_PUBLISH_ENQUEUE_TIMEOUT K_FOREVER
+#else
+#define EVENT_PUBLISH_ENQUEUE_TIMEOUT K_NO_WAIT
+#endif
+
 /* =============================================================================
  * 内部数据结构
  * ============================================================================= */
@@ -290,11 +297,9 @@ static void event_system_reset_control_block(void) {
 }
 
 /**
- * @brief HIGH-NEW-4: 检查订阅者 ID 是否已被使用
+ * @brief 检查订阅者 ID 是否已被使用
  *
- * 无锁扫描所有事件类型的订阅者表。读取时可能与其他线程的
- * subscribe/unsubscribe 发生竞态，但最坏结果只是多一次重试循环，
- * 不会导致错误分配。
+ * @note 调用方必须已持有 g_subscriber_id_lock；unsubscribe 亦在同锁下修改 ID。
  */
 static bool subscriber_id_in_use(uint32_t id) {
     for (int t = 0; t < MAX_EVENT_TYPES; t++) {
@@ -675,10 +680,13 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
+    /* 固定锁顺序：g_subscriber_id_lock → entry->lock，与 unsubscribe 一致 */
+    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
     k_mutex_lock(&entry->lock, K_FOREVER);
 
     if (entry->name == NULL) {
         k_mutex_unlock(&entry->lock);
+        k_mutex_unlock(&g_subscriber_id_lock);
         return EVENT_ERR_NOT_FOUND;
     }
 
@@ -688,9 +696,6 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             uint32_t new_id;
             uint32_t attempts = 0;
 
-            /* SIL-2: g_subscriber_id_lock 串行化「检查 in_use + 写入 subscriber_id」，
-             * 消除跨线程 TOCTOU；entry->lock 保护本类型的槽位与订阅表。 */
-            k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
             do {
                 new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
                 if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
@@ -698,8 +703,8 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
                 }
                 if (++attempts > UINT16_MAX) {
                     LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
-                    k_mutex_unlock(&g_subscriber_id_lock);
                     k_mutex_unlock(&entry->lock);
+                    k_mutex_unlock(&g_subscriber_id_lock);
                     return EVENT_ERR_NO_MEM;
                 }
             } while (subscriber_id_in_use(new_id));
@@ -711,14 +716,15 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             entry->subscriber_count++;
             *subscriber_id = new_id;
 
-            k_mutex_unlock(&g_subscriber_id_lock);
             k_mutex_unlock(&entry->lock);
+            k_mutex_unlock(&g_subscriber_id_lock);
             LOG_DBG("Subscriber %d registered for event type %d", new_id, type);
             return EVENT_OK;
         }
     }
 
     k_mutex_unlock(&entry->lock);
+    k_mutex_unlock(&g_subscriber_id_lock);
     LOG_ERR("No room for more subscribers on event type %d", type);
     return EVENT_ERR_QUEUE_FULL;
 }
@@ -742,11 +748,13 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
+    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
     k_mutex_lock(&entry->lock, K_FOREVER);
 
     subscriber_entry_t* sub = find_subscriber(entry, subscriber_id);
     if (sub == NULL) {
         k_mutex_unlock(&entry->lock);
+        k_mutex_unlock(&g_subscriber_id_lock);
         return EVENT_ERR_NOT_FOUND;
     }
 
@@ -756,6 +764,7 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
     entry->subscriber_count--;
 
     k_mutex_unlock(&entry->lock);
+    k_mutex_unlock(&g_subscriber_id_lock);
     LOG_DBG("Subscriber %d removed from event type %d", subscriber_id, type);
     return EVENT_OK;
 }
@@ -771,15 +780,14 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
         return;
     }
 
+    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
+
     /* 注意：event_type_t 是 uint8_t，需要用 int 避免溢出死循环 */
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
 
-        /* SIL-2: 无锁读取 name 作为优化早退检查；
-         * 与 event_unregister_type 并发时最坏情况是获取锁后发现无订阅者，
-         * 功能仍正确，仅浪费一次加锁开销。 */
         if (entry->name == NULL) {
-            continue; /* 跳过未注册的类型 */
+            continue;
         }
 
         k_mutex_lock(&entry->lock, K_FOREVER);
@@ -794,6 +802,8 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
 
         k_mutex_unlock(&entry->lock);
     }
+
+    k_mutex_unlock(&g_subscriber_id_lock);
 
     LOG_DBG("Subscriber %d removed from all event types", subscriber_id);
 }
@@ -843,8 +853,8 @@ event_status_t event_publish(event_t* event) {
         return EVENT_ERR_NOT_FOUND;
     }
 
-    event_status_t st =
-        event_queue_enqueue(g_event_system.event_queue, event, EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY, K_NO_WAIT);
+    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY,
+                                            EVENT_PUBLISH_ENQUEUE_TIMEOUT);
     if (st == EVENT_OK) {
         event_publish_transfer_data_ownership(event);
     }

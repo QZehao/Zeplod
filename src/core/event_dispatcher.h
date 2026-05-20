@@ -236,6 +236,8 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout);
  * @return 已处理的事件数量
  *
  * @note 此函数会一直处理直到队列为空或达到 max_events 限制
+ * @note 返回值包含被过滤器跳过的事件（process_one 对过滤事件亦返回 EVENT_OK）
+ * @note 与分发器线程同时调用时会竞争同一队列，仅建议测试或单消费者场景使用
  */
 uint32_t event_dispatcher_process_all(uint32_t max_events);
 
@@ -259,6 +261,8 @@ void event_dispatcher_reset_stats(void);
 
 /**
  * @brief 递增分发器「队列丢弃」统计（供 event_queue 溢出路径调用）
+ *
+ * @note ISR 安全：使用原子计数，可在 event_publish_from_isr 满队列路径调用
  */
 void event_dispatcher_stats_inc_dropped(void);
 

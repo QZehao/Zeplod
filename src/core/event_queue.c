@@ -301,6 +301,14 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
         return EVENT_ERR_NO_MEM;
     }
 
+    /* SIL-2: 先分配 scratch 再 k_msgq_init，避免 scratch 失败时遗留已初始化的 msgq */
+    cb->drop_lowest_scratch = (event_t*) k_malloc(capacity * sizeof(event_t));
+    if (cb->drop_lowest_scratch == NULL) {
+        k_mutex_unlock(&g_queue_cb_lock);
+        LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
+        return EVENT_ERR_NO_MEM;
+    }
+
     k_msgq_init(queue, buffer, sizeof(event_t), capacity);
 
     cb->msgq = queue;
@@ -311,15 +319,6 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
     atomic_set(&cb->drop_count, 0);
     atomic_set(&cb->high_watermark, 0);
     k_mutex_init(&cb->reorder_lock);
-
-    /* SIL-2: 为每个队列独立分配 DROP_LOWEST scratch 缓冲区，消除全局并发瓶颈 */
-    cb->drop_lowest_scratch = (event_t*) k_malloc(capacity * sizeof(event_t));
-    if (cb->drop_lowest_scratch == NULL) {
-        cb->msgq = NULL; /* 回滚标记为未使用 */
-        k_mutex_unlock(&g_queue_cb_lock);
-        LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
-        return EVENT_ERR_NO_MEM;
-    }
 
     k_mutex_unlock(&g_queue_cb_lock);
 
@@ -395,10 +394,8 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         return enqueue_drop_lowest(queue, event, timeout, cb);
 
     case QUEUE_OVERFLOW_BLOCK:
-        /* SIL-2: BLOCK 策略下 k_msgq_put 已使用 timeout 阻塞等待。
-         * 如果 k_msgq_put 返回非 0，说明阻塞期间仍未获得空间（超时或中断）。
-         * 此时返回队列满错误。 */
-        LOG_DBG("Queue full, blocking timed out");
+        /* 首次 k_msgq_put 已使用调用方 timeout；满队列且 timeout 为 K_NO_WAIT 时不会阻塞 */
+        LOG_DBG("Queue full under BLOCK policy (check enqueue timeout is not K_NO_WAIT)");
         return EVENT_ERR_QUEUE_FULL;
 
     default:

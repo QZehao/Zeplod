@@ -164,6 +164,10 @@ void event_compat_reset_statistics(void) {
 
 /* =============================================================================
  * SYS_INIT 自动初始化
+ *
+ * 标准版：本文件 @ APP_INIT_PRIO_EVENT_SYS 完成 event_system init+start；
+ * event_dispatcher_autoinit.c @ APP_INIT_PRIO_DISPATCHER 完成 dispatcher init+start。
+ * 默认勿再手动调用 event_dispatcher_init/start，除非已禁用 autoinit 对象文件。
  * ============================================================================= */
 
 #include <zephyr/init.h>

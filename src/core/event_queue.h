@@ -95,6 +95,8 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
  * @note QUEUE_OVERFLOW_DROP_LOWEST：在队列满时排空并丢弃 priority 数值最大的一条（同值则丢弃 FIFO
  * 最旧）； 若新事件比队列中最差事件还低，则丢弃新事件。需线程上下文，不可在 ISR 中使用。
  *       实现会短暂排空队列再回灌，请避免对同一 k_msgq 并发使用裸 k_msgq_* 与 DROP_LOWEST 混用。
+ * @note QUEUE_OVERFLOW_BLOCK：依赖 timeout 阻塞等待空位；event_publish 在启用
+ *       CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK 时使用 K_FOREVER，勿对 BLOCK 策略传入 K_NO_WAIT。
  */
 event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, queue_overflow_policy_t policy,
                                    k_timeout_t timeout);

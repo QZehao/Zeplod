@@ -313,6 +313,7 @@ event_status_t event_system_stop(void);
  *
  * @note 会清理所有已注册的事件类型和订阅
  * @note 会释放所有动态分配的事件负载
+ * @note 须在 magic 置为 IDLE 之前完成 event_queue_deinit/purge，否则 event_free_data 可能跳过释放
  */
 event_status_t event_system_shutdown(void);
 
@@ -374,7 +375,7 @@ event_status_t event_unregister_type(event_type_t type);
  *
  * @note 订阅者 ID 用于后续取消订阅
  * @note 每个订阅者最多订阅 CONFIG_EVENT_MAX_SUBSCRIBERS 个事件类型
- * @note 达到订阅上限时返回 EVENT_ERR_QUEUE_FULL
+ * @note 达到订阅上限时返回 EVENT_ERR_QUEUE_FULL（与队列满共用错误码，非队列入队失败）
  */
 event_status_t event_subscribe(event_type_t type, event_callback_t callback, void* user_data, uint32_t* subscriber_id);
 

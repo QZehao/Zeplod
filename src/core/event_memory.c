@@ -90,6 +90,7 @@ static event_slab_exhausted_cb_t g_slab_exhausted_cb = NULL;
 
 void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb)
 {
+    /* 无锁写入：须在系统启动、并发分配前注册（通常为单线程 init 阶段） */
     g_slab_exhausted_cb = cb;
 }
 

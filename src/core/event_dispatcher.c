@@ -23,6 +23,7 @@
 
 #include "event_dispatcher.h"
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/time_units.h>
 #include "event_queue.h"
 
@@ -76,6 +77,9 @@ static struct k_msgq* g_event_queue;
 
 /** init 完成后方可更新 stats（避免 SYS_INIT 顺序导致未初始化 mutex） */
 static bool g_dispatcher_initialized;
+
+/** ISR/线程均可递增；避免在 ISR 路径对 g_dispatcher.lock 调用 mutex */
+static atomic_t g_dispatcher_events_dropped = ATOMIC_INIT(0);
 
 /* =============================================================================
  * 前置声明
@@ -192,6 +196,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    atomic_set(&g_dispatcher_events_dropped, 0);
     g_dispatcher_initialized = true;
 
     LOG_INF("Event dispatcher initialized");
@@ -522,6 +527,8 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats) {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     *stats = g_dispatcher.stats;
     k_mutex_unlock(&g_dispatcher.lock);
+
+    stats->events_dropped += (uint64_t) atomic_get(&g_dispatcher_events_dropped);
 }
 
 /**
@@ -532,6 +539,8 @@ void event_dispatcher_reset_stats(void) {
     memset(&g_dispatcher.stats, 0, sizeof(g_dispatcher.stats));
     k_mutex_unlock(&g_dispatcher.lock);
 
+    atomic_set(&g_dispatcher_events_dropped, 0);
+
     LOG_DBG("Dispatcher statistics reset");
 }
 
@@ -540,9 +549,7 @@ void event_dispatcher_stats_inc_dropped(void) {
         return;
     }
 
-    k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    g_dispatcher.stats.events_dropped++;
-    k_mutex_unlock(&g_dispatcher.lock);
+    atomic_inc(&g_dispatcher_events_dropped);
 }
 
 /**
