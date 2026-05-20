@@ -74,6 +74,9 @@ static dispatcher_cb_t g_dispatcher;
 /** 全局事件队列指针（从事件系统获取） */
 static struct k_msgq* g_event_queue;
 
+/** init 完成后方可更新 stats（避免 SYS_INIT 顺序导致未初始化 mutex） */
+static bool g_dispatcher_initialized;
+
 /* =============================================================================
  * 前置声明
  * ============================================================================= */
@@ -117,6 +120,8 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
      * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
      * thread_started 在 stop 后会被清零，因此正常重启序列不受限制。 */
+    g_dispatcher_initialized = false;
+
     if (g_dispatcher.thread_started) {
         LOG_WRN("Dispatcher thread already running, refusing re-init");
         return EVENT_ERR_INVALID_ARG;
@@ -186,6 +191,8 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
         LOG_ERR("Call event_system_init() before event_dispatcher_init()");
         return EVENT_ERR_INVALID_ARG;
     }
+
+    g_dispatcher_initialized = true;
 
     LOG_INF("Event dispatcher initialized");
     return EVENT_OK;
@@ -526,6 +533,16 @@ void event_dispatcher_reset_stats(void) {
     k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_DBG("Dispatcher statistics reset");
+}
+
+void event_dispatcher_stats_inc_dropped(void) {
+    if (!g_dispatcher_initialized) {
+        return;
+    }
+
+    k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
+    g_dispatcher.stats.events_dropped++;
+    k_mutex_unlock(&g_dispatcher.lock);
 }
 
 /**

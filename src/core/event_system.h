@@ -148,6 +148,12 @@ typedef uint8_t event_type_t;
 #define EVENT_TYPE_THREAD_IPC_RESPONSE 20U
 
 /**
+ * @brief Data Bus 可用通知（与 CONFIG_DATA_BUS_EVENT_TYPE_ID 默认 30 对齐）
+ * @note 启用 CONFIG_DATA_BUS_EVENT_BRIDGE 时由桥接模块注册该类型
+ */
+#define EVENT_TYPE_DATA_BUS_AVAILABLE 30U
+
+/**
  * @brief 事件优先级枚举
  * @note 数值越小优先级越高，与 Zephyr 线程优先级约定一致
  */

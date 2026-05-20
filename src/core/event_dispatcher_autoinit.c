@@ -11,6 +11,7 @@
  *
  *    Date         Version        Author          Description
  * 2026-04-10       1.0            zeh            初始版本
+ * 2026-05-19       1.1            zeh            已 init 但未 start 时补调 event_system_start
  *
  */
 
@@ -29,18 +30,21 @@ LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
 #if !EVENT_COMPAT_USE_PRO
 
 static int event_dispatcher_auto_init(void) {
-    /* 如果事件系统尚未初始化，先自初始化 */
     struct k_msgq* queue = event_system_get_queue();
+
     if (queue == NULL) {
         if (event_system_init() != EVENT_OK) {
             LOG_ERR("event_system_init failed");
             return -EIO;
         }
+        LOG_INF("Event system auto-initialized by dispatcher");
+    }
+
+    if (!event_system_is_running()) {
         if (event_system_start() != EVENT_OK) {
             LOG_ERR("event_system_start failed");
             return -EIO;
         }
-        LOG_INF("Event system auto-initialized by dispatcher");
     }
 
     dispatcher_config_t dispatcher_config = {.stack_size = CONFIG_EVENT_DISPATCHER_STACK_SIZE,

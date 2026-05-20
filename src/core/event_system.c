@@ -156,11 +156,15 @@ static void event_publish_transfer_data_ownership(event_t* event) {
     event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
 }
 
+/** 由 event_queue 溢出路径同步更新分发器统计（前向声明，避免与 dispatcher 头文件循环包含） */
+extern void event_dispatcher_stats_inc_dropped(void);
+
 /**
  * @brief 增加全局丢弃计数器（内部接口，供 event_queue.c 调用）
  */
 void event_system_inc_dropped_count(void) {
     atomic_inc(&g_event_dropped_count);
+    event_dispatcher_stats_inc_dropped();
 }
 
 /* =============================================================================
@@ -833,10 +837,7 @@ event_status_t event_publish_copy(event_type_t type, event_priority_t priority, 
 
     event_status_t status = event_publish(event);
 
-    if (status == EVENT_OK) {
-        event_publish_transfer_data_ownership(event);
-    }
-
+    /* 入队成功时 event_publish 已转移动态数据所有权；此处仅释放 event_t 外壳 */
     event_free(event);
     return status;
 }
@@ -962,10 +963,6 @@ event_status_t event_publish_copy_rt(event_type_t type, event_priority_t priorit
     }
 
     event_status_t status = event_publish(event);
-
-    if (status == EVENT_OK) {
-        event_publish_transfer_data_ownership(event);
-    }
 
     event_free(event);
     return status;

@@ -257,6 +257,11 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats);
 void event_dispatcher_reset_stats(void);
 
 /**
+ * @brief 递增分发器「队列丢弃」统计（供 event_queue 溢出路径调用）
+ */
+void event_dispatcher_stats_inc_dropped(void);
+
+/**
  * @brief 获取距上次事件处理完成后的空闲时间（微秒）
  *
  * 实现语义为「自上一次 process_event 结束以来经过的时间」，不是
