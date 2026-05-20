@@ -43,7 +43,7 @@ void demo_sys_log(void)
 
 	(void)sys_log_init(&cfg);
 	sys_log_print(SYS_LOG_LEVEL_INF, "demo", "hello %d", 1);
-	/* Or use convenience macro from sys_log.h: LOG_I("demo", "hello %d", 1); */
+	/* Or use convenience macro from sys_log.h: SYS_LOG_I("demo", "hello %d", 1); */
 }
 ```
 
@@ -160,12 +160,12 @@ void demo_sys_wdt(void)
 
 | Macro | Description |
 |-------|-------------|
-| `LOG_E(module, fmt, ...)` | Error level log |
-| `LOG_W(module, fmt, ...)` | Warning level log |
-| `LOG_I(module, fmt, ...)` | Info level log |
-| `LOG_D(module, fmt, ...)` | Debug level log |
-| `LOG_HEXDUMP_E(module, data, len)` | Hex dump error log |
-| `LOG_HEXDUMP_I(module, data, len)` | Hex dump info log |
+| `SYS_LOG_E(module, fmt, ...)` | Error level log |
+| `SYS_LOG_W(module, fmt, ...)` | Warning level log |
+| `SYS_LOG_I(module, fmt, ...)` | Info level log |
+| `SYS_LOG_D(module, fmt, ...)` | Debug level log |
+| `SYS_LOG_HEXDUMP_E(module, data, len)` | Hex dump error log |
+| `SYS_LOG_HEXDUMP_I(module, data, len)` | Hex dump info log |
 
 **Usage Recommendations**:
 

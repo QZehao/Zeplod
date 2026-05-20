@@ -406,10 +406,19 @@ int sys_timer_resume(sys_timer_handle_t timer) {
 }
 
 sys_timer_status_t sys_timer_get_status(sys_timer_handle_t timer) {
-    if (timer == NULL) {
+    sys_timer_status_t status = SYS_TIMER_STOPPED;
+
+    if (timer == NULL || !g_sys_timer.initialized) {
         return SYS_TIMER_STOPPED;
     }
-    return timer->status;
+
+    k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+    if (timer->is_allocated && timer->magic == TIMER_MAGIC) {
+        status = timer->status;
+    }
+    k_mutex_unlock(&g_sys_timer.lock);
+
+    return status;
 }
 
 int sys_timer_set_period(sys_timer_handle_t timer, uint32_t period_ms) {
@@ -438,16 +447,24 @@ int sys_timer_set_period(sys_timer_handle_t timer, uint32_t period_ms) {
 }
 
 uint32_t sys_timer_get_time_until_expiry(sys_timer_handle_t timer) {
-    if (timer == NULL || timer->status != SYS_TIMER_RUNNING) {
+    uint32_t remaining = 0;
+
+    if (timer == NULL || !g_sys_timer.initialized) {
         return 0;
     }
 
-    uint32_t now = k_uptime_get_32();
-    if (timer->next_fire_time <= now) {
-        return 0;
+    k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+
+    if (timer->is_allocated && timer->magic == TIMER_MAGIC && timer->status == SYS_TIMER_RUNNING) {
+        const uint32_t now = k_uptime_get_32();
+
+        if (timer->next_fire_time > now) {
+            remaining = timer->next_fire_time - now;
+        }
     }
 
-    return timer->next_fire_time - now;
+    k_mutex_unlock(&g_sys_timer.lock);
+    return remaining;
 }
 
 /* =============================================================================

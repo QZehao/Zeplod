@@ -260,9 +260,25 @@ static void tracker_add(void* ptr, size_t size, const char* module, uint32_t lin
 
     k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
 
-    const uint32_t        max_r = g_sys_mem.tracker.max_records;
-    uint32_t              idx = g_sys_mem.tracker.head % max_r;
-    const bool            had_active = g_sys_mem.tracker.slot_active[idx];
+    const uint32_t max_r = g_sys_mem.tracker.max_records;
+    uint32_t       idx;
+    bool           had_active = false;
+
+    for (idx = 0; idx < max_r; idx++) {
+        if (!g_sys_mem.tracker.slot_active[idx]) {
+            break;
+        }
+    }
+
+    if (idx >= max_r) {
+        idx = g_sys_mem.tracker.head % max_r;
+        had_active = g_sys_mem.tracker.slot_active[idx];
+        if (had_active) {
+            LOG_WRN("Tracker ring full: dropping trace for %p (replaced slot %u)", ptr, idx);
+        }
+        g_sys_mem.tracker.head = (idx + 1U) % max_r;
+    }
+
     sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[idx];
 
     info->ptr = ptr;
@@ -274,11 +290,7 @@ static void tracker_add(void* ptr, size_t size, const char* module, uint32_t lin
     g_sys_mem.tracker.slot_active[idx] = true;
     if (!had_active) {
         g_sys_mem.tracker.count++;
-    } else {
-        LOG_WRN("Tracker slot overwrite at ring index %u (ring full)", idx);
     }
-
-    g_sys_mem.tracker.head = (idx + 1U) % max_r;
 
     k_mutex_unlock(&g_sys_mem.tracker.lock);
 }
@@ -812,14 +824,19 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type) {
                     continue;
                 }
                 sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[i];
-                alloc_header_t*       header = get_alloc_header(info->ptr);
-                if (header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
+                mem_pool_t*           owner = lock_pool_from_ptr(info->ptr, NULL);
+                if (owner == NULL) {
+                    continue;
+                }
+                alloc_header_t* header = get_alloc_header(info->ptr);
+                if (header != NULL && header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
                     printk("  [%u] ptr=%p, size=%u, time=%u", i, info->ptr, (uint32_t) info->size, info->timestamp);
                     if (info->module != NULL) {
                         printk(" (%s:%u)", info->module, info->line);
                     }
                     printk("\n");
                 }
+                k_mutex_unlock(&owner->lock);
             }
         }
         k_mutex_unlock(&g_sys_mem.tracker.lock);

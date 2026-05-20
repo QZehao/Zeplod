@@ -74,3 +74,27 @@ ZTEST(sys_log_tests, test_set_destination_memory_toggle) {
     sys_log_print(SYS_LOG_LEVEL_INF, "test", "with ring");
     zassert_true(sys_log_get_count() >= 1U, "memory on");
 }
+
+ZTEST(sys_log_tests, test_dump_oldest_first_no_repeat) {
+    sys_log_config_t cfg = {
+        .default_level = SYS_LOG_LEVEL_DBG,
+        .destinations = SYS_LOG_DEST_CONSOLE | SYS_LOG_DEST_MEMORY,
+        .enable_timestamp = false,
+        .enable_colors = false,
+        .enable_module_name = false,
+        .memory_buffer_size = sizeof(sys_log_entry_t) * 8U,
+    };
+    sys_log_entry_t entries[8];
+
+    zassert_equal(sys_log_init(&cfg), 0, NULL);
+    sys_log_clear_buffer();
+
+    for (int i = 0; i < 5; i++) {
+        sys_log_print(SYS_LOG_LEVEL_INF, "test", "line %d", i);
+    }
+
+    zassert_equal(sys_log_get_count(), 5U, "expected 5 ring entries");
+    zassert_equal(sys_log_get_entries(entries, 8, true), 5U, "get_entries");
+
+    sys_log_dump(SYS_LOG_LEVEL_INF);
+}

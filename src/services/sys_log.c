@@ -198,10 +198,6 @@ static void add_entry(sys_log_level_t level, const char* module, const char* msg
 }
 
 static void output_to_printk(sys_log_level_t level, const char* module, const char* msg, uint32_t timestamp) {
-    if (!g_sys_log.destinations_enabled[0] && !g_sys_log.destinations_enabled[3]) {
-        return;
-    }
-
     const char* color = level_to_color(level);
     const char* reset = g_sys_log.config.enable_colors ? COLOR_RESET : "";
     const char* mod_str = (module != NULL) ? module : "N/A";
@@ -221,10 +217,6 @@ static void output_to_printk(sys_log_level_t level, const char* module, const ch
 static void output_to_rtt(sys_log_level_t level, const char* module, const char* msg, uint32_t timestamp) {
     ARG_UNUSED(level);
 
-    if (!g_sys_log.destinations_enabled[2]) {
-        return;
-    }
-
     char buf[SYS_LOG_MSG_MAX_LEN + 96];
     int  n = snprintf(buf, sizeof(buf), "[%08u][%s] %s\n", timestamp, (module != NULL) ? module : "-", msg);
     if (n > 0) {
@@ -234,14 +226,30 @@ static void output_to_rtt(sys_log_level_t level, const char* module, const char*
 #endif
 
 static void emit_log_line(sys_log_level_t level, const char* module, const char* msg, uint32_t timestamp) {
-    if (g_sys_log.destinations_enabled[1]) {
+    bool dest_console;
+    bool dest_memory;
+    bool dest_uart;
+    bool dest_rtt;
+
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+    dest_console = g_sys_log.destinations_enabled[0];
+    dest_memory = g_sys_log.destinations_enabled[1];
+    dest_rtt = g_sys_log.destinations_enabled[2];
+    dest_uart = g_sys_log.destinations_enabled[3];
+    k_mutex_unlock(&g_sys_log.lock);
+
+    if (dest_memory) {
         add_entry(level, module, msg, timestamp);
     }
 
-    output_to_printk(level, module, msg, timestamp);
+    if (dest_console || dest_uart) {
+        output_to_printk(level, module, msg, timestamp);
+    }
 
 #if defined(CONFIG_SEGGER_RTT)
-    output_to_rtt(level, module, msg, timestamp);
+    if (dest_rtt) {
+        output_to_rtt(level, module, msg, timestamp);
+    }
 #endif
 }
 
@@ -365,17 +373,23 @@ sys_log_level_t sys_log_get_level(const char* module) {
 }
 
 void sys_log_set_destination(sys_log_dest_mask_t dest, bool enable) {
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+
     if (dest == SYS_LOG_DEST_ALL) {
         for (int i = 0; i < 4; i++) {
             g_sys_log.destinations_enabled[i] = enable;
         }
+        k_mutex_unlock(&g_sys_log.lock);
         return;
     }
+
     for (int i = 0; i < 4; i++) {
         if (dest & (1U << i)) {
             g_sys_log.destinations_enabled[i] = enable;
         }
     }
+
+    k_mutex_unlock(&g_sys_log.lock);
 }
 
 void sys_log_print(sys_log_level_t level, const char* module, const char* format, ...) {
@@ -516,35 +530,31 @@ uint32_t sys_log_get_count(void) {
 }
 
 void sys_log_dump(sys_log_level_t level_filter) {
+    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
+
     if (!g_sys_log.destinations_enabled[0] && !g_sys_log.destinations_enabled[3]) {
+        k_mutex_unlock(&g_sys_log.lock);
         return;
     }
 
-    sys_log_entry_t entries[32];
-    uint32_t        retrieved;
-    uint32_t        cap_snapshot;
-    k_mutex_lock(&g_sys_log.lock, K_FOREVER);
-    cap_snapshot = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
-    k_mutex_unlock(&g_sys_log.lock);
-    uint32_t max_iterations = (cap_snapshot + 31U) / 32U; /* SIL-2: 防止无限循环 */
-    uint32_t iterations = 0;
+    const uint32_t cap = g_sys_log.log_cap ? g_sys_log.log_cap : 1U;
+    const uint32_t total = g_sys_log.count;
 
-    printk("\n=== Log Dump (min level: %d) ===\n", level_filter);
+    printk("\n=== Log Dump (max level: %d) ===\n", level_filter);
 
-    do {
-        retrieved = sys_log_get_entries(entries, 32, true);
-        for (uint32_t i = 0; i < retrieved; i++) {
-            if (entries[i].level >= level_filter) {
-                printk("[%08d][%s][%s] %s\n", entries[i].timestamp, level_to_string(entries[i].level),
-                       (entries[i].module_name[0] != '\0') ? entries[i].module_name : "N/A", entries[i].message);
-            }
+    for (uint32_t i = 0; i < total; i++) {
+        const uint32_t         idx = (g_sys_log.read_idx + i) % cap;
+        const sys_log_entry_t* entry = &g_sys_log.buffer[idx];
+
+        if (level_filter != SYS_LOG_LEVEL_OFF && entry->level > level_filter) {
+            continue;
         }
-        iterations++;
-    } while (retrieved == 32 && iterations < max_iterations); /* SIL-2: 添加循环保护 */
 
-    if (iterations >= max_iterations) {
-        printk("... (truncated after %u iterations)\n", max_iterations);
+        printk("[%08d][%s][%s] %s\n", entry->timestamp, level_to_string(entry->level),
+               (entry->module_name[0] != '\0') ? entry->module_name : "N/A", entry->message);
     }
+
+    k_mutex_unlock(&g_sys_log.lock);
 
     printk("=== End Log Dump ===\n\n");
 }

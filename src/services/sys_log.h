@@ -158,7 +158,8 @@ uint32_t sys_log_get_count(void);
 
 /**
  * @brief 将日志转储到控制台（需要启用 CONSOLE 和/或 UART 目标）
- * @param level_filter 要显示的最低级别
+ * @param level_filter 最高输出级别（与 sys_log_print 一致：数值越小越严重；
+ *                     输出 level <= level_filter 的条目；OFF 表示全部输出）
  */
 void sys_log_dump(sys_log_level_t level_filter);
 
@@ -166,17 +167,17 @@ void sys_log_dump(sys_log_level_t level_filter);
  * 便捷宏
  * ============================================================================= */
 
-#define LOG_E(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_ERR, module, fmt, ##__VA_ARGS__)
+#define SYS_LOG_E(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_ERR, module, fmt, ##__VA_ARGS__)
 
-#define LOG_W(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_WRN, module, fmt, ##__VA_ARGS__)
+#define SYS_LOG_W(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_WRN, module, fmt, ##__VA_ARGS__)
 
-#define LOG_I(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_INF, module, fmt, ##__VA_ARGS__)
+#define SYS_LOG_I(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_INF, module, fmt, ##__VA_ARGS__)
 
-#define LOG_D(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_DBG, module, fmt, ##__VA_ARGS__)
+#define SYS_LOG_D(module, fmt, ...)          sys_log_print(SYS_LOG_LEVEL_DBG, module, fmt, ##__VA_ARGS__)
 
-#define LOG_HEXDUMP_E(module, data, len) sys_log_hexdump(SYS_LOG_LEVEL_ERR, module, data, len, true)
+#define SYS_LOG_HEXDUMP_E(module, data, len) sys_log_hexdump(SYS_LOG_LEVEL_ERR, module, data, len, true)
 
-#define LOG_HEXDUMP_I(module, data, len) sys_log_hexdump(SYS_LOG_LEVEL_INF, module, data, len, true)
+#define SYS_LOG_HEXDUMP_I(module, data, len) sys_log_hexdump(SYS_LOG_LEVEL_INF, module, data, len, true)
 
 #ifdef __cplusplus
 }

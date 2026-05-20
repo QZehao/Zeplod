@@ -91,6 +91,8 @@ typedef struct {
     uint32_t         thread_count;
     uint32_t         start_time;
     uint32_t         last_feed_time;
+    bool             monitor_thread_started;
+    bool             hw_wdt_setup_done;
 #ifdef CONFIG_WATCHDOG
     const struct device* wdt_dev;
     int                  wdt_channel;
@@ -198,13 +200,28 @@ int sys_wdt_start(void) {
     g_wdt.status = WDT_STATUS_RUNNING;
     g_wdt.last_feed_time = k_uptime_get_32();
 
-    /* 创建监控线程 */
-    k_thread_create(&g_wdt.monitor_thread, g_wdt.monitor_stack, K_THREAD_STACK_SIZEOF(g_wdt.monitor_stack),
-                    wdt_monitor_thread, NULL, NULL, NULL, 5, /* 优先级 */
-                    0, K_FOREVER);
+#ifdef CONFIG_WATCHDOG
+    if ((g_wdt.config.mode == WDT_MODE_HARDWARE || g_wdt.config.mode == WDT_MODE_DUAL) && g_wdt.wdt_dev != NULL &&
+        g_wdt.wdt_channel >= 0 && !g_wdt.hw_wdt_setup_done) {
+        const int setup_ret = wdt_setup(g_wdt.wdt_dev, WDT_OPT_NONE);
+        if (setup_ret != 0) {
+            LOG_ERR("Hardware watchdog setup failed: %d", setup_ret);
+            g_wdt.config.mode = WDT_MODE_SOFTWARE;
+            g_wdt.wdt_channel = -1;
+        } else {
+            g_wdt.hw_wdt_setup_done = true;
+            LOG_INF("Hardware watchdog started");
+        }
+    }
+#endif
 
-    k_thread_name_set(&g_wdt.monitor_thread, "wdt_mon");
-    k_thread_start(&g_wdt.monitor_thread);
+    if (!g_wdt.monitor_thread_started) {
+        k_thread_create(&g_wdt.monitor_thread, g_wdt.monitor_stack, K_THREAD_STACK_SIZEOF(g_wdt.monitor_stack),
+                        wdt_monitor_thread, NULL, NULL, NULL, 5, 0, K_FOREVER);
+        k_thread_name_set(&g_wdt.monitor_thread, "wdt_mon");
+        k_thread_start(&g_wdt.monitor_thread);
+        g_wdt.monitor_thread_started = true;
+    }
 
     k_mutex_unlock(&g_wdt.lock);
 
@@ -230,6 +247,10 @@ int sys_wdt_stop(void) {
         LOG_ERR("Watchdog monitor thread join timeout (%d), aborting", ret);
         k_thread_abort(&g_wdt.monitor_thread);
     }
+
+    k_mutex_lock(&g_wdt.lock, K_FOREVER);
+    g_wdt.monitor_thread_started = false;
+    k_mutex_unlock(&g_wdt.lock);
 
     LOG_INF("Watchdog stopped");
     return 0;
@@ -526,10 +547,9 @@ static void wdt_feed_internal(void) {
         ret = wdt_feed(g_wdt.wdt_dev, g_wdt.wdt_channel);
         if (ret != 0) {
             LOG_ERR("Hardware watchdog feed failed: %d", ret);
-            k_mutex_lock(&g_wdt.lock, K_FOREVER);
+            /* 调用方已持有 g_wdt.lock，禁止再次加锁 */
             g_wdt.status = WDT_STATUS_ERROR;
             g_wdt.stats.warning_count++;
-            k_mutex_unlock(&g_wdt.lock);
         }
     }
 #else
