@@ -3,7 +3,7 @@
 ## 📍 工具位置
 
 ```
-D:\Code\3-Project\zephyr_template\scripts\
+D:\Code\3-Project\zeplod\scripts\
 ├── proprietary_manage.bat   # Windows 批处理版本
 └── proprietary_manage.ps1   # PowerShell 版本（推荐）
 ```
@@ -15,7 +15,7 @@ D:\Code\3-Project\zephyr_template\scripts\
 ### 1️⃣ 查看所有模块状态
 
 ```cmd
-cd D:\Code\3-Project\zephyr_template
+cd D:\Code\3-Project\zeplod
 powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 status
 ```
 

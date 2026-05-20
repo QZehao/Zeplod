@@ -15,7 +15,7 @@ A **freestanding application** is an application whose source code is placed **o
 │   ├── zephyr/                 # Zephyr source (ZEPHYR_BASE)
 │   ├── modules/
 │   └── ...
-└── zephyr_template/            # This application directory
+└── zeplod/            # This application directory
     ├── CMakeLists.txt
     ├── prj.conf
     ├── src/

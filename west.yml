@@ -1,4 +1,4 @@
-# West manifest file for zephyr_template
+# West manifest file for zeplod
 #
 # This is a FREESTANDING APPLICATION - the application and Zephyr are in
 # separate directories. This west.yml is OPTIONAL and is only needed if you

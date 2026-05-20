@@ -172,7 +172,7 @@ CONFIG_THREAD_IPC_SERVICE_EXAMPLE=y
 构建时合并（注意 PowerShell 下引号与路径）：
 
 ```text
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zephyr_template/prj_ipc_example.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_ipc_example.conf'
 ```
 
 仓库还提供 **`prj_ipc_event_bridge.conf`**（仅打开 `CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE`），可与基础 `prj.conf` 合并用于验证「IPC → 事件」编译与链接。

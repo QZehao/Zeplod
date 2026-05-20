@@ -21,7 +21,7 @@ endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(zephyr_template_tests)
+project(zeplod_tests)
 
 enable_testing()
 

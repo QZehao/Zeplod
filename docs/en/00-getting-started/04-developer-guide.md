@@ -2,7 +2,7 @@
 
 # Developer Getting Started Guide
 
-This guide covers how to develop with the Zephyr Event-Driven Project Template: directory structure, daily development workflow, testing and debugging entry points. **If this is your first time encountering this repo**, please first read **[02-doc-index.md](02-doc-index.md)** in the "Where Should Beginners Start?" section, then proceed in order through environment setup, freestanding app build, and other documentation.
+This guide covers how to develop with **Zeplod**: directory structure, daily development workflow, testing and debugging entry points. **If this is your first time encountering this repo**, please first read **[02-doc-index.md](02-doc-index.md)** in the "Where Should Beginners Start?" section, then proceed in order through environment setup, freestanding app build, and other documentation.
 
 ## Table of Contents
 
@@ -79,7 +79,7 @@ For complete steps and Windows/Linux differences see **[61-flash-debug-quickstar
 ## 3. Project Structure
 
 ```
-zephyr_template/
+zeplod/
 ├── src/
 │   ├── app/            # Application
 │   ├── core/           # Core Event System

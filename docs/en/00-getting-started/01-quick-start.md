@@ -38,8 +38,8 @@ git --version
 
 ```bash
 # Clone to local
-git clone https://github.com/your-username/zephyr_template.git
-cd zephyr_template
+git clone https://github.com/your-username/zeplod.git
+cd zeplod
 ```
 
 ---
@@ -149,7 +149,7 @@ app help
 **Example output**:
 ```
 app> app status
-Application: zephyr_template
+Application: zeplod
 Version: 1.0.0
 Status: Running
 Uptime: 00:00:15
@@ -185,7 +185,7 @@ A: You need a full Zephyr SDK installation. Refer to [docs/en/10-environment-bui
 ## Project Overview
 
 ```
-zephyr_template/
+zeplod/
 ├── src/
 │   ├── core/           # Core Event System
 │   ├── services/       # System services (logging, memory, watchdog)

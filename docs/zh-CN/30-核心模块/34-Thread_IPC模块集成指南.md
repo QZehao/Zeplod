@@ -175,7 +175,7 @@ int ipc_service_init(ipc_service_t *service, const char *name,
 在已启用 `CONFIG_THREAD_IPC_SERVICE=y` 的 `prj.conf` 基础上，合并 **`prj_example_module_ipc.conf`**：
 
 ```text
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zephyr_template/prj_example_module_ipc.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_example_module_ipc.conf'
 ```
 
 （PowerShell 下注意引号与绝对路径。）

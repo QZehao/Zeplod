@@ -1,6 +1,6 @@
-# Zephyr 事件驱动项目模板
+# Zeplod
 
-基于 Zephyr RTOS 的高性能、实时、事件驱动应用程序模板。此模板使用发布 - 订阅模式，为构建可扩展的模块化嵌入式应用提供了坚实的基础。
+基于 Zephyr RTOS 的高性能、实时、事件驱动应用基础。Zeplod 采用发布 - 订阅模式，为构建可扩展的模块化嵌入式应用提供坚实基础。
 
 > **语言**: 中文版 | [English](README.md)
 
@@ -164,7 +164,7 @@
 ## 项目结构
 
 ```
-zephyr_framework/
+zeplod/
 ├── APP_VERSION                       # 应用语义化版本（勿用文件名 VERSION，与 Zephyr 冲突）
 ├── CMakeLists.txt                    # 构建配置（独立应用需 ZEPHYR_BASE 或 zephyr_config.env）
 ├── Kconfig                           # 应用 Kconfig（含事件/模块/IPC 等）
@@ -279,7 +279,7 @@ zephyr_framework/
     └── proprietary/                  # 商业闭源模块（可选，由 proprietary_manage 启用）
 ```
 
-## 从本模板初始化新项目（检查清单）
+## 复制为新项目（检查清单）
 
 复制或 fork 本仓库后，建议按顺序完成下列项，便于在任意产品上落地（更细的说明见 **[docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md#从模板复制后的检查清单)**）。
 
@@ -316,7 +316,7 @@ CI（`.github/workflows/ci.yml`）当前使用 Zephyr **4.3.0-rc3** 构建镜像
 │   ├── zephyr/             # Zephyr 源代码 (ZEPHYR_BASE)
 │   ├── modules/            # Zephyr 模块
 │   └── ...
-└── zephyr_framework/       # 应用程序目录 (本目录)
+└── zeplod/       # 应用程序目录 (本目录)
     ├── CMakeLists.txt
     ├── prj.conf
     ├── src/

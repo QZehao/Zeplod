@@ -119,7 +119,7 @@ MAP_SIZE=$(get_file_size "$OUTPUT_DIR/zephyr_${VERSION}.map")
 
 cat > "$OUTPUT_DIR/release_info.txt" << EOF
 ================================================================================
-Zephyr Event-Driven Project Template - Release Package
+Zeplod - Release Package
 ================================================================================
 
 版本信息
@@ -149,7 +149,7 @@ cp "$PROJECT_ROOT/LICENSE" "$OUTPUT_DIR/" 2>/dev/null && echo "  ✓ LICENSE"
 echo ""
 echo "正在创建压缩包..."
 
-ARCHIVE_NAME="zephyr_template_${VERSION}"
+ARCHIVE_NAME="zeplod_${VERSION}"
 
 cd "$OUTPUT_DIR"
 

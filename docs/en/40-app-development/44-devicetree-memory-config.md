@@ -2,7 +2,7 @@
 
 # Device Tree and Memory Configuration Manual
 
-This manual explains how **Devicetree Overlays take effect**, how **main RAM (`zephyr,sram`) affects linking and heap**, and typical handling of **multiple non-contiguous memory blocks** in Zephyr, within this project (`zephyr_template`) and Zephyr's general mechanisms. Applicable to Zephyr 4.x; build system uses CMake-generated linker scripts.
+This manual explains how **Devicetree Overlays take effect**, how **main RAM (`zephyr,sram`) affects linking and heap**, and typical handling of **multiple non-contiguous memory blocks** in Zephyr, within this project (`zeplod`) and Zephyr's general mechanisms. Applicable to Zephyr 4.x; build system uses CMake-generated linker scripts.
 
 **Reading tips**: If you haven't understood **`west build`**, `prj.conf` and **`ZEPHYR_BASE`**, please first read **[Documentation Index.md](../00-getting-started/02-documentation-index.md)** and **[Standalone Application Build Guide.md](../10-environment-and-build/12-standalone-build-guide.md)**; this manual focuses on board-level and linking details, read chapters as needed.
 
@@ -65,7 +65,7 @@ Zephyr fills **`DTC_OVERLAY_FILE`** via CMake module **`configuration_files.cmak
 Build log shows like:
 
 ```text
--- Found devicetree overlay: D:/.../zephyr_template/app.overlay
+-- Found devicetree overlay: D:/.../zeplod/app.overlay
 ```
 
 ---
@@ -386,7 +386,7 @@ Zephyr will match **`nucleo_l4r5zi.overlay`** under **`boards/`**. Once found an
 **Single file** (Windows path note quotes):
 
 ```powershell
-west build -b nucleo_l4r5zi . -- -DDTC_OVERLAY_FILE="D:/Code/3-Project/zephyr_template/my_ram.overlay"
+west build -b nucleo_l4r5zi . -- -DDTC_OVERLAY_FILE="D:/Code/3-Project/zeplod/my_ram.overlay"
 ```
 
 **Multiple files** (CMake list, semicolon-separated, quote entire block):
@@ -415,7 +415,7 @@ Create **`extra.overlay`**:
 **Build with append**:
 
 ```powershell
-west build -b nucleo_l4r5zi . -- -DEXTRA_DTC_OVERLAY_FILE="D:/Code/3-Project/zephyr_template/extra.overlay"
+west build -b nucleo_l4r5zi . -- -DEXTRA_DTC_OVERLAY_FILE="D:/Code/3-Project/zeplod/extra.overlay"
 ```
 
 Merge order: **first** `DTC_OVERLAY_FILE` (auto or manual), **then** `EXTRA_DTC_OVERLAY_FILE`.

@@ -4,7 +4,7 @@
  */
 
 /*
- * Sample device tree overlay for zephyr_template
+ * Sample device tree overlay for zeplod
  *
  * 注意：本文件不会自动加载！仅作为示例模板。
  * 用法：

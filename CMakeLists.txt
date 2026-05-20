@@ -1,4 +1,4 @@
-# Zephyr Event-Driven Project Template
+# Zeplod — Zephyr event-driven application
 # Copyright (c) 2026
 # SPDX-License-Identifier: GPL-3.0
 #
@@ -93,7 +93,7 @@ message(STATUS "Project Version: ${PROJECT_VERSION}")
 # For freestanding applications, explicitly specify ZEPHYR_BASE
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(zephyr_event_template VERSION ${PROJECT_VERSION})
+project(zeplod VERSION ${PROJECT_VERSION})
 
 # =============================================================================
 # Git Information (Auto-detect)

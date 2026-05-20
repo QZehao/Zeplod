@@ -1,6 +1,6 @@
-# Zephyr Event-Driven Project Template
+# Zeplod
 
-A high-performance, real-time, event-driven application template based on Zephyr RTOS. This template uses the publish-subscribe pattern, providing a solid foundation for building scalable and modular embedded applications.
+A high-performance, real-time, event-driven application foundation based on Zephyr RTOS. Zeplod uses the publish-subscribe pattern, providing a solid base for building scalable and modular embedded applications.
 
 > **Language**: [中文版](README_CN.md) | English
 
@@ -163,7 +163,7 @@ This framework is **less suitable** for:
 ## Project Structure
 
 ```
-zephyr_framework/
+zeplod/
 ├── APP_VERSION                       # App semantic version (do NOT name it VERSION — conflicts with Zephyr)
 ├── CMakeLists.txt                    # Build config (freestanding app needs ZEPHYR_BASE or zephyr_config.env)
 ├── Kconfig                           # Application Kconfig (events/modules/IPC etc.)
@@ -278,7 +278,7 @@ zephyr_framework/
     └── proprietary/                   # Proprietary closed-source modules (optional, enabled by proprietary_manage)
 ```
 
-## Initialize New Project from This Template (Checklist)
+## Checklist After Forking or Copying This Repo
 
 After copying or forking this repo, complete the following steps in order for easy deployment on any product (more details in **[docs/en/00-getting-started/04-developer-guide.md](docs/en/00-getting-started/04-developer-guide.md#从模板复制后的检查清单)**).
 
@@ -315,7 +315,7 @@ This project is a **Zephyr freestanding application** — the application and Ze
 │   ├── zephyr/             # Zephyr source code (ZEPHYR_BASE)
 │   ├── modules/            # Zephyr modules
 │   └── ...
-└── zephyr_framework/       # Application directory (this directory)
+└── zeplod/       # Application directory (this directory)
     ├── CMakeLists.txt
     ├── prj.conf
     ├── src/

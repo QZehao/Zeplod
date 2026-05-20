@@ -175,7 +175,7 @@ When **`CONFIG_EXAMPLE_MODULE_THREAD_IPC`** is enabled, the **`SYS_INIT`** in **
 Based on `prj.conf` with `CONFIG_THREAD_IPC_SERVICE=y` enabled, merge **`prj_example_module_ipc.conf`**:
 
 ```
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zephyr_template/prj_example_module_ipc.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_example_module_ipc.conf'
 ```
 
 (Note quotes and absolute paths under PowerShell.)

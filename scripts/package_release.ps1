@@ -61,7 +61,7 @@ Write-Host "正在创建版本信息..."
 
 $versionContent = @"
 ================================================================================
-Zephyr Event-Driven Project Template - Release Package
+Zeplod - Release Package
 ================================================================================
 
 版本信息
@@ -96,7 +96,7 @@ if (Test-Path (Join-Path $PROJECT_ROOT "LICENSE")) {
 Write-Host ""
 Write-Host "正在创建压缩包..."
 
-$archiveName = "zephyr_template_${Version}"
+$archiveName = "zeplod_${Version}"
 $outputPath = Join-Path $OutputDir $archiveName
 
 # 使用 PowerShell 内置的 Compress-Archive

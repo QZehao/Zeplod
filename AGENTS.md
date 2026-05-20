@@ -1,4 +1,4 @@
-# AGENTS.md - Zephyr 事件驱动项目模板
+# AGENTS.md - Zeplod（Zephyr 事件驱动应用）
 
 本文件为在此仓库中运行的 AI 编码代理提供操作指南。
 
@@ -309,7 +309,7 @@ event_publish_from_isr(&my_event);
 ## 4. 项目结构
 
 ```
-zephyr_template/
+zeplod/
 ├── APP_VERSION                 # 应用语义化版本（X.Y.Z）
 ├── CMakeLists.txt              # 构建配置
 ├── Kconfig                     # 应用 Kconfig（含事件/模块/IPC 等）

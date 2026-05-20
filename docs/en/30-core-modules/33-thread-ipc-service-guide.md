@@ -172,7 +172,7 @@ CONFIG_THREAD_IPC_SERVICE_EXAMPLE=y
 Build with merge (note quotes and paths under PowerShell):
 
 ```text
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zephyr_template/prj_ipc_example.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_ipc_example.conf'
 ```
 
 Repository also provides **`prj_ipc_event_bridge.conf`** (only enables `CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE`), can merge with base `prj.conf` to verify "IPC → Event" compilation and linking.
