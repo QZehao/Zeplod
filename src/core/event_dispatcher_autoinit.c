@@ -1,47 +1,26 @@
 /**
-
  * @file event_dispatcher_autoinit.c
-
  * @brief 事件分发器自动初始化
-
  *
-
  * 为事件分发器提供 SYS_INIT 自动初始化机制。
-
  * @author zeh (china_qzh@163.com)
-
  * @version 1.0
-
  * @date 2026-04-10
-
  *
-
  * @par 修改日志:
-
  *
-
  *    Date         Version        Author          Description
-
  * 2026-04-10       1.0            zeh            初始版本
-
  * 2026-05-19       1.1            zeh            已 init 但未 start 时补调 event_system_start
-
  * 2026-05-20       1.2            zeh            失败回滚仅针对本函数创建的状态
-
  *
-
  */
 
 #include <zephyr/init.h>
-
 #include <zephyr/logging/log.h>
-
 #include "app_config.h"
-
 #include "event_dispatcher.h"
-
 #include "event_system.h"
-
 #include "event_system_compat.h"
 
 LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
@@ -52,7 +31,7 @@ LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
 
  * ============================================================================= */
 
-#if !EVENT_COMPAT_USE_PRO
+#if !EVENT_COMPAT_USE_PRO && IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
 
 static int event_dispatcher_auto_init(void) {
 
@@ -122,4 +101,4 @@ static int event_dispatcher_auto_init(void) {
 
 SYS_INIT(event_dispatcher_auto_init, POST_KERNEL, APP_INIT_PRIO_DISPATCHER);
 
-#endif /* !EVENT_COMPAT_USE_PRO */
+#endif /* !EVENT_COMPAT_USE_PRO && CONFIG_EVENT_DISPATCHER_AUTOINIT */

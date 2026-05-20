@@ -298,7 +298,8 @@ static void event_system_reset_control_block(void) {
 /**
  * @brief 检查订阅者 ID 是否已被使用
  *
- * @note 调用方必须已持有 g_subscriber_id_lock；unsubscribe 亦在同锁下修改 ID。
+ * @note 调用方必须已持有 g_subscriber_id_lock（串行化所有 subscribe/unsubscribe）。
+ *       遍历时未逐类型持有 entry->lock；勿在未持 g_subscriber_id_lock 时修改订阅表。
  */
 static bool subscriber_id_in_use(uint32_t id) {
     for (int t = 0; t < MAX_EVENT_TYPES; t++) {

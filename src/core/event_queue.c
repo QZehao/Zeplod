@@ -20,6 +20,7 @@
  */
 
 #include "event_queue.h"
+#include <errno.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -79,6 +80,48 @@ static void event_free_queued_payload(event_t* ev) {
 }
 
 /**
+ * @brief 记录队列满导致的丢弃（仅在实际丢弃时调用，DROP_LOWEST 成功入队前勿调用）
+ */
+static void event_queue_record_drop(event_queue_cb_t* cb) {
+    atomic_inc(&cb->overflow_count);
+    event_system_inc_dropped_count();
+}
+
+#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
+
+/**
+ * @brief BLOCK 策略下 K_FOREVER 入队：分段阻塞并轮询 running，避免 stop 时永久卡在 k_msgq_put
+ */
+static int event_msgq_put(struct k_msgq* queue, const void* data, k_timeout_t timeout) {
+    if (K_TIMEOUT_EQ(timeout, K_FOREVER)) {
+        const int retry_ms = CONFIG_EVENT_QUEUE_BLOCK_RETRY_MS;
+
+        while (event_system_is_running()) {
+            int ret = k_msgq_put(queue, data, K_MSEC(retry_ms));
+
+            if (ret == 0) {
+                return 0;
+            }
+            if (ret == -EAGAIN) {
+                continue;
+            }
+            return ret;
+        }
+        return -ECANCELED;
+    }
+
+    return k_msgq_put(queue, data, timeout);
+}
+
+#else
+
+static int event_msgq_put(struct k_msgq* queue, const void* data, k_timeout_t timeout) {
+    return k_msgq_put(queue, data, timeout);
+}
+
+#endif /* CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK */
+
+/**
  * @brief 原子更新水位线（仅当新值大于当前值时更新）
  *
  * SIL-2: HIGH-3 修复后的 CAS 循环实现，避免并发更新丢失。
@@ -136,11 +179,14 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
     uint32_t n = attrs.used_msgs;
 
     if (n < attrs.max_msgs) {
-        int pret = k_msgq_put(queue, event, timeout);
+        int pret = event_msgq_put(queue, event, timeout);
 
         k_mutex_unlock(&cb->reorder_lock);
 
         if (pret != 0) {
+            if (pret == -ECANCELED) {
+                return EVENT_ERR_NOT_RUNNING;
+            }
             if (pret == -ENOMSG) {
                 return EVENT_ERR_QUEUE_FULL;
             }
@@ -204,10 +250,13 @@ static event_status_t enqueue_drop_lowest(struct k_msgq* queue, const event_t* e
         }
     }
 
-    int ret = k_msgq_put(queue, event, timeout);
+    int ret = event_msgq_put(queue, event, timeout);
 
     k_mutex_unlock(&cb->reorder_lock);
 
+    if (ret == -ECANCELED) {
+        return EVENT_ERR_NOT_RUNNING;
+    }
     if (ret != 0) {
         if (ret == -ENOMSG) {
             return EVENT_ERR_QUEUE_FULL;
@@ -364,7 +413,8 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
     /* SIL-2: 先尝试入队，使用返回值判断真实结果，避免 TOCTOU 竞态。
      * 之前的实现先检查 used_msgs >= max_msgs 再调用 k_msgq_put，
      * 在这两个操作之间其他线程可能出队，导致 overflow_count 被错误递增。 */
-    int ret = k_msgq_put(queue, event, timeout);
+    int ret = event_msgq_put(queue, event, timeout);
+
     if (ret == 0) {
         /* SIL-2: HIGH-3 修复后使用原子操作，ISR 路径也能正确累计统计。 */
         atomic_inc(&cb->enqueue_count);
@@ -372,11 +422,8 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         return EVENT_OK;
     }
 
-    /* 入队失败：仅队列满（-ENOMSG）计入 overflow_count，超时（-EAGAIN）不计入。
-     * SIL-2: HIGH-3 修复后使用原子操作，ISR 路径安全。 */
-    if (ret == -ENOMSG) {
-        atomic_inc(&cb->overflow_count);
-        event_system_inc_dropped_count();
+    if (ret == -ECANCELED) {
+        return EVENT_ERR_NOT_RUNNING;
     }
 
     /* 区分超时和队列满 */
@@ -384,24 +431,30 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         return EVENT_ERR_TIMEOUT;
     }
 
-    switch (policy) {
-    case QUEUE_OVERFLOW_DROP_NEWEST:
-        LOG_DBG("Queue full, dropping newest event");
-        return EVENT_ERR_QUEUE_FULL;
+    if (ret == -ENOMSG) {
+        switch (policy) {
+        case QUEUE_OVERFLOW_DROP_NEWEST:
+            event_queue_record_drop(cb);
+            LOG_DBG("Queue full, dropping newest event");
+            return EVENT_ERR_QUEUE_FULL;
 
-    case QUEUE_OVERFLOW_DROP_LOWEST:
-        return enqueue_drop_lowest(queue, event, timeout, cb);
+        case QUEUE_OVERFLOW_DROP_LOWEST:
+            /* 丢弃计数由 enqueue_drop_lowest 在实际踢出/拒绝事件时更新 */
+            return enqueue_drop_lowest(queue, event, timeout, cb);
 
-    case QUEUE_OVERFLOW_BLOCK:
-        /* 首次 k_msgq_put 已使用调用方 timeout；满队列且 timeout 为 K_NO_WAIT 时不会阻塞 */
-        LOG_DBG("Queue full under BLOCK policy (check enqueue timeout is not K_NO_WAIT)");
-        return EVENT_ERR_QUEUE_FULL;
+        case QUEUE_OVERFLOW_BLOCK:
+            /* K_FOREVER 由 event_msgq_put 轮询 running；此处为 K_NO_WAIT 等瞬时满队列 */
+            event_queue_record_drop(cb);
+            LOG_DBG("Queue full under BLOCK policy (non-blocking timeout)");
+            return EVENT_ERR_QUEUE_FULL;
 
-    default:
-        /* SIL-2: 防御性编程，处理未知策略 */
-        LOG_ERR("Unknown overflow policy: %d", policy);
-        return EVENT_ERR_INVALID_ARG;
+        default:
+            LOG_ERR("Unknown overflow policy: %d", policy);
+            return EVENT_ERR_INVALID_ARG;
+        }
     }
+
+    return EVENT_ERR_INVALID_ARG;
 }
 
 /**

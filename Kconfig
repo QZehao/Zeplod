@@ -88,10 +88,38 @@ config EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE
 	config EVENT_QUEUE_OVERFLOW_BLOCK
 		bool "Block until space available"
 		help
-		  Block the publisher up to the enqueue timeout (publish uses K_NO_WAIT,
-		  so this behaves like DROP_NEWEST for the default publish path).
+		  event_publish uses K_FOREVER while the queue is full, retrying in
+		  CONFIG_EVENT_QUEUE_BLOCK_RETRY_MS slices until space is available or
+		  event_system_stop() clears the running flag (publish then returns
+		  EVENT_ERR_NOT_RUNNING). Not supported from ISR.
 
 	endchoice
+
+config EVENT_QUEUE_BLOCK_RETRY_MS
+	int "BLOCK policy enqueue retry interval (ms)"
+	default 50
+	range 10 1000
+	depends on EVENT_QUEUE_OVERFLOW_BLOCK
+	help
+	  When the queue is full under BLOCK policy, k_msgq_put is retried with
+	  this timeout so publishers can observe event_system_is_running() == false
+	  after stop/shutdown without deadlocking.
+
+config EVENT_SYSTEM_AUTOINIT
+	bool "Auto-initialize event system at boot (SYS_INIT)"
+	default y
+	depends on EVENT_SYSTEM
+	help
+	  Register event_compat_auto_init at APP_INIT_PRIO_EVENT_SYS. Disable if the
+	  application calls event_compat_init/start manually.
+
+config EVENT_DISPATCHER_AUTOINIT
+	bool "Auto-initialize event dispatcher at boot (SYS_INIT)"
+	default y
+	depends on EVENT_SYSTEM
+	help
+	  Register event_dispatcher_auto_init at APP_INIT_PRIO_DISPATCHER. Disable
+	  if the application initializes the dispatcher manually (e.g. unit tests).
 
 	# =============================================================================
 	# Event Structure Size Configuration

@@ -159,6 +159,37 @@ ZTEST(test_event_queue, test_queue_overflow_drop_lowest) {
 }
 
 /**
+ * @brief DROP_LOWEST 成功挤入时不应虚增 overflow_count（仅 drop_count 增加）
+ */
+ZTEST(test_event_queue, test_drop_lowest_no_spurious_overflow_count) {
+    struct k_msgq  test_queue;
+    char           buffer[2 * sizeof(event_t)];
+    event_status_t status;
+    queue_stats_t  stats;
+    event_t        e1 = {.type = 1, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        e2 = {.type = 2, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        hi = {.type = 99, .priority = EVENT_PRIORITY_HIGH};
+
+    status = event_queue_init(&test_queue, buffer, 2);
+    zassert_equal(status, EVENT_OK, NULL);
+
+    status = event_queue_enqueue(&test_queue, &e1, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, NULL);
+    status = event_queue_enqueue(&test_queue, &e2, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, NULL);
+
+    status = event_queue_enqueue(&test_queue, &hi, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT);
+    zassert_equal(status, EVENT_OK, NULL);
+
+    event_queue_get_stats(&test_queue, &stats);
+    zassert_equal(stats.overflow_count, 0, "成功挤入不应计入 overflow");
+    zassert_equal(stats.drop_count, 1, "应仅统计被踢出的一条");
+    zassert_equal(stats.enqueue_count, 3, NULL);
+
+    event_queue_deinit(&test_queue);
+}
+
+/**
  * @brief 测试 DROP_LOWEST：新事件比队列中最差事件还低时丢弃新事件
  */
 ZTEST(test_event_queue, test_queue_overflow_drop_lowest_reject_worse) {

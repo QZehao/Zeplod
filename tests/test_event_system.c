@@ -14,9 +14,11 @@
  *
  */
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 #include "event_dispatcher.h"
+#include "event_queue.h"
 #include "event_system.h"
 
 LOG_MODULE_REGISTER(test_event_system);
@@ -560,6 +562,69 @@ ZTEST(test_event_system, test_event_system_stop_restarts_dispatcher) {
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
+
+#if IS_ENABLED(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
+
+#define BLOCK_TEST_EVENT_TYPE 200U
+
+static K_THREAD_STACK_DEFINE(block_pub_stack, 2048);
+static struct k_thread block_pub_thread;
+static atomic_t        block_pub_done;
+static event_status_t  block_pub_result;
+
+static void block_publish_thread_entry(void* p1, void* p2, void* p3)
+{
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    event_t ev = {.type = BLOCK_TEST_EVENT_TYPE, .priority = EVENT_PRIORITY_NORMAL};
+
+    block_pub_result = event_publish(&ev);
+    atomic_set(&block_pub_done, 1);
+}
+
+/**
+ * @brief BLOCK 策略：队列满时 stop 应使阻塞中的 publish 返回 NOT_RUNNING（不死锁）
+ */
+ZTEST(test_event_system, test_block_publish_unblocks_on_stop)
+{
+    struct k_msgq* q;
+    uint32_t       cap;
+    event_t        filler = {.type = BLOCK_TEST_EVENT_TYPE, .priority = EVENT_PRIORITY_LOW};
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(BLOCK_TEST_EVENT_TYPE, "block_test"), EVENT_OK, NULL);
+
+    q = event_system_get_queue();
+    zassert_not_null(q, NULL);
+    cap = event_queue_capacity(q);
+
+    for (uint32_t i = 0; i < cap; i++) {
+        zassert_equal(event_publish(&filler), EVENT_OK, NULL);
+    }
+
+    atomic_set(&block_pub_done, 0);
+    k_tid_t tid = k_thread_create(&block_pub_thread, block_pub_stack, K_THREAD_STACK_SIZEOF(block_pub_stack),
+                                  block_publish_thread_entry, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
+    zassert_not_null(tid, NULL);
+    k_thread_start(tid);
+
+    k_msleep(100);
+    zassert_equal(atomic_get(&block_pub_done), 0, "publish 应在满队列上阻塞");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+
+    k_msleep(300);
+    zassert_equal(atomic_get(&block_pub_done), 1, NULL);
+    zassert_equal(block_pub_result, EVENT_ERR_NOT_RUNNING, NULL);
+
+    zassert_equal(k_thread_join(tid, K_MSEC(1000)), 0, NULL);
+    zassert_equal(event_system_shutdown(), EVENT_OK, NULL);
+}
+
+#endif /* CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK */
 
 /**
  * @brief 测试 event_is_running
