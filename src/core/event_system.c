@@ -163,8 +163,13 @@ static atomic_t g_publish_in_flight;
 static K_MUTEX_DEFINE(g_subscriber_id_lock);
 
 static void event_publish_in_flight_wait_zero(void) {
+    uint32_t spins = 0;
     while (atomic_get(&g_publish_in_flight) != 0) {
-        k_yield();
+        if (spins++ < 100U) {
+            k_yield();
+        } else {
+            k_sleep(K_NO_WAIT);
+        }
     }
 }
 

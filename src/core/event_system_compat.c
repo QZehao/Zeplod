@@ -14,6 +14,7 @@
  */
 
 #include "event_system_compat.h"
+#include <errno.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include "event_system.h"
@@ -22,6 +23,19 @@ LOG_MODULE_REGISTER(event_system_compat, CONFIG_SYS_LOG_LEVEL);
 
 #if EVENT_COMPAT_USE_PRO
 #include "event_system_pro.h"
+#endif
+
+#if !EVENT_COMPAT_USE_PRO
+static inline int event_status_to_errno(event_status_t status) {
+    switch (status) {
+    case EVENT_OK: return 0;
+    case EVENT_ERR_NO_MEM: return -ENOMEM;
+    case EVENT_ERR_INVALID_ARG: return -EINVAL;
+    case EVENT_ERR_TIMEOUT: return -ETIMEDOUT;
+    case EVENT_ERR_NOT_RUNNING: return -ECANCELED;
+    default: return -EIO;
+    }
+}
 #endif
 
 int event_compat_init(const event_compat_config_t* config) {
@@ -50,7 +64,7 @@ int event_compat_init(const event_compat_config_t* config) {
     int ret = event_system_pro_init(&pro_config);
     if (ret != EVENT_SYSTEM_PRO_OK) {
         LOG_ERR("Failed to init event_system_pro: %d", ret);
-        return -1;
+        return -EIO;
     }
     LOG_INF("Event system PRO initialized");
     return 0;
@@ -63,7 +77,7 @@ int event_compat_init(const event_compat_config_t* config) {
     event_status_t ret = event_system_init();
     if (ret != EVENT_OK) {
         LOG_ERR("Failed to init event_system: %d", ret);
-        return -1;
+        return event_status_to_errno(ret);
     }
     LOG_INF("Event system (standard) initialized");
     return 0;
@@ -75,13 +89,13 @@ int event_compat_start(void) {
     int ret = event_system_pro_start();
     if (ret != EVENT_SYSTEM_PRO_OK) {
         LOG_ERR("Failed to start event_system_pro");
-        return -1;
+        return -EIO;
     }
 #else
     event_status_t ret = event_system_start();
     if (ret != EVENT_OK) {
         LOG_ERR("Failed to start event_system");
-        return -1;
+        return event_status_to_errno(ret);
     }
 #endif
     return 0;
@@ -92,13 +106,13 @@ int event_compat_stop(void) {
     int ret = event_system_pro_stop();
     if (ret != EVENT_SYSTEM_PRO_OK) {
         LOG_ERR("Failed to stop event_system_pro");
-        return -1;
+        return -EIO;
     }
 #else
     event_status_t ret = event_system_stop();
     if (ret != EVENT_OK) {
         LOG_ERR("Failed to stop event_system");
-        return -1;
+        return event_status_to_errno(ret);
     }
 #endif
     return 0;
@@ -117,14 +131,14 @@ int event_compat_shutdown(void) {
     int ret = event_system_pro_shutdown();
     if (ret != EVENT_SYSTEM_PRO_OK) {
         LOG_ERR("Failed to shutdown event_system_pro");
-        return -1;
+        return -EIO;
     }
     return 0;
 #else
-    int ret = event_system_shutdown();
+    event_status_t ret = event_system_shutdown();
     if (ret != EVENT_OK) {
         LOG_ERR("Failed to shutdown event_system: %d", ret);
-        return -1;
+        return event_status_to_errno(ret);
     }
     return 0;
 #endif

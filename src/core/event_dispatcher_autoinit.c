@@ -34,7 +34,11 @@ LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
 #if !EVENT_COMPAT_USE_PRO && IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
 
 static void event_dispatcher_autoinit_rollback(bool local_system_init, bool local_system_start) {
-    (void) event_dispatcher_stop();
+    event_status_t dret = event_dispatcher_stop();
+    if (dret != EVENT_OK) {
+        LOG_ERR("event_dispatcher_stop failed (%d) during rollback; aborting to avoid use-after-free", dret);
+        return;
+    }
 
     if (local_system_start || event_system_is_running()) {
         (void) event_system_stop();
