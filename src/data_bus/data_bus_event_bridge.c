@@ -36,22 +36,36 @@ typedef struct {
 	uint32_t len;
 } data_bus_event_notification_t;
 
-static int data_bus_event_bridge_init(void)
+/**
+ * @brief 惰性注册事件类型（SYS_INIT 与首次 notify 均可调用）
+ *
+ * 避免 SYS_INIT 在事件系统未就绪时返回失败导致内核 panic。
+ */
+static void data_bus_event_bridge_ensure_registered(void)
 {
-	event_status_t st = event_register_type((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
-						"DATA_BUS_AVAILABLE");
-
-	if (st != EVENT_OK) {
-		LOG_ERR("event_register_type(%u) failed: %d", CONFIG_DATA_BUS_EVENT_TYPE_ID, st);
-		return -EIO;
+	if (atomic_get(&g_event_type_registered)) {
+		return;
 	}
 
-	atomic_set(&g_event_type_registered, 1);
-	LOG_INF("Data bus event bridge: type %u registered", CONFIG_DATA_BUS_EVENT_TYPE_ID);
+	event_status_t st = event_register_type((event_type_t) CONFIG_DATA_BUS_EVENT_TYPE_ID, "DATA_BUS_AVAILABLE");
+
+	if (st == EVENT_OK) {
+		atomic_set(&g_event_type_registered, 1);
+		LOG_INF("Data bus event bridge: type %u registered", CONFIG_DATA_BUS_EVENT_TYPE_ID);
+	} else {
+		LOG_WRN("event_register_type(%u) deferred: %d", CONFIG_DATA_BUS_EVENT_TYPE_ID, st);
+	}
+}
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
+static int data_bus_event_bridge_init(void)
+{
+	data_bus_event_bridge_ensure_registered();
 	return 0;
 }
 
 SYS_INIT(data_bus_event_bridge_init, POST_KERNEL, APP_INIT_PRIO_DATA_BUS + 1);
+#endif
 
 void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t len)
 {
@@ -60,6 +74,8 @@ void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t l
 	if (ch == NULL || ch->name == NULL) {
 		return;
 	}
+
+	data_bus_event_bridge_ensure_registered();
 
 	if (!atomic_get(&g_event_type_registered)) {
 		return;

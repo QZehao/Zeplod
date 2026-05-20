@@ -14,6 +14,7 @@
  *
  */
 
+#include "data_bus_internal.h"
 #include "data_bus_memory.h"
 #include <zephyr/kernel.h>
 #include <zephyr/sys/__assert.h>

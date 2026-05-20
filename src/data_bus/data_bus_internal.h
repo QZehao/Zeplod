@@ -18,10 +18,56 @@
 #define DATA_BUS_INTERNAL_H
 
 #include "data_bus.h"
+#include <zephyr/sys/ring_buffer.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ============================================================================
+ * 内部对象布局（勿在应用代码中直接访问字段）
+ * ============================================================================ */
+
+struct data_bus_block {
+    void*              ptr;
+    size_t             len;
+    atomic_t           ref_count;
+    struct k_mem_slab* slab;
+    uint32_t           seq;
+};
+
+struct data_bus_consumer {
+    data_bus_channel_t*   channel;
+    const char*           name;
+    char                  name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
+    bool                  manual_release;
+    data_bus_consume_fn_t callback;
+    void*                 user_data;
+    uint32_t              last_seq;
+    atomic_t              active;
+};
+
+struct data_bus_channel {
+    const char*     name;
+    char            name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
+    struct ring_buf queue;
+    uint8_t         queue_buf[CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH * sizeof(void*)];
+    struct k_spinlock lock;
+    atomic_t        active;
+
+    data_bus_consumer_t consumers[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
+    bool            consumer_slot_in_use[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
+    uint32_t        consumer_count;
+
+    uint32_t        next_seq;
+    uint32_t        publish_count;
+    uint32_t        drop_count;
+    uint32_t        queue_full_count;
+    uint32_t        alloc_fail_count;
+    uint32_t        peak_queue_usage;
+    uint32_t        queue_used;
+    atomic_t        dispatch_hold;
+};
 
 /* ============================================================================
  * 全局状态（定义在 data_bus.c 中）

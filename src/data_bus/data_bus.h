@@ -23,7 +23,6 @@
 #define DATA_BUS_H
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/ring_buffer.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -33,7 +32,7 @@ extern "C" {
 #endif
 
 /* ============================================================================
- * 前置声明
+ * 前置声明（完整定义见 data_bus_internal.h，应用代码请勿解引用内部字段）
  * ============================================================================ */
 
 typedef struct data_bus_block data_bus_block_t;
@@ -54,6 +53,9 @@ typedef struct data_bus_consumer data_bus_consumer_t;
  * @note 框架在回调返回后自动调用 data_bus_block_release()。
  *       如需在回调外继续持有数据块（例如传给另一个线程），
  *       在回调内调用 data_bus_block_retain()，用完后自行 release。
+ * @note manual_release=true 时：框架不在回调返回后自动 release；须在返回前自行
+ *       data_bus_block_release()。若还调用了 retain()，须 release 两次（隐式引用 +
+ *       显式 retain 各一次）。
  * @note 回调中勿调用 data_bus_channel_create/destroy、data_bus_consumer_unregister
  *       或 data_bus_deinit()，以免与分发线程争用 g_channels_lock 或 k_thread_join 死锁。
  */
@@ -67,65 +69,11 @@ typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
 
 typedef struct {
     const char*             name;           /**< 消费者名称（调试用）；注册时拷贝 */
-    bool                    manual_release; /**< 默认 false（框架在回调返回后自动 release）。
-                                                  若为 true，回调必须在返回前调用 data_bus_block_release(block)，
-                                                  否则该消费者分得的引用将泄漏。 */
+    bool                    manual_release; /**< 默认 false。true 时回调返回前须 release；
+                                                  若同时使用 retain() 须 release 两次，见 data_bus_consume_fn_t */
     data_bus_consume_fn_t   callback;       /**< 数据到达回调 */
     void*                   user_data;      /**< 回调用户数据 */
 } data_bus_consumer_cfg_t;
-
-/* ============================================================================
- * 数据块
- * ============================================================================ */
-
-struct data_bus_block {
-    void*           ptr;        /**< 数据指针（来自 slab 或 k_malloc） */
-    size_t          len;        /**< 数据长度 */
-    atomic_t        ref_count;  /**< 引用计数 */
-    struct k_mem_slab* slab;    /**< 来源 slab（NULL = k_malloc） */
-    uint32_t        seq;        /**< 单调递增序列号 */
-};
-
-/* ============================================================================
- * 消费者
- * ============================================================================ */
-
-struct data_bus_consumer {
-    data_bus_channel_t*     channel;        /**< 所属通道（注册时设置，注销 O(1) 定位） */
-    const char*             name;
-    char                    name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    bool                    manual_release;
-    data_bus_consume_fn_t   callback;
-    void*                   user_data;
-    uint32_t                last_seq;       /**< 最后消费的序列号 */
-    atomic_t                active;         /**< 原子标志：1=活跃, 0=已注销 */
-};
-
-/* ============================================================================
- * 通道
- * ============================================================================ */
-
-struct data_bus_channel {
-    const char*     name;
-    char            name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    struct ring_buf queue;              /**< 环形缓冲区，存储 data_bus_block_t* */
-    uint8_t         queue_buf[CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH * sizeof(void*)];
-    struct k_spinlock lock;
-    atomic_t        active;
-
-    data_bus_consumer_t consumers[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
-    bool            consumer_slot_in_use[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
-    uint32_t        consumer_count;     /**< 当前已注册消费者数量 */
-
-    uint32_t        next_seq;           /**< 下一个序列号（2^32 处回绕） */
-    uint32_t        publish_count;
-    uint32_t        drop_count;
-    uint32_t        queue_full_count;
-    uint32_t        alloc_fail_count;
-    uint32_t        peak_queue_usage;   /**< 历史最大已用槽位数 */
-    uint32_t        queue_used;         /**< 当前已用槽位（受锁保护） */
-    atomic_t        dispatch_hold;      /**< 分发器在出队/分发期间固定通道 */
-};
 
 /* ============================================================================
  * 统计
@@ -196,7 +144,7 @@ int data_bus_channel_create(const char* name,
  * 调用者必须先注销所有消费者并等待队列排空。
  * 通过检查后会先将通道置为非 active，再从全局表移除，避免销毁窗口内继续 publish。
  *
- * @return 成功返回 0，失败返回负 errno
+ * @return 成功返回 0；-EAGAIN 时队列未空或 dispatch_hold 非零，宜退避重试
  */
 int data_bus_channel_destroy(data_bus_channel_t* ch);
 
@@ -284,7 +232,11 @@ int data_bus_consumer_unregister(data_bus_consumer_t* consumer);
 /** @brief 增加引用计数 */
 void data_bus_block_acquire(data_bus_block_t* block);
 
-/** @brief 减少引用计数，归零时释放 */
+/**
+ * @brief 减少引用计数，归零时释放
+ *
+ * @note 每个 retain/acquire 必须严格对应一次 release；重复 release 在 DEBUG 下触发断言
+ */
 void data_bus_block_release(data_bus_block_t* block);
 
 /**

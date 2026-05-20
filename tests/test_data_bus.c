@@ -23,6 +23,7 @@
 #include <zephyr/kernel.h>
 #include <string.h>
 #include "data_bus.h"
+#include "data_bus_internal.h"
 #include "data_bus_memory.h"
 
 LOG_MODULE_REGISTER(test_data_bus);

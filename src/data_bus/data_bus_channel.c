@@ -15,6 +15,7 @@
  * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
  * 2026-05-20       2.2            zeh            obj_init 运行时校验；消费者固定槽位 reset/destroy
  * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验 active
+ * 2026-05-20       2.4            zeh            enqueue 持锁二次校验 active；入队失败统一回滚；deinit 去重 drain
  *
  */
 
@@ -308,7 +309,14 @@ static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* 
 #endif
 
     k_spinlock_key_t key = k_spin_lock(&ch->lock);
-    uint32_t         ret = ring_buf_put(&ch->queue, (uint8_t*) &block, sizeof(block));
+
+    /* SMP：与 destroy 竞态时拒绝入队，避免访问已释放的 ch（调用方须 mem_free block） */
+    if (!atomic_get(&ch->active)) {
+        k_spin_unlock(&ch->lock, key);
+        return 0;
+    }
+
+    uint32_t ret = ring_buf_put(&ch->queue, (uint8_t*) &block, sizeof(block));
     if (ret == sizeof(block)) {
         block->seq = ch->next_seq++;
         ch->publish_count++;
@@ -320,6 +328,27 @@ static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* 
     }
     k_spin_unlock(&ch->lock, key);
     return ret;
+}
+
+/**
+ * @brief 入队失败时释放块并更新统计
+ * @return -ESHUTDOWN 通道已关闭；-ENOBUFS 队列已满
+ */
+static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t enqueue_ret) {
+    data_bus_mem_free(block);
+
+    k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
+    if (!atomic_get(&ch->active)) {
+        k_spin_unlock(&ch->lock, fkey);
+        return -ESHUTDOWN;
+    }
+    ch->drop_count++;
+    ch->queue_full_count++;
+    k_spin_unlock(&ch->lock, fkey);
+
+    ARG_UNUSED(enqueue_ret);
+    LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
+    return -ENOBUFS;
 }
 
 /* ============================================================================
@@ -373,13 +402,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     uint32_t ret = channel_enqueue_block(ch, block);
 
     if (ret != sizeof(block)) {
-        LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
-        data_bus_mem_free(block);
-        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
-        ch->drop_count++;
-        ch->queue_full_count++;
-        k_spin_unlock(&ch->lock, fkey);
-        return -ENOBUFS;
+        return publish_handle_enqueue_failure(ch, block, ret);
     }
 
     LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, block->seq, len);
@@ -417,15 +440,9 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
         return -ESHUTDOWN;
     }
 
-    /* 入队 */
     uint32_t ret = channel_enqueue_block(ch, block);
     if (ret != sizeof(block)) {
-        LOG_WRN("publish_block to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
-        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
-        ch->drop_count++;
-        ch->queue_full_count++;
-        k_spin_unlock(&ch->lock, fkey);
-        return -ENOBUFS;
+        return publish_handle_enqueue_failure(ch, block, ret);
     }
 
     LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, block->seq, block->len);

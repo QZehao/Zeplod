@@ -17,7 +17,7 @@
 #ifndef DATA_BUS_MEMORY_H
 #define DATA_BUS_MEMORY_H
 
-#include "data_bus.h"
+#include "data_bus_internal.h"
 #include <stddef.h>
 
 #ifdef __cplusplus

@@ -121,6 +121,11 @@ static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
 				(void)atomic_dec(&ch->dispatch_hold);
 			}
 		}
+
+		/* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
+		while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
+			;
+		}
 	}
 }
 
@@ -196,7 +201,7 @@ int data_bus_deinit(void)
 	while (g_channel_count > 0) {
 		data_bus_channel_t *ch = g_channels[0];
 		if (ch != NULL) {
-			data_bus_channel_drain_pending(ch, false);
+			/* obj_reset 内部会 drain_pending */
 			data_bus_channel_obj_reset(ch);
 			k_mem_slab_free(&data_bus_channel_slab, ch);
 		}
