@@ -64,7 +64,7 @@ static int data_bus_event_bridge_init(void)
 	return 0;
 }
 
-SYS_INIT(data_bus_event_bridge_init, POST_KERNEL, APP_INIT_PRIO_DATA_BUS + 1);
+SYS_INIT(data_bus_event_bridge_init, POST_KERNEL, APP_INIT_PRIO_DATA_BUS_BRIDGE);
 #endif
 
 void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t len)

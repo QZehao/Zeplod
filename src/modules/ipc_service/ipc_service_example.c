@@ -23,6 +23,7 @@
  *
  */
 
+#include "app_config.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
@@ -268,6 +269,7 @@ static int ipc_service_example_init(void) {
 }
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_EXAMPLE)
-/* 系统启动时自动初始化（仅当 CONFIG_THREAD_IPC_SERVICE_EXAMPLE=y 编入本文件） */
-SYS_INIT(ipc_service_example_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+/* POST_KERNEL：APPLICATION 阶段需在 Zephyr CONFIG_APPLICATION_INIT 下才链接，否则会报
+ * "Undefined initialization levels used" */
+SYS_INIT(ipc_service_example_init, POST_KERNEL, APP_INIT_PRIO_MODULE_IPC);
 #endif

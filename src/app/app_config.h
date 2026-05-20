@@ -89,6 +89,12 @@ extern "C" {
 #define APP_CONFIG_ENABLE_LOG_DUMP 0
 #endif
 
+#ifdef CONFIG_APP_ENABLE_BANNER
+#define APP_CONFIG_ENABLE_BANNER 1
+#else
+#define APP_CONFIG_ENABLE_BANNER 0
+#endif
+
 #ifdef CONFIG_APP_KV_ENABLE
 #define APP_CONFIG_ENABLE_APP_KV 1
 #else
@@ -121,6 +127,7 @@ extern "C" {
 #define APP_INIT_PRIO_EVENT_SYS       40
 #define APP_INIT_PRIO_DISPATCHER      45
 #define APP_INIT_PRIO_DATA_BUS        46
+#define APP_INIT_PRIO_DATA_BUS_BRIDGE 47
 #define APP_INIT_PRIO_SYS_TIMER       50
 #define APP_INIT_PRIO_SYS_WDT         52
 #define APP_INIT_PRIO_MODULE_MGR      54

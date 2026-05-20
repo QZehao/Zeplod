@@ -502,6 +502,13 @@ config APP_ENABLE_LOG_DUMP
 	help
 	  Enable sys_log_dump shell command to dump buffered logs.
 
+config APP_ENABLE_BANNER
+	bool "Enable Startup ASCII Banner"
+	default y
+	help
+	  Print ASCII art banner at application startup.
+	  Disable to save flash (~200-400 bytes) and reduce boot noise.
+
 config APP_HEARTBEAT_INTERVAL_MS
 	int "Application Heartbeat Interval (ms)"
 	default 1000

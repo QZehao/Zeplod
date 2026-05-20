@@ -13,6 +13,7 @@
  */
 
 #include "app_main.h"
+#include "app_banner.h"
 #include "app_kv.h"
 #include "event_dispatcher.h"
 #include "event_system.h"
@@ -407,9 +408,6 @@ static void app_apply_runtime_config(void) {
 }
 
 static int app_init_apply_cb(void) {
-    LOG_INF("========================================");
-    LOG_INF("Application Initializing...");
-    LOG_INF("========================================");
     app_version_print();
 
     memset(&g_app, 0, sizeof(g_app));
@@ -579,10 +577,15 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 }
 
 static void app_print_banner(void) {
-    LOG_INF("========================================");
-    LOG_INF("  Zephyr Event-Driven Application");
-    LOG_INF("  Version: %s", APP_VERSION_STRING);
-    LOG_INF("========================================");
+#if APP_CONFIG_ENABLE_BANNER
+    printk(APP_BANNER_LOGO);
+    printk(APP_BANNER_INFO,
+           "Version:", APP_VERSION_STRING,
+           "Target:", BUILD_TARGET,
+           "Git:", GIT_BRANCH, GIT_COMMIT_HASH,
+           "Build:", BUILD_TIMESTAMP);
+    printk("\r\n");
+#endif
 }
 
 /* =============================================================================

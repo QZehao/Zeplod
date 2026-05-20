@@ -331,46 +331,54 @@ static bool event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
 
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
 /**
+ * @brief Slab 元数据（Zephyr 4.3+ 不再暴露 block_size/num_blocks，自行维护）
+ */
+typedef struct {
+    struct k_mem_slab* slab;
+    size_t             block_size;
+    uint32_t           num_blocks;
+} event_slab_meta_t;
+
+/**
  * @brief 判断指针是否属于指定数据 slab 池（用于释放路径纠偏）
  *
- * @note 依赖 struct k_mem_slab 的 buffer/block_size/num_blocks 字段（Zephyr 公开布局）。
- *       大版本升级 Zephyr 时请核对 include/zephyr/kernel/mm/slab.h 是否变更。
+ * @note 使用外部传入的 block_size/num_blocks，不依赖 struct k_mem_slab 内部布局。
  */
-static bool event_slab_ptr_in_pool(const void* ptr, const struct k_mem_slab* slab) {
-    if (ptr == NULL || slab == NULL || slab->buffer == NULL || slab->num_blocks == 0U) {
+static bool event_slab_ptr_in_pool(const void* ptr, const event_slab_meta_t* meta) {
+    if (ptr == NULL || meta == NULL || meta->slab == NULL || meta->num_blocks == 0U || meta->block_size == 0U) {
         return false;
     }
 
     uintptr_t block = (uintptr_t) ptr;
-    uintptr_t base = (uintptr_t) slab->buffer;
-    size_t    total = (size_t) slab->block_size * (size_t) slab->num_blocks;
+    uintptr_t base  = (uintptr_t) meta->slab->buffer;
+    size_t    total = meta->block_size * meta->num_blocks;
 
     if (block < base || block >= (base + total)) {
         return false;
     }
 
-    return ((block - base) % slab->block_size) == 0U;
+    return ((block - base) % meta->block_size) == 0U;
 }
 
 /**
  * @brief 按指针地址反查数据 slab 池（标记损坏时的安全释放）
  */
 static struct k_mem_slab* event_resolve_data_slab_for_ptr(void* ptr) {
-    static struct k_mem_slab* const data_slabs[] = {
+    static const event_slab_meta_t data_slabs[] = {
 #if EVENT_SLAB_256_AVAILABLE
-        &event_slab_data_256,
+        {&event_slab_data_256, 256U, CONFIG_EVENT_SLAB_LARGE_256_COUNT},
 #endif
 #if EVENT_SLAB_1K_AVAILABLE
-        &event_slab_data_1k,
+        {&event_slab_data_1k, 1024U, CONFIG_EVENT_SLAB_LARGE_1K_COUNT},
 #endif
 #if EVENT_SLAB_4K_AVAILABLE
-        &event_slab_data_4k,
+        {&event_slab_data_4k, 4096U, CONFIG_EVENT_SLAB_LARGE_4K_COUNT},
 #endif
     };
 
     for (size_t i = 0; i < ARRAY_SIZE(data_slabs); i++) {
-        if (event_slab_ptr_in_pool(ptr, data_slabs[i])) {
-            return data_slabs[i];
+        if (event_slab_ptr_in_pool(ptr, &data_slabs[i])) {
+            return data_slabs[i].slab;
         }
     }
 
