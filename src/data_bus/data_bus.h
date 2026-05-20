@@ -9,13 +9,14 @@
  * - 默认自动释放：回调返回后框架自动 release
  * - 异步持有：回调内调用 data_bus_block_retain()，稍后手动 release
  * @author zeh (china_qzh@163.com)
- * @version 2.0
+ * @version 2.1
  * @date 2026-05-15
  *
  * @par 修改日志:
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：删除 COPY 模式，统一 auto_release + retain
+ * 2026-05-20       2.1            zeh            增加 data_bus_block_ptr / data_bus_block_len
  *
  */
 
@@ -248,6 +249,21 @@ void data_bus_block_release(data_bus_block_t* block);
  * @return 被保留的块（同一指针，ref_count 已增加）
  */
 data_bus_block_t* data_bus_block_retain(data_bus_block_t* block);
+
+/**
+ * @brief 只读访问数据块载荷指针
+ *
+ * @param block 数据块；NULL 时返回 NULL
+ * @return 载荷指针；在块仍被有效持有（未 release 至销毁）期间有效
+ */
+void* data_bus_block_ptr(const data_bus_block_t* block);
+
+/**
+ * @brief 只读访问数据块载荷长度（字节）
+ *
+ * @param block 数据块；NULL 时返回 0
+ */
+size_t data_bus_block_len(const data_bus_block_t* block);
 
 /* ============================================================================
  * 统计

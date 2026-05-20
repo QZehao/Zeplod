@@ -4,13 +4,14 @@
  *
  * 两级分配：block 结构体从固定 slab 分配，数据缓冲区按大小分级 slab + k_malloc 兜底。
  * @author zeh (china_qzh@163.com)
- * @version 2.0
+ * @version 2.1
  * @date 2026-05-15
  *
  * @par 修改日志:
  *
  *    Date         Version        Author          Description
  * 2026-05-15       2.0            zeh            重构：添加 data_bus_block_retain()
+ * 2026-05-20       2.1            zeh            增加 data_bus_block_ptr / data_bus_block_len
  *
  */
 
@@ -206,4 +207,20 @@ data_bus_block_t *data_bus_block_retain(data_bus_block_t *block)
 	}
 	data_bus_block_acquire(block);
 	return block;
+}
+
+void *data_bus_block_ptr(const data_bus_block_t *block)
+{
+	if (block == NULL) {
+		return NULL;
+	}
+	return block->ptr;
+}
+
+size_t data_bus_block_len(const data_bus_block_t *block)
+{
+	if (block == NULL) {
+		return 0;
+	}
+	return block->len;
 }
