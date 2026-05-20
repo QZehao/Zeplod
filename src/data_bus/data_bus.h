@@ -248,7 +248,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
  * @pre  块尚未进入任何通道队列；ref_count 必须为 0，否则返回 -EINVAL
  * @post 成功时 ref_count == 1（bus 持有引用）
  * @note bus 接管所有权；publish_block 成功后不要 release
- * @note 入队失败（如 -ENOBUFS）时块仍归调用方，须 data_bus_block_release
+ * @note 入队失败（如 -ENOBUFS）时块仍归调用方且 ref_count 为 0，须 data_bus_mem_free()
  * @note 无消费者时与 data_bus_publish 相同：分发线程排空并 release
  */
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);

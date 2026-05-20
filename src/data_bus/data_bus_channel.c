@@ -14,6 +14,7 @@
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
  * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
  * 2026-05-20       2.2            zeh            obj_init 运行时校验；消费者固定槽位 reset/destroy
+ * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验 active
  *
  */
 
@@ -213,31 +214,47 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         return -EINVAL;
     }
 
-    /* 检查是否仍有已注册消费者 */
+    /* 在 ch->lock 下原子地检查消费者/队列并关闭发布，避免与 register 竞态 */
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
     if (ch->consumer_count > 0) {
         LOG_WRN("Channel '%s' destroy failed: consumers remain (count=%u)", ch->name,
                 ch->consumer_count);
+        k_spin_unlock(&ch->lock, key);
         k_mutex_unlock(&g_channels_lock);
         return -EBUSY;
     }
+    if (ch->queue_used > 0) {
+        k_spin_unlock(&ch->lock, key);
+        k_mutex_unlock(&g_channels_lock);
+        return -EAGAIN;
+    }
+    atomic_set(&ch->active, 0);
+    k_spin_unlock(&ch->lock, key);
 
-    /* 检查挂起的数据 */
-    k_spinlock_key_t key = k_spin_lock(&ch->lock);
-    bool             queue_empty = (ch->queue_used == 0);
+    if (atomic_get(&ch->dispatch_hold) != 0) {
+        atomic_set(&ch->active, 1);
+        k_mutex_unlock(&g_channels_lock);
+        return -EAGAIN;
+    }
+
+    /* 排空在「队列已空」检查之后、移表之前可能入队的残留块（publish 二次 active 校验前窗口） */
+    data_bus_channel_drain_pending(ch, false);
+
+    key = k_spin_lock(&ch->lock);
+    bool queue_empty = (ch->queue_used == 0);
     k_spin_unlock(&ch->lock, key);
 
     if (!queue_empty) {
+        atomic_set(&ch->active, 1);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
     }
 
     if (atomic_get(&ch->dispatch_hold) != 0) {
+        atomic_set(&ch->active, 1);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
     }
-
-    /* 先关闭发布入口，再移出全局表，避免悬空 ch 指针继续入队 */
-    atomic_set(&ch->active, 0);
 
     /* 从表中移除 */
     for (uint32_t i = 0; i < g_channel_count; i++) {
@@ -259,7 +276,6 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         memset(&ch->consumers[ci], 0, sizeof(ch->consumers[ci]));
     }
     ch->consumer_count = 0;
-    atomic_set(&ch->active, 0);
 
     k_mem_slab_free(&data_bus_channel_slab, ch);
 
@@ -346,6 +362,12 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     /* 拷贝数据 */
     memcpy(block->ptr, data, len);
     /* block->len 已由 mem_alloc 设置，ref_count 已为 0 */
+
+    /* 分配期间 destroy 可能已置 inactive，入队前再次校验 */
+    if (!atomic_get(&ch->active)) {
+        data_bus_mem_free(block);
+        return -ESHUTDOWN;
+    }
 
     /* 入队 */
     uint32_t ret = channel_enqueue_block(ch, block);
