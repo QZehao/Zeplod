@@ -61,7 +61,7 @@ static int event_dispatcher_auto_init(void) {
             return -EIO;
         }
         local_system_init = true;
-        LOG_INF("Event system auto-initialized by dispatcher");
+        LOG_DBG("Event system auto-initialized by dispatcher");
     }
 
     if (!event_system_is_running()) {
@@ -90,7 +90,7 @@ static int event_dispatcher_auto_init(void) {
         return -EIO;
     }
 
-    LOG_INF("Event dispatcher initialized and started");
+    LOG_DBG("Event dispatcher initialized and started");
 
     return 0;
 }

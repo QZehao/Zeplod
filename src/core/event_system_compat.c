@@ -66,7 +66,7 @@ int event_compat_init(const event_compat_config_t* config) {
         LOG_ERR("Failed to init event_system_pro: %d", ret);
         return -EIO;
     }
-    LOG_INF("Event system PRO initialized");
+    LOG_DBG("Event system PRO initialized");
     return 0;
 #else
     /* SIL-2: 检测配置请求了专业版功能，但在标准版下被静默忽略 */
@@ -79,7 +79,7 @@ int event_compat_init(const event_compat_config_t* config) {
         LOG_ERR("Failed to init event_system: %d", ret);
         return event_status_to_errno(ret);
     }
-    LOG_INF("Event system (standard) initialized");
+    LOG_DBG("Event system (standard) initialized");
     return 0;
 #endif
 }
@@ -196,7 +196,7 @@ static int event_compat_auto_init(void) {
     }
 
 #if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
-    LOG_INF("Event system initialized (start deferred to dispatcher autoinit)");
+    LOG_DBG("Event system initialized (start deferred to dispatcher autoinit)");
     return 0;
 #else
     if (event_compat_start() != 0) {
@@ -205,7 +205,7 @@ static int event_compat_auto_init(void) {
         return -EIO;
     }
 
-    LOG_INF("Event system initialized and started");
+    LOG_DBG("Event system initialized and started");
     return 0;
 #endif
 }

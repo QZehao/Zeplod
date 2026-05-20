@@ -113,7 +113,7 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
 
 	k_spin_unlock(&ch->lock, key);
 
-	LOG_INF("Consumer '%s' registered on '%s' (total=%u/%u)", consumer->name, ch->name, total,
+	LOG_DBG("Consumer '%s' registered on '%s' (total=%u/%u)", consumer->name, ch->name, total,
 		CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL);
 
 	if (out_consumer != NULL) {
@@ -173,7 +173,7 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 	k_spin_unlock(&found_ch->lock, key);
 	k_mutex_unlock(&g_channels_lock);
 
-	LOG_INF("Consumer '%s' unregistered from '%s' (remain=%u)", log_name, found_ch->name, remain);
+	LOG_DBG("Consumer '%s' unregistered from '%s' (remain=%u)", log_name, found_ch->name, remain);
 
 	return 0;
 }

@@ -427,7 +427,7 @@ static int app_init_kv_step(void) {
 static int app_init_finalize(void) {
     g_app.initialized = true;
     app_apply_runtime_config();
-    LOG_INF("Application initialization complete");
+    LOG_DBG("Application initialization complete");
     return 0;
 }
 
@@ -460,13 +460,13 @@ int app_start(void) {
         return APP_OK;
     }
 
-    LOG_INF("Starting application...");
+    LOG_DBG("Starting application...");
 
     /* 事件系统/分发器已由 SYS_INIT 启动；module_compat SYS_INIT 仅启动管理器本身。 */
 
     /* 启动各已注册业务模块（INITIALIZED/STOPPED → RUNNING） */
     int started = module_compat_start_all();
-    LOG_INF("Started %d modules", started);
+    LOG_DBG("Started %d modules", started);
 
 #if APP_CONFIG_ENABLE_WATCHDOG
     if (g_app.config.enable_watchdog) {
@@ -496,7 +496,7 @@ int app_start(void) {
     g_app.start_time = k_uptime_get_32();
 
     app_print_banner();
-    LOG_INF("Application started successfully");
+    LOG_INF("Application ready (modules=%d)", started);
 
     return APP_OK;
 }
@@ -572,7 +572,7 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 
     /* 记录周期性状态 */
     if (g_app.heartbeat_count % 10 == 0) {
-        LOG_INF("Heartbeat: %d, Uptime: %dms", g_app.heartbeat_count, app_get_uptime());
+        LOG_DBG("Heartbeat: %d, Uptime: %dms", g_app.heartbeat_count, app_get_uptime());
     }
 }
 
@@ -583,7 +583,9 @@ static void app_print_banner(void) {
            "Version:", APP_VERSION_STRING,
            "Target:", BUILD_TARGET,
            "Git:", GIT_BRANCH, GIT_COMMIT_HASH,
-           "Build:", BUILD_TIMESTAMP);
+           "Build:", BUILD_TIMESTAMP,
+           "Ver code:", (unsigned int) APP_VERSION_CODE,
+           "Build type:", BUILD_TYPE);
     printk("\r\n");
 #endif
 }
@@ -593,7 +595,7 @@ static void app_print_banner(void) {
  * ============================================================================= */
 
 int main(void) {
-    LOG_INF("FW_MARKER: %s | %s", GIT_COMMIT_HASH, BUILD_TIMESTAMP);
+    LOG_DBG("FW_MARKER: %s | %s", GIT_COMMIT_HASH, BUILD_TIMESTAMP);
     /* 初始化应用 */
     if (app_init(NULL) != APP_OK) {
         LOG_ERR("Application initialization failed");

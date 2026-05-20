@@ -194,7 +194,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) 
 
     k_mutex_unlock(&g_channels_lock);
 
-    LOG_INF("Channel '%s' created (total=%u/%u)", name, g_channel_count, CONFIG_DATA_BUS_MAX_CHANNELS);
+    LOG_DBG("Channel '%s' created (total=%u/%u)", name, g_channel_count, CONFIG_DATA_BUS_MAX_CHANNELS);
     *out_channel = ch;
     return 0;
 }
@@ -269,7 +269,7 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         }
     }
 
-    LOG_INF("Channel '%s' destroyed", ch->name);
+    LOG_DBG("Channel '%s' destroyed", ch->name);
 
     k_mem_slab_free(&data_bus_channel_slab, ch);
 

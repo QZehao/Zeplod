@@ -124,11 +124,13 @@ bool app_version_check(uint8_t major, uint8_t minor, uint8_t patch) {
 }
 
 void app_version_print(void) {
+#if !IS_ENABLED(CONFIG_APP_BOOT_VERBOSE)
+    /* 默认由 app_print_banner() 整合简要信息；详项用 Shell 「version」或打开 APP_BOOT_VERBOSE */
+    return;
+#else
     char version_str[VERSION_STRING_MAX_LEN];
-    char info_str[VERSION_INFO_STRING_MAX_LEN];
 
-    if (app_version_get_string(version_str, sizeof(version_str)) != APP_OK ||
-        app_version_get_info_string(info_str, sizeof(info_str)) != APP_OK) {
+    if (app_version_get_string(version_str, sizeof(version_str)) != APP_OK) {
         LOG_WRN("app_version: buffer/format error building version strings");
         return;
     }
@@ -146,6 +148,7 @@ void app_version_print(void) {
     LOG_INF("  Build Type:  %s", g_version_info.build_type);
     LOG_INF("  Compiler:    %s %s", COMPILER_NAME, g_version_info.compiler_version);
     LOG_INF("========================================");
+#endif
 }
 
 /* =============================================================================

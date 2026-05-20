@@ -66,7 +66,7 @@ int module_compat_init(const module_compat_config_t* config) {
         LOG_ERR("Failed to init module_manager: %d", ret);
         return ret;
     }
-    LOG_INF("Module manager (standard) initialized");
+    LOG_DBG("Module manager (standard) initialized");
     return 0;
 #endif
 }
@@ -280,7 +280,7 @@ static int module_compat_auto_register(void) {
         return -EIO;
     }
 
-    LOG_INF("Module manager compat initialized and started");
+    LOG_DBG("Module manager compat initialized and started");
     return 0;
 }
 

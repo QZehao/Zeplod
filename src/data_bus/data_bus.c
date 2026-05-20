@@ -168,7 +168,7 @@ int data_bus_init(void)
 	} else {
 		k_thread_name_set(tid, "data_bus_disp");
 		atomic_set(&g_initialized, 1);
-		LOG_INF("Data bus initialized (disp stack=%d prio=%d)",
+		LOG_DBG("Data bus initialized (disp stack=%d prio=%d)",
 			CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE, CONFIG_DATA_BUS_DISPATCHER_PRIORITY);
 	}
 
@@ -217,7 +217,7 @@ int data_bus_deinit(void)
 
 	atomic_set(&g_initialized, 0);
 	atomic_set(&g_shutting_down, 0);
-	LOG_INF("Data bus deinitialized");
+	LOG_DBG("Data bus deinitialized");
 
 	k_mutex_unlock(&g_init_lock);
 	return 0;

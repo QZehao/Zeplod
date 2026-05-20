@@ -149,7 +149,7 @@ static bool event_dispatcher_process_allowed_locked(dispatcher_state_t state, bo
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 配置无效或事件系统未初始化
  */
 event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
-    LOG_INF("Initializing event dispatcher...");
+    LOG_DBG("Initializing event dispatcher...");
 
     /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
      * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
@@ -230,7 +230,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     atomic_set(&g_dispatcher_events_dropped, 0);
     g_dispatcher_initialized = true;
 
-    LOG_INF("Event dispatcher initialized");
+    LOG_DBG("Event dispatcher initialized");
     return EVENT_OK;
 }
 
@@ -250,7 +250,7 @@ event_status_t event_dispatcher_start(void) {
     if (g_dispatcher.state == DISPATCHER_PAUSED) {
         g_dispatcher.state = DISPATCHER_RUNNING;
         k_mutex_unlock(&g_dispatcher.lock);
-        LOG_INF("Event dispatcher resumed by start()");
+        LOG_DBG("Event dispatcher resumed by start()");
         return EVENT_OK;
     }
 
@@ -291,7 +291,7 @@ event_status_t event_dispatcher_start(void) {
 
     k_mutex_unlock(&g_dispatcher.lock);
 
-    LOG_INF("Event dispatcher started");
+    LOG_DBG("Event dispatcher started");
     return EVENT_OK;
 }
 
@@ -341,7 +341,7 @@ event_status_t event_dispatcher_stop(void) {
             }
             LOG_WRN("Dispatcher thread aborted after join timeout");
         } else {
-            LOG_INF("Dispatcher thread joined successfully");
+            LOG_DBG("Dispatcher thread joined successfully");
         }
     }
 
@@ -355,7 +355,7 @@ event_status_t event_dispatcher_stop(void) {
     }
     k_mutex_unlock(&g_dispatcher.lock);
 
-    LOG_INF("Event dispatcher stopped");
+    LOG_DBG("Event dispatcher stopped");
     return EVENT_OK;
 }
 
@@ -375,7 +375,7 @@ event_status_t event_dispatcher_pause(void) {
     g_dispatcher.state = DISPATCHER_PAUSED;
     k_mutex_unlock(&g_dispatcher.lock);
 
-    LOG_INF("Event dispatcher paused");
+    LOG_DBG("Event dispatcher paused");
     return EVENT_OK;
 }
 
@@ -395,7 +395,7 @@ event_status_t event_dispatcher_resume(void) {
     g_dispatcher.state = DISPATCHER_RUNNING;
     k_mutex_unlock(&g_dispatcher.lock);
 
-    LOG_INF("Event dispatcher resumed");
+    LOG_DBG("Event dispatcher resumed");
     return EVENT_OK;
 }
 
@@ -641,7 +641,7 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("Dispatcher thread running");
+    LOG_DBG("Dispatcher thread running");
 
     while (1) {
         /* SIL-2: 防御性检查 g_event_queue（NEW-2），防止队列指针在异常情况下
@@ -663,7 +663,7 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
 
         /* SIL-2: 优先检查停止状态，确保快速退出 */
         if (st == DISPATCHER_STOPPED) {
-            LOG_INF("Dispatcher thread received stop signal");
+            LOG_DBG("Dispatcher thread received stop signal");
             break;
         }
 
@@ -684,7 +684,7 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
     }
 
     /* thread_started 由 event_dispatcher_stop() 在 join 成功后清理，避免 join 完成前允许 start 复用线程控制块 */
-    LOG_INF("Dispatcher thread exiting");
+    LOG_DBG("Dispatcher thread exiting");
 }
 
 /**

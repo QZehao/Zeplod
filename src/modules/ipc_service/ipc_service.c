@@ -299,7 +299,7 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("IPC service '%s' worker started", service->name);
+    LOG_DBG("IPC service '%s' worker started", service->name);
 
     for (;;) {
         /* SIL-2: 使用有限超时而非永久阻塞，确保能响应 shutdown */
@@ -307,14 +307,14 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
 
         if (ret != 0) {
             if (atomic_get(&service->shutdown) != 0) {
-                LOG_INF("Worker thread exiting on shutdown signal");
+                LOG_DBG("Worker thread exiting on shutdown signal");
                 break;
             }
             continue;
         }
 
         if (atomic_get(&service->shutdown) != 0) {
-            LOG_INF("Worker thread detected shutdown after receiving request");
+            LOG_DBG("Worker thread detected shutdown after receiving request");
             break;
         }
 
@@ -400,7 +400,7 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
         }
     }
 
-    LOG_INF("IPC service '%s' worker stopped", service->name);
+    LOG_DBG("IPC service '%s' worker stopped", service->name);
 }
 
 /**
@@ -426,7 +426,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("IPC service '%s' dispatcher started", service->name);
+    LOG_DBG("IPC service '%s' dispatcher started", service->name);
 
     for (;;) {
         /* SIL-2: 使用有限超时而非永久阻塞，确保能响应 shutdown */
@@ -434,14 +434,14 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
 
         if (ret != 0) {
             if (atomic_get(&service->shutdown) != 0) {
-                LOG_INF("Dispatcher thread exiting on shutdown signal");
+                LOG_DBG("Dispatcher thread exiting on shutdown signal");
                 break;
             }
             continue;
         }
 
         if (atomic_get(&service->shutdown) != 0) {
-            LOG_INF("Dispatcher thread detected shutdown");
+            LOG_DBG("Dispatcher thread detected shutdown");
             break;
         }
 
@@ -532,7 +532,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
         k_mutex_unlock(&service->pending_lock);
     }
 
-    LOG_INF("IPC service '%s' dispatcher stopped", service->name);
+    LOG_DBG("IPC service '%s' dispatcher stopped", service->name);
 }
 
 /* =============================================================================
@@ -591,7 +591,7 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
     }
 #endif
 
-    LOG_INF("IPC service '%s' initialized", name);
+    LOG_DBG("IPC service '%s' initialized", name);
 
     return 0;
 }
@@ -634,7 +634,7 @@ int ipc_service_start(ipc_service_t* service) {
     service->running = true;
     k_mutex_unlock(&service->state_lock);
 
-    LOG_INF("IPC service '%s' started", service->name);
+    LOG_DBG("IPC service '%s' started", service->name);
 
     return 0;
 }
@@ -718,7 +718,7 @@ int ipc_service_stop(ipc_service_t* service) {
     ipc_shm_deinit(service);
 #endif
 
-    LOG_INF("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2, stop_err);
+    LOG_DBG("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2, stop_err);
 
     return stop_err;
 }

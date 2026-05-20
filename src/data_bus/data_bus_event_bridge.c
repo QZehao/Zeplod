@@ -51,7 +51,7 @@ static void data_bus_event_bridge_ensure_registered(void)
 
 	if (st == EVENT_OK) {
 		atomic_set(&g_event_type_registered, 1);
-		LOG_INF("Data bus event bridge: type %u registered", CONFIG_DATA_BUS_EVENT_TYPE_ID);
+		LOG_DBG("Data bus event bridge: type %u registered", CONFIG_DATA_BUS_EVENT_TYPE_ID);
 	} else {
 		LOG_WRN("event_register_type(%u) deferred: %d", CONFIG_DATA_BUS_EVENT_TYPE_ID, st);
 	}

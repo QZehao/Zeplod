@@ -532,7 +532,7 @@ static size_t get_allocation_size_locked(const alloc_header_t* header) {
  * ============================================================================= */
 
 int sys_mem_init(const sys_mem_config_t* config) {
-    LOG_INF("Initializing memory system...");
+    LOG_DBG("Initializing memory system...");
 
     /* 清零除互斥锁外的全局控制块 */
     memset(&g_sys_mem, 0, sizeof(g_sys_mem));
@@ -602,7 +602,7 @@ int sys_mem_init(const sys_mem_config_t* config) {
     g_sys_mem.tracker.tracking_enabled = g_sys_mem.config.enable_tracking;
     k_mutex_init(&g_sys_mem.tracker.lock);
 
-    LOG_INF("Memory system initialized");
+    LOG_DBG("Memory system initialized");
     return 0;
 }
 
@@ -1006,7 +1006,6 @@ static int sys_mem_auto_init(void) {
                                    .enable_defrag = false,
                                    .max_allocations = 256};
     sys_mem_init(&mem_config);
-    LOG_INF("Memory system initialized");
 #endif
     return 0;
 }

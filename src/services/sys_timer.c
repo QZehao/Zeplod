@@ -104,7 +104,7 @@ static void timer_thread_func(void* p1, void* p2, void* p3);
  * ============================================================================= */
 
 int sys_timer_init(void) {
-    LOG_INF("Initializing timer system...");
+    LOG_DBG("Initializing timer system...");
 
     memset(&g_sys_timer, 0, sizeof(g_sys_timer));
     k_mutex_init(&g_sys_timer.lock);
@@ -116,7 +116,7 @@ int sys_timer_init(void) {
     }
 
     g_sys_timer.initialized = true;
-    LOG_INF("Timer system initialized");
+    LOG_DBG("Timer system initialized");
     return 0;
 }
 
@@ -667,7 +667,6 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
 static int sys_timer_auto_init(void) {
 #if APP_CONFIG_ENABLE_TIMER_SVC
     sys_timer_init();
-    LOG_INF("Timer service initialized");
 #endif
     return 0;
 }

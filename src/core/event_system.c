@@ -494,7 +494,7 @@ static void event_system_init_rollback(void) {
  * @return EVENT_OK 成功
  */
 event_status_t event_system_init(void) {
-    LOG_INF("Initializing event system...");
+    LOG_DBG("Initializing event system...");
 
     /* SIL-2: 使用原子标志保护初始化，防止多线程竞争 */
     while (atomic_test_and_set_bit(&g_init_lock, 0)) {
@@ -539,7 +539,7 @@ event_status_t event_system_init(void) {
     g_event_system.initialized = true;
 
     atomic_clear_bit(&g_init_lock, 0);
-    LOG_INF("Event system initialized successfully");
+    LOG_DBG("Event system initialized successfully");
     return EVENT_OK;
 }
 
@@ -573,7 +573,7 @@ event_status_t event_system_start(void) {
         }
     }
 
-    LOG_INF("Event system started");
+    LOG_DBG("Event system started");
     return EVENT_OK;
 }
 
@@ -614,7 +614,7 @@ event_status_t event_system_stop(void) {
 
     event_queue_purge(g_event_system.event_queue);
 
-    LOG_INF("Event system stopped");
+    LOG_DBG("Event system stopped");
     return EVENT_OK;
 }
 
@@ -646,7 +646,7 @@ event_status_t event_system_shutdown(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    LOG_INF("Shutting down event system...");
+    LOG_DBG("Shutting down event system...");
 
     /* SIL-2: 使用 g_init_lock 防止与 init/shutdown 并发执行（NEW-1）。
      * 与 event_system_init 共用同一原子标志，串行化整个生命周期变更。 */
@@ -689,7 +689,7 @@ event_status_t event_system_shutdown(void) {
     atomic_clear(&g_restart_dispatcher_on_start);
 
     atomic_clear_bit(&g_init_lock, 0);
-    LOG_INF("Event system shutdown complete");
+    LOG_DBG("Event system shutdown complete");
     return EVENT_OK;
 }
 

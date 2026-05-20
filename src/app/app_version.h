@@ -208,6 +208,9 @@ bool app_version_check(uint8_t major, uint8_t minor, uint8_t patch);
 
 /**
  * @brief 打印版本信息到日志
+ *
+ * 默认（CONFIG_APP_BOOT_VERBOSE=n）无输出，由启动 Banner 展示摘要；
+ * 打开 CONFIG_APP_BOOT_VERBOSE=y 时输出完整多行信息。
  */
 void app_version_print(void);
 

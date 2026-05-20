@@ -506,8 +506,18 @@ config APP_ENABLE_BANNER
 	bool "Enable Startup ASCII Banner"
 	default y
 	help
-	  Print ASCII art banner at application startup.
+	  Print ASCII art banner at application startup (version/target/git/build
+	  summary is integrated into the banner; no duplicate version block).
 	  Disable to save flash (~200-400 bytes) and reduce boot noise.
+
+config APP_BOOT_VERBOSE
+	bool "Verbose boot: full version block + subsystem init at INF"
+	default n
+	help
+	  When disabled (default), startup uses DBG for routine subsystem init and
+	  only the banner (if enabled) plus a few INF milestones.
+	  When enabled, logs the full multi-line banner from app_version_print() at
+	  boot and keeps some service init at INF.
 
 config APP_HEARTBEAT_INTERVAL_MS
 	int "Application Heartbeat Interval (ms)"

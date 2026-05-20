@@ -702,7 +702,7 @@ static int dependency_order_stop_batch(start_order_entry_t* entries, int n) {
  * @return MODULE_OK 成功，MODULE_ERR_ALREADY_EXISTS 已初始化
  */
 int module_manager_init(void) {
-    LOG_INF("Initializing module manager...");
+    LOG_DBG("Initializing module manager...");
 
     /* SIL-2: 检查是否已初始化 */
     if (g_module_mgr.initialized) {
@@ -724,7 +724,7 @@ int module_manager_init(void) {
 
     g_module_mgr.initialized = true;
 
-    LOG_INF("Module manager initialized");
+    LOG_DBG("Module manager initialized");
     return MODULE_OK;
 }
 
@@ -748,7 +748,7 @@ int module_manager_start(void) {
     g_module_mgr.running = true;
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module manager started");
+    LOG_DBG("Module manager started");
     return MODULE_OK;
 }
 
@@ -769,7 +769,7 @@ int module_manager_stop(void) {
     g_module_mgr.running = false;
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module manager stopped");
+    LOG_DBG("Module manager stopped");
     return MODULE_OK;
 }
 
@@ -784,7 +784,7 @@ int module_manager_shutdown(void) {
     start_order_entry_t entries[CONFIG_MAX_MODULES];
     int                 n = 0;
 
-    LOG_INF("Shutting down module manager...");
+    LOG_DBG("Shutting down module manager...");
 
     /* SIL-2: 验证初始化状态 */
     if (!g_module_mgr.initialized) {
@@ -832,7 +832,7 @@ int module_manager_shutdown(void) {
 #endif
 
     if (n > 0) {
-        LOG_INF("Calling shutdown for %d modules", n);
+        LOG_DBG("Calling shutdown for %d modules", n);
     }
 
     /* SIL-2: 在锁外按停止序（依赖逆序）调用 shutdown，避免重入死锁 */
@@ -875,7 +875,7 @@ int module_manager_shutdown(void) {
     /* 清除 shutdown 标志，允许重新初始化 */
     atomic_set(&g_shutting_down, 0);
 
-    LOG_INF("Module manager shutdown complete");
+    LOG_DBG("Module manager shutdown complete");
     return MODULE_OK;
 }
 
@@ -1021,7 +1021,7 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module registered: %s (id=%u)", interface->name, (unsigned int) new_id);
+    LOG_DBG("Module registered: %s (id=%u)", interface->name, (unsigned int) new_id);
     module_mgr_notify_callback(new_id, MODULE_MGR_EVENT_REGISTERED);
     return MODULE_OK;
 }
@@ -1104,7 +1104,7 @@ int module_manager_unregister(uint32_t module_id) {
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module unregistered: id=%d", module_id);
+    LOG_DBG("Module unregistered: id=%d", module_id);
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_UNREGISTERED);
     return MODULE_OK;
 }
@@ -1247,7 +1247,7 @@ int module_manager_start_module(uint32_t module_id) {
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module started: %s", name != NULL ? name : "?");
+    LOG_DBG("Module started: %s", name != NULL ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STARTED);
     return MODULE_OK;
 }
@@ -1299,7 +1299,7 @@ int module_manager_stop_module(uint32_t module_id) {
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module stopped: %s", name != NULL ? name : "?");
+    LOG_DBG("Module stopped: %s", name != NULL ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STOPPED);
     return MODULE_OK;
 }
@@ -1445,7 +1445,7 @@ int module_manager_suspend_module(uint32_t module_id) {
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module suspended: %s", name[0] != '\0' ? name : "?");
+    LOG_DBG("Module suspended: %s", name[0] != '\0' ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STATUS_CHANGED);
     return MODULE_OK;
 }
@@ -1481,7 +1481,7 @@ int module_manager_resume_module(uint32_t module_id) {
 
     k_mutex_unlock(&g_module_mgr.lock);
 
-    LOG_INF("Module resumed: %s", name[0] != '\0' ? name : "?");
+    LOG_DBG("Module resumed: %s", name[0] != '\0' ? name : "?");
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_STATUS_CHANGED);
     return MODULE_OK;
 }

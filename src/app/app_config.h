@@ -95,6 +95,12 @@ extern "C" {
 #define APP_CONFIG_ENABLE_BANNER 0
 #endif
 
+#ifdef CONFIG_APP_BOOT_VERBOSE
+#define APP_CONFIG_BOOT_VERBOSE 1
+#else
+#define APP_CONFIG_BOOT_VERBOSE 0
+#endif
+
 #ifdef CONFIG_APP_KV_ENABLE
 #define APP_CONFIG_ENABLE_APP_KV 1
 #else

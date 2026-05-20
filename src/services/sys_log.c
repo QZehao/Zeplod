@@ -258,7 +258,7 @@ static void emit_log_line(sys_log_level_t level, const char* module, const char*
  * ============================================================================= */
 
 int sys_log_init(const sys_log_config_t* config) {
-    LOG_INF("Initializing system log...");
+    LOG_DBG("Initializing system log...");
 
     /* SIL-2: 清零全局控制块 */
     memset(&g_sys_log, 0, sizeof(g_sys_log));
@@ -310,7 +310,7 @@ int sys_log_init(const sys_log_config_t* config) {
         LOG_WRN("MAX_LOG_ENTRIES %u outside reasonable range [%u, %u]", MAX_LOG_ENTRIES, SYS_LOG_MIN_BUFFER_SIZE,
                 SYS_LOG_MAX_BUFFER_SIZE);
     }
-    LOG_INF("System log ring capacity: %u entries (static max %u)", g_sys_log.log_cap, (uint32_t) MAX_LOG_ENTRIES);
+    LOG_DBG("System log ring capacity: %u entries (static max %u)", g_sys_log.log_cap, (uint32_t) MAX_LOG_ENTRIES);
 
     k_mutex_init(&g_sys_log.lock);
 
@@ -321,7 +321,7 @@ int sys_log_init(const sys_log_config_t* config) {
         g_sys_log.module_levels[i] = g_sys_log.config.default_level;
     }
 
-    LOG_INF("System log initialized");
+    LOG_DBG("System log initialized");
     return 0;
 }
 
@@ -574,7 +574,6 @@ static int sys_log_auto_init(void) {
                                    .enable_module_name = true,
                                    .memory_buffer_size = CONFIG_SYS_MEMORY_POOL_SIZE};
     sys_log_init(&log_config);
-    LOG_INF("System log initialized");
 #endif
     return 0;
 }

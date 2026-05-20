@@ -217,7 +217,7 @@ int ipc_shm_init(ipc_service_t* service) {
     atomic_set(&pool->active_count, 0);
     pool->peak_count = 0;
 
-    LOG_INF("Shared memory pool initialized: %u blocks x %u bytes", CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE,
+    LOG_DBG("Shared memory pool initialized: %u blocks x %u bytes", CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE,
             CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE);
 
     return 0;
@@ -249,7 +249,7 @@ void ipc_shm_deinit(ipc_service_t* service) {
         }
     }
 
-    LOG_INF("Shared memory pool deinitialized (leaked=%u, peak=%u)", leaked, pool->peak_count);
+    LOG_DBG("Shared memory pool deinitialized (leaked=%u, peak=%u)", leaked, pool->peak_count);
 }
 
 /**
