@@ -16,6 +16,7 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
+#include "event_dispatcher.h"
 #include "event_system.h"
 
 LOG_MODULE_REGISTER(test_event_system);
@@ -538,6 +539,26 @@ ZTEST(test_event_system, test_event_system_start_stop_multiple) {
 
     status = event_system_stop();
     zassert_equal(status, EVENT_OK, "重复停止应返回 OK");
+}
+
+/**
+ * @brief 测试 event_system_stop 会停止分发器，start 时自动恢复
+ */
+ZTEST(test_event_system, test_event_system_stop_restarts_dispatcher) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_STOPPED, NULL);
+
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
 /**

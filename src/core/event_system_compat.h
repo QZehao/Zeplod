@@ -96,7 +96,10 @@ int event_compat_init(const event_compat_config_t* config);
 int event_compat_start(void);
 
 /**
- * @brief 停止事件系统（统一入口）
+ * @brief 停止事件系统投递（统一入口）
+ *
+ * 标准版会停止分发器线程并清空队列；再次 event_compat_start() 时恢复分发器。
+ *
  * @return 0 成功，负值错误码
  */
 int event_compat_stop(void);

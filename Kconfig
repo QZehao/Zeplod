@@ -66,6 +66,33 @@ config EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE
 	  Maximum number of events processed in a single dispatcher cycle.
 	  Limits processing time per cycle to prevent starving other threads.
 
+	choice EVENT_QUEUE_OVERFLOW_POLICY
+		prompt "Default queue overflow policy for event_publish"
+		default EVENT_QUEUE_OVERFLOW_DROP_NEWEST
+		help
+		  Behavior when the global event queue is full during event_publish /
+		  event_publish_from_isr. DROP_LOWEST requires thread context and extra
+		  scratch RAM per queue; it is not used from ISR.
+
+	config EVENT_QUEUE_OVERFLOW_DROP_NEWEST
+		bool "Drop newest (reject incoming event)"
+		help
+		  Return EVENT_ERR_QUEUE_FULL when the queue is full.
+
+	config EVENT_QUEUE_OVERFLOW_DROP_LOWEST
+		bool "Drop lowest-priority queued event"
+		help
+		  Evict the queued event with the largest priority value (least important)
+		  to make room. Uses per-queue scratch memory (capacity * sizeof(event_t)).
+
+	config EVENT_QUEUE_OVERFLOW_BLOCK
+		bool "Block until space available"
+		help
+		  Block the publisher up to the enqueue timeout (publish uses K_NO_WAIT,
+		  so this behaves like DROP_NEWEST for the default publish path).
+
+	endchoice
+
 	# =============================================================================
 	# Event Structure Size Configuration
 	# =============================================================================

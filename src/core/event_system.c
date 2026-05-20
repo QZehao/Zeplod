@@ -95,6 +95,17 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 /** 初始化保护标志 */
 static atomic_t g_init_lock = ATOMIC_INIT(0);
 
+/** stop 期间停止了分发器；start 时需重新 event_dispatcher_start() */
+static bool g_restart_dispatcher_on_start;
+
+#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
+#define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_LOWEST
+#elif defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
+#define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_BLOCK
+#else
+#define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_NEWEST
+#endif
+
 /* =============================================================================
  * 内部数据结构
  * ============================================================================= */
@@ -145,6 +156,26 @@ static void event_publish_in_flight_wait_zero(void) {
         k_yield();
     }
 }
+
+#if EVENT_SLAB_ENABLED
+static const char* event_slab_name_for_priority(event_priority_t priority)
+{
+    switch (priority) {
+#if EVENT_SLAB_CRITICAL_AVAILABLE
+    case EVENT_PRIORITY_CRITICAL:
+        return "event_slab_critical";
+#endif
+#if EVENT_SLAB_HIGH_AVAILABLE
+    case EVENT_PRIORITY_HIGH:
+        return "event_slab_high";
+#endif
+    case EVENT_PRIORITY_NORMAL:
+    case EVENT_PRIORITY_LOW:
+    default:
+        return "event_slab_normal";
+    }
+}
+#endif
 
 /**
  * @brief 入队成功后，调用方 event 不再拥有动态负载（队列副本持有）
@@ -320,11 +351,10 @@ event_status_t event_system_init(void) {
         k_mutex_init(&g_event_system.event_types[i].lock);
     }
 
-    /* 初始化消息队列 */
-    k_msgq_init(&g_event_msgq, g_event_msgq_buffer, sizeof(event_t), CONFIG_EVENT_QUEUE_SIZE);
     g_event_system.event_queue = &g_event_msgq;
+    g_restart_dispatcher_on_start = false;
 
-    /* 注册队列到 event_queue 管理层，启用溢出策略和统计 */
+    /* 注册队列到 event_queue 管理层（内部 k_msgq_init + 溢出策略统计） */
     event_status_t qret = event_queue_init(&g_event_msgq, g_event_msgq_buffer, CONFIG_EVENT_QUEUE_SIZE);
     if (qret != EVENT_OK) {
         atomic_clear_bit(&g_init_lock, 0);
@@ -360,6 +390,17 @@ event_status_t event_system_start(void) {
     }
 
     atomic_set(&g_event_system.running, 1);
+
+    if (g_restart_dispatcher_on_start) {
+        g_restart_dispatcher_on_start = false;
+        event_status_t dret = event_dispatcher_start();
+        if (dret != EVENT_OK) {
+            LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
+            atomic_set(&g_event_system.running, 0);
+            return dret;
+        }
+    }
+
     LOG_INF("Event system started");
     return EVENT_OK;
 }
@@ -385,8 +426,19 @@ event_status_t event_system_stop(void) {
 
     atomic_set(&g_event_system.running, 0);
 
-    /* 等待进行中的 publish 完成后再 purge，避免 stop 返回后仍有事件入队 */
+    /* 等待进行中的 publish 完成后再停分发器 / purge，避免 stop 返回后仍有事件入队 */
     event_publish_in_flight_wait_zero();
+
+    {
+        dispatcher_state_t disp_st = event_dispatcher_get_state();
+        if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
+            g_restart_dispatcher_on_start = true;
+            event_status_t dret = event_dispatcher_stop();
+            if (dret != EVENT_OK) {
+                LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+            }
+        }
+    }
 
     event_queue_purge(g_event_system.event_queue);
 
@@ -465,6 +517,7 @@ event_status_t event_system_shutdown(void) {
 
     /* 重置控制块 */
     event_system_reset_control_block();
+    g_restart_dispatcher_on_start = false;
 
     atomic_clear_bit(&g_init_lock, 0);
     LOG_INF("Event system shutdown complete");
@@ -772,7 +825,8 @@ event_status_t event_publish(event_t* event) {
         return EVENT_ERR_NOT_FOUND;
     }
 
-    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    event_status_t st =
+        event_queue_enqueue(g_event_system.event_queue, event, EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY, K_NO_WAIT);
     if (st == EVENT_OK) {
         event_publish_transfer_data_ownership(event);
     }
@@ -811,7 +865,13 @@ event_status_t event_publish_from_isr(event_t* event) {
         return EVENT_ERR_NOT_FOUND;
     }
 
-    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+    /* ISR 不支持 DROP_LOWEST；配置为 DROP_LOWEST 时退化为 DROP_NEWEST */
+#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
+    queue_overflow_policy_t isr_policy = QUEUE_OVERFLOW_DROP_NEWEST;
+#else
+    queue_overflow_policy_t isr_policy = EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY;
+#endif
+    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, isr_policy, K_NO_WAIT);
     if (st == EVENT_OK) {
         event_publish_transfer_data_ownership(event);
     }
@@ -862,6 +922,7 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
     int                ret = k_mem_slab_alloc(slab, (void**) &event, K_NO_WAIT);
 
     if (ret != 0) {
+        event_memory_notify_slab_exhausted(priority, event_slab_name_for_priority(priority));
         LOG_WRN("Event slab exhausted for priority %d", priority);
         return NULL;
     }
@@ -928,6 +989,9 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         event_set_slab_marker(event, data_slab);
         return event;
     }
+    if (data_slab != NULL) {
+        event_memory_notify_slab_exhausted(priority, "event_slab_data");
+    }
     /* 首选 slab 已满或不可用，尝试级联 fallback */
     data_slab = event_memory_select_data_slab_with_fallback(data_len);
     if (data_slab != NULL && k_mem_slab_alloc(data_slab, &event->data.ptr, K_NO_WAIT) == 0) {
@@ -937,6 +1001,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return event;
     }
     event_free(event);
+    event_memory_notify_slab_exhausted(priority, "event_slab_data");
     LOG_WRN("All data slabs exhausted for size %zu", data_len);
     return NULL;
 #else
@@ -1073,6 +1138,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
                 event_set_slab_marker(event, data_slab);
                 return event;
             }
+            event_memory_notify_slab_exhausted(priority, "event_slab_data");
             /* 首选 slab 已满，尝试级联 fallback */
             struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
             if (fallback_slab != NULL && fallback_slab != data_slab &&
@@ -1319,6 +1385,11 @@ void event_system_reset_statistics(void) {
     k_mutex_unlock(&g_event_system.stats_lock);
 
     atomic_set(&g_event_dropped_count, 0);
+
+    if (g_event_system.event_queue != NULL) {
+        event_queue_reset_stats(g_event_system.event_queue);
+    }
+    event_dispatcher_reset_stats();
 
     LOG_DBG("Event system statistics reset");
 }

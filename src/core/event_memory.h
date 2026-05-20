@@ -191,6 +191,14 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len);
  */
 void event_memory_inc_fallback_count(void);
 
+/**
+ * @brief 通知 Slab 池耗尽（内部分配失败时调用）
+ *
+ * @param priority 相关事件优先级
+ * @param slab_name Slab 名称（用于日志与回调）
+ */
+void event_memory_notify_slab_exhausted(event_priority_t priority, const char* slab_name);
+
 /* =============================================================================
  * 运行时状态 API (Runtime Status API)
  * 条件编译：CONFIG_EVENT_RUNTIME_STATUS

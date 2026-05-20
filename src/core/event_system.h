@@ -292,12 +292,14 @@ event_status_t event_system_start(void);
 /**
  * @brief 停止事件系统投递
  *
- * 将事件系统置为非 running 状态，并清空队列中的未处理事件。
+ * 将事件系统置为非 running 状态；若分发器处于 RUNNING/PAUSED，会先停止分发器线程，
+ * 再清空队列中未处理事件。随后调用 event_system_start() 时会自动重新启动分发器。
  *
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
  * @note 停止后发布的事件将被拒绝
  * @note 已排队但未处理的动态事件负载会被释放
+ * @note 与 event_system_shutdown() 不同：stop 不释放队列与订阅表，可再次 start 恢复投递
  */
 event_status_t event_system_stop(void);
 
@@ -628,7 +630,7 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
 /**
  * @brief 重置事件系统统计信息
  *
- * 清零所有累积统计值，防止长期运行后溢出。
+ * 清零全局丢弃计数、已处理事件计数，并联动重置事件队列与分发器统计。
  * 由兼容层的 event_compat_reset_statistics() 调用。
  */
 void event_system_reset_statistics(void);

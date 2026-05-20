@@ -117,6 +117,11 @@ static inline void notify_slab_exhausted(event_priority_t priority, const char* 
 
 #endif /* CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
+void event_memory_notify_slab_exhausted(event_priority_t priority, const char* slab_name)
+{
+    notify_slab_exhausted(priority, slab_name);
+}
+
 /* =============================================================================
  * 内部分配函数实现 (Internal Allocation Functions Implementation)
  * ============================================================================= */
