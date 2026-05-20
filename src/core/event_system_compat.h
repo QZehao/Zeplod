@@ -7,6 +7,12 @@
  * 使用方式：
  * - 标准版：默认使用，无需额外配置
  * - 商业版：在 prj.conf 中设置 CONFIG_USE_EVENT_SYSTEM_PRO=y
+ *
+ * Pro 模式 API 覆盖范围：
+ * - 已映射：register/subscribe/publish/publish_from_isr/publish_copy 及查询类宏（见下方 #if EVENT_COMPAT_USE_PRO）
+ * - 未映射：event_create / event_create_with_data / event_create_rt / event_create_with_data_rt /
+ *   event_create_from_isr / event_free / event_free_data（商业版若提供对应 API，需在此补充 #define）
+ * - 迁移建议：Pro 工程优先使用 event_publish_copy 等发布路径；勿直接依赖未映射的堆式 create/free API
  * @author zeh (china_qzh@163.com)
  * @version 1.0
  * @date 2026-04-09

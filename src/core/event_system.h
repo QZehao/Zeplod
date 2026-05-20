@@ -313,7 +313,9 @@ event_status_t event_system_stop(void);
  * @note 会清理所有已注册的事件类型和订阅
  * @note 会释放所有动态分配的事件负载
  * @note 须在 magic 置为 IDLE 之前完成 event_queue_deinit/purge，否则 event_free_data 可能跳过释放
- * @note dispatcher_stop 失败时 running 已为 0（禁止新入队），队列/订阅未释放；上层应重试 shutdown 或复位系统
+ * @note dispatcher_stop 失败时 running 已为 0（禁止新入队），队列/订阅未释放；可重试 shutdown
+ * @note 若返回 EVENT_ERR_TIMEOUT（join/abort 失败），dispatcher 线程可能仍存活；建议记录故障并系统复位，
+ *       不宜在无人工介入下反复调用 shutdown
  */
 event_status_t event_system_shutdown(void);
 

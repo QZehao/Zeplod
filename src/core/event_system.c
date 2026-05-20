@@ -269,6 +269,9 @@ static bool event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
 /**
  * @brief 判断指针是否属于指定数据 slab 池（用于释放路径纠偏）
+ *
+ * @note 依赖 struct k_mem_slab 的 buffer/block_size/num_blocks 字段（Zephyr 公开布局）。
+ *       大版本升级 Zephyr 时请核对 include/zephyr/kernel/mm/slab.h 是否变更。
  */
 static bool event_slab_ptr_in_pool(const void* ptr, const struct k_mem_slab* slab) {
     if (ptr == NULL || slab == NULL || slab->buffer == NULL || slab->num_blocks == 0U) {
@@ -315,6 +318,10 @@ static struct k_mem_slab* event_resolve_data_slab_for_ptr(void* ptr) {
  * @brief 从 slab 分配数据并绑定到事件（标记失败时回滚 slab 分配）
  */
 static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, const void* data, size_t data_len) {
+    if (event == NULL || slab == NULL || data == NULL) {
+        return false;
+    }
+
     if (k_mem_slab_alloc(slab, &event->data.ptr, K_NO_WAIT) != 0) {
         return false;
     }
@@ -592,7 +599,9 @@ event_status_t event_system_shutdown(void) {
     event_status_t dret = event_dispatcher_stop();
     if (dret != EVENT_OK) {
         LOG_ERR("Failed to stop dispatcher during shutdown: %d", dret);
-        /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown */
+        /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
+         * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
+         * 不宜在无人工介入下反复 shutdown。 */
         atomic_clear_bit(&g_init_lock, 0);
         return dret;
     }
@@ -1225,8 +1234,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
             event_memory_notify_slab_exhausted(priority, "event_slab_data");
             /* 首选 slab 已满，尝试级联 fallback */
             struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
-            if (fallback_slab != NULL && fallback_slab != data_slab &&
-                event_attach_slab_data(event, fallback_slab, data, data_len)) {
+            if (fallback_slab != NULL && event_attach_slab_data(event, fallback_slab, data, data_len)) {
                 return event;
             }
             /* slab 全满，回退到 k_malloc */
