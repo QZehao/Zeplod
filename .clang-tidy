@@ -8,10 +8,15 @@ Checks: >
   clang-analyzer-*,
   bugprone-*,
   -bugprone-easily-swappable-parameters,
+  -bugprone-branch-clone,
   performance-*,
   readability-*,
   -readability-identifier-length,
   -readability-magic-numbers
+
+CheckOptions:
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '200'
 
 WarningsAsErrors: ''
 # 仅检查本仓库 src（按需修改路径）

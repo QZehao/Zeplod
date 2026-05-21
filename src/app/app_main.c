@@ -18,15 +18,11 @@
 #include "event_dispatcher.h"
 #include "event_system.h"
 #include "event_system_compat.h"
-#include "module_base.h"
-#include "module_manager.h"
 #include "module_manager_compat.h"
 #include "sys_log.h"
 #include "sys_memory.h"
 #include "sys_timer.h"
-#include "sys_watchdog.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -330,10 +326,10 @@ static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 #else
     if (argc > 1) {
         int level = atoi(argv[1]);
-        if (level < (int) SYS_LOG_LEVEL_OFF) {
-            level = (int) SYS_LOG_LEVEL_OFF;
-        } else if (level >= (int) SYS_LOG_LEVEL_MAX) {
-            level = (int) SYS_LOG_LEVEL_DBG;
+        if (level < SYS_LOG_LEVEL_OFF) {
+            level = SYS_LOG_LEVEL_OFF;
+        } else if (level >= SYS_LOG_LEVEL_MAX) {
+            level = SYS_LOG_LEVEL_DBG;
         }
         sys_log_dump((sys_log_level_t) level);
     } else {
