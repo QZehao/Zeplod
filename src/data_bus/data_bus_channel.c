@@ -173,8 +173,9 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) 
     }
 
     /* 从 slab 分配通道对象 */
-    data_bus_channel_t* ch = NULL;
-    int                 ret = k_mem_slab_alloc(&data_bus_channel_slab, (void**) &ch, K_NO_WAIT);
+    void*               mem = NULL;
+    int                 ret = k_mem_slab_alloc(&data_bus_channel_slab, &mem, K_NO_WAIT);
+    data_bus_channel_t* ch  = (data_bus_channel_t*) mem;
     if (ret != 0) {
         LOG_ERR("Channel slab exhausted (max=%u)", CONFIG_DATA_BUS_MAX_CHANNELS);
         k_mutex_unlock(&g_channels_lock);

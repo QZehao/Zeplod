@@ -91,7 +91,9 @@ static data_bus_block_t *mem_alloc_impl(size_t len, bool isr)
 	struct k_mem_slab *slab = NULL;
 
 	/* ---- 步骤 1：从 slab 分配块结构体 ---- */
-	int ret = k_mem_slab_alloc(&data_bus_block_slab, (void **)&block, K_NO_WAIT);
+	void* mem = NULL;
+	int ret = k_mem_slab_alloc(&data_bus_block_slab, &mem, K_NO_WAIT);
+	block = (data_bus_block_t*) mem;
 	if (ret != 0) {
 		LOG_ERR("Block struct slab exhausted (max=%u)",
 			CONFIG_DATA_BUS_MAX_BLOCKS);
