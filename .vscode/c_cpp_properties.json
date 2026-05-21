@@ -1,33 +1,33 @@
 {
     "configurations": [
         {
-            "name": "Win32",
+            "name": "Zephyr ARM",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "compilerPath": "D:/Code/1-github-code/zephyr-sdk-0.17.2/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-gcc-arm",
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/build/zephyr/include/generated/zephyr/",
+                "${workspaceFolder}/build/zephyr/include/generated",
                 "D:/Code/1-github-code/zephyrproject/zephyr/include",
                 "D:/Code/1-github-code/zephyrproject/zephyr/include/zephyr",
-                "D:/Code/1-github-code/zephyrproject/zephyr/modules",
-                "build/zephyr/include/generated",
-                "src/core",
-                "build/zephyr/include/generated/zephyr"
+                "D:/Code/1-github-code/zephyrproject/zephyr/lib/libc/picolibc/include"
             ],
             "defines": [
-                "_DEBUG",
-                "UNICODE",
-                "_UNICODE",
-                "STM32F373xC",
+                "__ZEPHYR__=1",
+                "CORE_CM4",
+                "STM32L4R5xx",
                 "USE_FULL_LL_DRIVER",
                 "USE_HAL_DRIVER",
-                "ULOG_ENABLED",
-                "CONFIG_ZEPHYR=1",
-                "CONFIG_USB_HOST_STACK=1",
-                "CONFIG_UHC_DRIVER=1"
-            ],
-            "compilerPath": "C:/MyApp/mingw64//bin/gcc.exe",
-            "cStandard": "c17",
-            "cppStandard": "gnu++14",
-            "intelliSenseMode": "windows-gcc-x64"
+                "KERNEL",
+                "K_HEAP_MEM_POOL_SIZE=65536",
+                "PICOLIBC_LONG_LONG_PRINTF_SCANF",
+                "_POSIX_THREAD_SAFE_FUNCTIONS=200809L",
+                "__LINUX_ERRNO_EXTENSIONS__",
+                "__PROGRAM_START"
+            ]
         }
     ],
     "version": 4

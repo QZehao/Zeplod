@@ -7,6 +7,8 @@
     "zephyr.buildDir": "build",
 
     // C/C++  IntelliSense 配置
+    // 推荐使用 clangd 扩展（已加入 extensions.json 推荐），配合 .clangd + compile_commands.json 使用
+    "clangd.path": "C:/MyApp/Qt/Tools/QtCreator/bin/clang/bin/clangd.exe",
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "C_Cpp.default.includePath": [
         "${env:ZEPHYR_BASE}/**",
@@ -17,8 +19,8 @@
         "__ZEPHYR__=1",
         "CONFIG_SYS_LOG_LEVEL=3"
     ],
-    "C_Cpp.default.compilerPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
-    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.compilerPath": "D:/Code/1-github-code/zephyr-sdk-0.17.2/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc.exe",
+    "C_Cpp.default.cStandard": "c17",
     "C_Cpp.default.cppStandard": "c++17",
 
     // 格式化

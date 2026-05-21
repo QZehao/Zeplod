@@ -5,6 +5,7 @@
         "ms-vscode.cpptools",
         "ms-vscode.cmake-tools",
         "marus25.cortex-debug",
+        "llvm-vs-code-extensions.vscode-clangd",
 
         // Zephyr 支持
         "zephyrproject-rtos.zephyr-ide",
