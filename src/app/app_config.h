@@ -201,17 +201,7 @@ extern "C" {
  * 构建配置
  * ============================================================================= */
 
-/* 版本信息 */
-#define APP_BUILD_VERSION_MAJOR       PROJECT_VERSION_MAJOR
-#define APP_BUILD_VERSION_MINOR       PROJECT_VERSION_MINOR
-#define APP_BUILD_VERSION_PATCH       PROJECT_VERSION_PATCH
-
-/* 构建类型 */
-#ifdef NDEBUG
-#define APP_BUILD_TYPE "Release"
-#else
-#define APP_BUILD_TYPE "Debug"
-#endif
+/* 版本与构建类型见 app_version.h */
 
 /* 目标板名：与 CMake BUILD_TARGET / app_version 一致 */
 #ifndef BUILD_TARGET

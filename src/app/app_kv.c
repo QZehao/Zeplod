@@ -53,6 +53,16 @@ static int find_key_locked(const char* key) {
     return -1;
 }
 
+static void kv_strncpy_fill(char* dst, const char* src, size_t cap) {
+    if (cap == 0U) {
+        return;
+    }
+    (void) strncpy(dst, src, cap - 1U);
+    dst[cap - 1U] = '\0';
+}
+
+#if IS_ENABLED(CONFIG_APP_KV_PERSIST)
+
 static int find_free_locked(void) {
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
         if (!g_kv[i].in_use) {
@@ -61,8 +71,6 @@ static int find_free_locked(void) {
     }
     return -1;
 }
-
-#if IS_ENABLED(CONFIG_APP_KV_PERSIST)
 
 #define KV_PERSIST_MAGIC   0x01764B41u
 #define KV_PERSIST_VERSION 1U
@@ -175,13 +183,13 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
     return APP_OK;
 }
 
-static void kv_autosave_if_enabled(void) {
-#if IS_ENABLED(CONFIG_APP_KV_PERSIST_AUTOSAVE)
-    (void) app_kv_save();
-#endif
-}
-
 #endif /* CONFIG_APP_KV_PERSIST */
+
+#if IS_ENABLED(CONFIG_APP_KV_PERSIST) && IS_ENABLED(CONFIG_APP_KV_PERSIST_AUTOSAVE)
+#define KV_AUTOSAVE() (void) app_kv_save()
+#else
+#define KV_AUTOSAVE() ((void) 0)
+#endif
 
 void app_kv_init(void) {
     if (g_kv_ready) {
@@ -228,25 +236,32 @@ int app_kv_set(const char* key, const char* value) {
 
     k_mutex_lock(&g_kv_lock, K_FOREVER);
 
-    int idx = find_key_locked(key);
+    int idx = -1;
+    int free_idx = -1;
+    for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
+        if (g_kv[i].in_use) {
+            if (strcmp(g_kv[i].key, key) == 0) {
+                idx = i;
+                break;
+            }
+        } else if (free_idx < 0) {
+            free_idx = i;
+        }
+    }
     if (idx < 0) {
-        idx = find_free_locked();
-        if (idx < 0) {
+        if (free_idx < 0) {
             k_mutex_unlock(&g_kv_lock);
             return APP_ERR_KV_FULL;
         }
+        idx = free_idx;
     }
 
-    (void) strncpy(g_kv[idx].key, key, APP_KV_KEY_MAX_LEN - 1);
-    g_kv[idx].key[APP_KV_KEY_MAX_LEN - 1] = '\0';
-    (void) strncpy(g_kv[idx].value, value, APP_KV_VALUE_MAX_LEN - 1);
-    g_kv[idx].value[APP_KV_VALUE_MAX_LEN - 1] = '\0';
+    kv_strncpy_fill(g_kv[idx].key, key, APP_KV_KEY_MAX_LEN);
+    kv_strncpy_fill(g_kv[idx].value, value, APP_KV_VALUE_MAX_LEN);
     g_kv[idx].in_use = true;
 
     k_mutex_unlock(&g_kv_lock);
-#if IS_ENABLED(CONFIG_APP_KV_PERSIST)
-    kv_autosave_if_enabled();
-#endif
+    KV_AUTOSAVE();
     return APP_OK;
 }
 
@@ -261,8 +276,7 @@ int app_kv_get(const char* key, char* out, size_t out_len) {
         k_mutex_unlock(&g_kv_lock);
         return APP_ERR_NOT_FOUND;
     }
-    (void) strncpy(out, g_kv[idx].value, out_len - 1U);
-    out[out_len - 1U] = '\0';
+    kv_strncpy_fill(out, g_kv[idx].value, out_len);
     k_mutex_unlock(&g_kv_lock);
     return APP_OK;
 }
@@ -290,9 +304,7 @@ int app_kv_remove(const char* key) {
     }
     memset(&g_kv[idx], 0, sizeof(g_kv[idx]));
     k_mutex_unlock(&g_kv_lock);
-#if IS_ENABLED(CONFIG_APP_KV_PERSIST)
-    kv_autosave_if_enabled();
-#endif
+    KV_AUTOSAVE();
     return APP_OK;
 }
 
@@ -303,9 +315,7 @@ void app_kv_clear(void) {
     k_mutex_lock(&g_kv_lock, K_FOREVER);
     memset(g_kv, 0, sizeof(g_kv));
     k_mutex_unlock(&g_kv_lock);
-#if IS_ENABLED(CONFIG_APP_KV_PERSIST)
-    kv_autosave_if_enabled();
-#endif
+    KV_AUTOSAVE();
 }
 
 size_t app_kv_count(void) {

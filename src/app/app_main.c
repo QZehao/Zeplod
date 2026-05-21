@@ -86,7 +86,6 @@ SYS_INIT(app_init_finalize, POST_KERNEL, APP_INIT_PRIO_APP_FINAL);
 
 static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size_t first_idx) {
     size_t pos = 0U;
-    out[0] = '\0';
     for (size_t i = first_idx; i < argc; i++) {
         size_t len = strlen(argv[i]);
         if (pos > 0U) {
@@ -94,15 +93,14 @@ static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size
                 return -ENOSPC;
             }
             out[pos++] = ' ';
-            out[pos] = '\0';
         }
         if (pos + len >= out_sz) {
             return -ENOSPC;
         }
         memcpy(out + pos, argv[i], len);
         pos += len;
-        out[pos] = '\0';
     }
+    out[pos] = '\0';
     return 0;
 }
 
@@ -606,12 +604,7 @@ int main(void) {
 
     /* 主循环 - 事件驱动设计中，此处大部分时间空闲 */
     while (1) {
-        /* 主循环中也喂看门狗 */
-#if APP_CONFIG_ENABLE_WATCHDOG
-        sys_wdt_feed();
-#endif
-
-        /* 睡眠以节省功耗 */
+            /* 睡眠以节省功耗 */
         k_msleep(1000);
 
         /* 如需可在此处添加主循环任务 */
