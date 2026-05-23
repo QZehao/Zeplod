@@ -4,7 +4,7 @@
  *
  * 独立于事件系统（可选桥接）。
  * 支持 ISR 和线程上下文统一发布。
- * 
+ *
  * 核心设计：统一零拷贝 + 自动释放 + 显式 Retain（ARC 风格）
  * - 默认自动释放：回调返回后框架自动 release
  * - 异步持有：回调内调用 data_bus_block_retain()，稍后手动 release
@@ -36,8 +36,8 @@ extern "C" {
  * 前置声明（完整定义见 data_bus_internal.h，应用代码请勿解引用内部字段）
  * ============================================================================ */
 
-typedef struct data_bus_block data_bus_block_t;
-typedef struct data_bus_channel data_bus_channel_t;
+typedef struct data_bus_block    data_bus_block_t;
+typedef struct data_bus_channel  data_bus_channel_t;
 typedef struct data_bus_consumer data_bus_consumer_t;
 
 /* ============================================================================
@@ -57,23 +57,21 @@ typedef struct data_bus_consumer data_bus_consumer_t;
  * @note manual_release=true 时：框架不在回调返回后自动 release；须在返回前自行
  *       data_bus_block_release()。若还调用了 retain()，须 release 两次（隐式引用 +
  *       显式 retain 各一次）。
- * @note 回调中勿调用 data_bus_channel_create/destroy、data_bus_consumer_unregister
- *       或 data_bus_deinit()，以免与分发线程争用 g_channels_lock 或 k_thread_join 死锁。
+ * @note 回调中勿调用 data_bus_channel_create/destroy、data_bus_consumer_register/unregister
+ *       或 data_bus_deinit()，以免与分发线程争用内部生命周期锁或 k_thread_join 死锁。
  */
-typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch,
-                                       data_bus_block_t* block,
-                                       void* user_data);
+typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data);
 
 /* ============================================================================
  * 消费者配置
  * ============================================================================ */
 
 typedef struct {
-    const char*             name;           /**< 消费者名称（调试用）；注册时拷贝 */
-    bool                    manual_release; /**< 默认 false。true 时回调返回前须 release；
-                                                  若同时使用 retain() 须 release 两次，见 data_bus_consume_fn_t */
-    data_bus_consume_fn_t   callback;       /**< 数据到达回调 */
-    void*                   user_data;      /**< 回调用户数据 */
+    const char* name;                /**< 消费者名称（调试用）；注册时拷贝 */
+    bool        manual_release;      /**< 默认 false。true 时回调返回前须 release；
+                                           若同时使用 retain() 须 release 两次，见 data_bus_consume_fn_t */
+    data_bus_consume_fn_t callback;  /**< 数据到达回调 */
+    void*                 user_data; /**< 回调用户数据 */
 } data_bus_consumer_cfg_t;
 
 /* ============================================================================
@@ -81,12 +79,12 @@ typedef struct {
  * ============================================================================ */
 
 typedef struct {
-    uint32_t publish_count;      /**< 发布次数 */
-    uint32_t drop_count;         /**< 丢弃次数（ring_buf 满） */
-    uint32_t queue_full_count;   /**< 队列满次数 */
-    uint32_t alloc_fail_count;   /**< 内存分配失败次数 */
-    uint32_t consumer_count;     /**< 当前消费者数量 */
-    uint32_t peak_queue_usage;   /**< 历史最大队列使用量（槽位） */
+    uint32_t publish_count;    /**< 发布次数 */
+    uint32_t drop_count;       /**< 丢弃次数（ring_buf 满） */
+    uint32_t queue_full_count; /**< 队列满次数 */
+    uint32_t alloc_fail_count; /**< 内存分配失败次数 */
+    uint32_t consumer_count;   /**< 当前消费者数量 */
+    uint32_t peak_queue_usage; /**< 历史最大队列使用量（槽位） */
 } data_bus_stats_t;
 
 /* ============================================================================
@@ -114,7 +112,7 @@ int data_bus_init(void);
  * @warning 无法回收应用线程通过 retain() 持有的数据块。
  *          调用者必须确保所有异步消费者已 release。
  *
- * @return 成功返回 0
+ * @return 成功返回 0；从分发线程调用返回 -EINVAL
  */
 int data_bus_deinit(void);
 
@@ -134,18 +132,17 @@ int data_bus_deinit(void);
  *       queue_buf 是内嵌固定大小数组，无需动态分配。
  * @note 通道对象来自内部预分配池（K_MEM_SLAB 或静态数组），不依赖 k_malloc。
  */
-int data_bus_channel_create(const char* name,
-                            data_bus_channel_t** out_channel);
+int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel);
 
 /**
  * @brief 销毁通道
  *
  * 若仍有活跃消费者返回 -EBUSY；
- * 若队列非空或分发器仍在为此通道投递数据块返回 -EAGAIN（稍后重试）。
+ * 若队列非空、发布者仍在入队或分发器仍在为此通道投递数据块返回 -EAGAIN（稍后重试）。
  * 调用者必须先注销所有消费者并等待队列排空。
  * 通过检查后会先将通道置为非 active，再从全局表移除，避免销毁窗口内继续 publish。
  *
- * @return 成功返回 0；-EAGAIN 时队列未空或 dispatch_hold 非零，宜退避重试
+ * @return 成功返回 0；-EAGAIN 时队列未空、publish_hold 或 dispatch_hold 非零，宜退避重试
  */
 int data_bus_channel_destroy(data_bus_channel_t* ch);
 
@@ -178,6 +175,8 @@ data_bus_channel_t* data_bus_channel_find(const char* name);
  * @return 成功返回 0，失败返回负 errno
  *
  * @note ISR 路径中 slab 耗尽返回 -ENOMEM（无 k_malloc 兜底）
+ * @note ISR 发布者必须在 data_bus_channel_destroy()/data_bus_deinit() 前停止，
+ *       否则已缓存的通道指针可能在销毁后失效。
  * @note 数据被拷贝到内部管理的块中
  * @note 无已注册消费者时仍会入队；分发线程会排空队列并 release 块，避免块滞留泄漏
  * @note len 必须大于 0；不支持零长度载荷（无心跳语义）
@@ -214,9 +213,8 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
  * @param out_consumer  输出：消费者对象指针（可选，可为 NULL）；槽位地址固定，注销后勿再使用
  * @return 成功返回 0，-EINVAL 配置非法，-ENOMEM 消费者表满
  */
-int data_bus_consumer_register(data_bus_channel_t* ch,
-                                const data_bus_consumer_cfg_t* cfg,
-                                data_bus_consumer_t** out_consumer);
+int data_bus_consumer_register(data_bus_channel_t* ch, const data_bus_consumer_cfg_t* cfg,
+                               data_bus_consumer_t** out_consumer);
 
 /**
  * @brief 注销消费者
@@ -273,8 +271,7 @@ size_t data_bus_block_len(const data_bus_block_t* block);
  * @brief 获取通道统计
  * @note 尽力保证一致性；不保证快照与单个块匹配
  */
-void data_bus_channel_get_stats(const data_bus_channel_t* ch,
-                                 data_bus_stats_t* stats);
+void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* stats);
 
 /** @brief 重置通道统计 */
 void data_bus_reset_stats(data_bus_channel_t* ch);

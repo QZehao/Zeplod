@@ -19,14 +19,14 @@
  */
 
 #include "data_bus.h"
-#include "data_bus_internal.h"
-#include "data_bus_consumer.h"
-#include "data_bus_memory.h"
-#include "data_bus_channel.h"
-#include <zephyr/kernel.h>
 #include <zephyr/init.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include "data_bus_channel.h"
+#include "data_bus_consumer.h"
+#include "data_bus_internal.h"
+#include "data_bus_memory.h"
 
 LOG_MODULE_REGISTER(data_bus, CONFIG_DATA_BUS_LOG_LEVEL);
 
@@ -34,44 +34,46 @@ LOG_MODULE_REGISTER(data_bus, CONFIG_DATA_BUS_LOG_LEVEL);
  * 全局状态
  * ============================================================================ */
 
-struct k_sem g_dispatcher_sem;
-data_bus_channel_t *g_channels[CONFIG_DATA_BUS_MAX_CHANNELS];
-uint32_t g_channel_count;
-struct k_mutex g_channels_lock;
-atomic_t g_initialized;
-atomic_t g_shutting_down;
+struct k_sem        g_dispatcher_sem;
+data_bus_channel_t* g_channels[CONFIG_DATA_BUS_MAX_CHANNELS];
+uint32_t            g_channel_count;
+struct k_mutex      g_channels_lock;
+atomic_t            g_initialized;
+atomic_t            g_shutting_down;
 
 K_MUTEX_DEFINE(g_init_lock);
 
-int data_bus_require_initialized(void)
-{
-	if (!atomic_get(&g_initialized)) {
-		return -ENODEV;
-	}
-	if (atomic_get(&g_shutting_down)) {
-		return -ESHUTDOWN;
-	}
-	return 0;
+int data_bus_require_initialized(void) {
+    if (!atomic_get(&g_initialized)) {
+        return -ENODEV;
+    }
+    if (atomic_get(&g_shutting_down)) {
+        return -ESHUTDOWN;
+    }
+    return 0;
 }
 
-static void data_bus_drain_all_channels(bool run_dispatch)
-{
-	data_bus_channel_t *snap[CONFIG_DATA_BUS_MAX_CHANNELS];
-	uint32_t n;
+static void data_bus_drain_all_channels(bool run_dispatch) {
+    data_bus_channel_t* snap[CONFIG_DATA_BUS_MAX_CHANNELS];
+    uint32_t            n;
 
-	/* 快照后释放全局锁，避免回调内 create/unregister 与 g_channels_lock 死锁 */
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
-	n = g_channel_count;
-	for (uint32_t i = 0; i < n; i++) {
-		snap[i] = g_channels[i];
-	}
-	k_mutex_unlock(&g_channels_lock);
+    /* 快照后释放全局锁，避免回调内 create/unregister 与 g_channels_lock 死锁 */
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    n = g_channel_count;
+    for (uint32_t i = 0; i < n; i++) {
+        snap[i] = g_channels[i];
+        if (snap[i] != NULL) {
+            (void) atomic_inc(&snap[i]->dispatch_hold);
+        }
+    }
+    k_mutex_unlock(&g_channels_lock);
 
-	for (uint32_t i = 0; i < n; i++) {
-		if (snap[i] != NULL) {
-			data_bus_channel_drain_pending(snap[i], run_dispatch);
-		}
-	}
+    for (uint32_t i = 0; i < n; i++) {
+        if (snap[i] != NULL) {
+            data_bus_channel_drain_pending(snap[i], run_dispatch);
+            (void) atomic_dec(&snap[i]->dispatch_hold);
+        }
+    }
 }
 
 struct k_thread g_dispatcher_thread_data;
@@ -81,218 +83,212 @@ K_THREAD_STACK_DEFINE(g_dispatcher_stack, CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE)
  * 分发线程
  * ============================================================================ */
 
-static void data_bus_dispatcher_thread(void *arg1, void *arg2, void *arg3)
-{
-	ARG_UNUSED(arg1);
-	ARG_UNUSED(arg2);
-	ARG_UNUSED(arg3);
+static void data_bus_dispatcher_thread(void* arg1, void* arg2, void* arg3) {
+    ARG_UNUSED(arg1);
+    ARG_UNUSED(arg2);
+    ARG_UNUSED(arg3);
 
-	while (1) {
-		if (atomic_get(&g_shutting_down)) {
-			data_bus_drain_all_channels(false);
-			break;
-		}
+    while (1) {
+        if (atomic_get(&g_shutting_down)) {
+            data_bus_drain_all_channels(false);
+            break;
+        }
 
-		k_sem_take(&g_dispatcher_sem, K_FOREVER);
+        k_sem_take(&g_dispatcher_sem, K_FOREVER);
 
-		if (atomic_get(&g_shutting_down)) {
-			data_bus_drain_all_channels(false);
-			break;
-		}
+        if (atomic_get(&g_shutting_down)) {
+            data_bus_drain_all_channels(false);
+            break;
+        }
 
-		/* 快照通道指针并固定每个（防止 destroy 释放 slab 与 UAF 竞争） */
-		data_bus_channel_t *snap[CONFIG_DATA_BUS_MAX_CHANNELS];
+        /* 快照通道指针并固定每个（防止 destroy 释放 slab 与 UAF 竞争） */
+        data_bus_channel_t* snap[CONFIG_DATA_BUS_MAX_CHANNELS];
 
-		k_mutex_lock(&g_channels_lock, K_FOREVER);
-		uint32_t n = g_channel_count;
-		for (uint32_t i = 0; i < n; i++) {
-			snap[i] = g_channels[i];
-			if (snap[i] != NULL) {
-				(void)atomic_inc(&snap[i]->dispatch_hold);
-			}
-		}
-		k_mutex_unlock(&g_channels_lock);
+        k_mutex_lock(&g_channels_lock, K_FOREVER);
+        uint32_t n = g_channel_count;
+        for (uint32_t i = 0; i < n; i++) {
+            snap[i] = g_channels[i];
+            if (snap[i] != NULL) {
+                (void) atomic_inc(&snap[i]->dispatch_hold);
+            }
+        }
+        k_mutex_unlock(&g_channels_lock);
 
-		for (uint32_t i = 0; i < n; i++) {
-			data_bus_channel_t *ch = snap[i];
+        for (uint32_t i = 0; i < n; i++) {
+            data_bus_channel_t* ch = snap[i];
 
-			if (ch != NULL) {
-				data_bus_channel_drain_pending(ch, true);
-				(void)atomic_dec(&ch->dispatch_hold);
-			}
-		}
+            if (ch != NULL) {
+                data_bus_channel_drain_pending(ch, true);
+                (void) atomic_dec(&ch->dispatch_hold);
+            }
+        }
 
-		/* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
-		while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
-			;
-		}
-	}
+        /* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
+        while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
+            ;
+        }
+    }
 }
 
 /* ============================================================================
  * 公共 API: 生命周期
  * ============================================================================ */
 
-int data_bus_init(void)
-{
-	int ret = 0;
+int data_bus_init(void) {
+    int ret = 0;
 
-	k_mutex_lock(&g_init_lock, K_FOREVER);
+    k_mutex_lock(&g_init_lock, K_FOREVER);
 
-	if (atomic_get(&g_initialized)) {
-		k_mutex_unlock(&g_init_lock);
-		return 0;
-	}
+    if (atomic_get(&g_initialized)) {
+        k_mutex_unlock(&g_init_lock);
+        return 0;
+    }
 
-	/* 初始化全局信号量 */
-	k_sem_init(&g_dispatcher_sem, 0, K_SEM_MAX_LIMIT);
+    /* 初始化全局信号量 */
+    k_sem_init(&g_dispatcher_sem, 0, K_SEM_MAX_LIMIT);
 
-	/* 初始化通道表锁 */
-	k_mutex_init(&g_channels_lock);
+    /* 初始化通道表锁 */
+    k_mutex_init(&g_channels_lock);
 
-	/* 清空通道表 */
-	memset(g_channels, 0, sizeof(g_channels));
-	g_channel_count = 0;
+    /* 清空通道表 */
+    memset(g_channels, 0, sizeof(g_channels));
+    g_channel_count = 0;
 
-	atomic_set(&g_shutting_down, 0);
+    atomic_set(&g_shutting_down, 0);
 
-	/* 创建分发线程 */
-	k_tid_t tid = k_thread_create(&g_dispatcher_thread_data, g_dispatcher_stack,
-				      K_THREAD_STACK_SIZEOF(g_dispatcher_stack),
-				      data_bus_dispatcher_thread, NULL, NULL, NULL,
-				      CONFIG_DATA_BUS_DISPATCHER_PRIORITY, 0, K_NO_WAIT);
+    /* 创建分发线程 */
+    k_tid_t tid = k_thread_create(&g_dispatcher_thread_data, g_dispatcher_stack,
+                                  K_THREAD_STACK_SIZEOF(g_dispatcher_stack), data_bus_dispatcher_thread, NULL, NULL,
+                                  NULL, CONFIG_DATA_BUS_DISPATCHER_PRIORITY, 0, K_NO_WAIT);
 
-	if (tid == NULL) {
-		LOG_ERR("Failed to create data bus dispatcher thread");
-		ret = -ENOMEM;
-	} else {
-		k_thread_name_set(tid, "data_bus_disp");
-		atomic_set(&g_initialized, 1);
-		LOG_DBG("Data bus initialized (disp stack=%d prio=%d)",
-			CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE, CONFIG_DATA_BUS_DISPATCHER_PRIORITY);
-	}
+    if (tid == NULL) {
+        LOG_ERR("Failed to create data bus dispatcher thread");
+        ret = -ENOMEM;
+    } else {
+        k_thread_name_set(tid, "data_bus_disp");
+        atomic_set(&g_initialized, 1);
+        LOG_DBG("Data bus initialized (disp stack=%d prio=%d)", CONFIG_DATA_BUS_DISPATCHER_STACK_SIZE,
+                CONFIG_DATA_BUS_DISPATCHER_PRIORITY);
+    }
 
-	k_mutex_unlock(&g_init_lock);
-	return ret;
+    k_mutex_unlock(&g_init_lock);
+    return ret;
 }
 
-int data_bus_deinit(void)
-{
-	k_mutex_lock(&g_init_lock, K_FOREVER);
+int data_bus_deinit(void) {
+    k_mutex_lock(&g_init_lock, K_FOREVER);
 
-	if (!atomic_get(&g_initialized)) {
-		k_mutex_unlock(&g_init_lock);
-		return 0;
-	}
+    if (!atomic_get(&g_initialized)) {
+        k_mutex_unlock(&g_init_lock);
+        return 0;
+    }
 
-	/* 发出关闭信号 */
-	if (k_current_get() == &g_dispatcher_thread_data) {
-		k_mutex_unlock(&g_init_lock);
-		return -EINVAL;
-	}
+    /* 发出关闭信号 */
+    if (k_current_get() == &g_dispatcher_thread_data) {
+        k_mutex_unlock(&g_init_lock);
+        return -EINVAL;
+    }
 
-	atomic_set(&g_shutting_down, 1);
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    atomic_set(&g_shutting_down, 1);
+    k_mutex_unlock(&g_channels_lock);
 
-	/* 唤醒分发线程使其退出 */
-	k_sem_give(&g_dispatcher_sem);
+    /* 唤醒分发线程使其退出 */
+    k_sem_give(&g_dispatcher_sem);
 
-	/* 等待分发线程完成 */
-	k_thread_join(&g_dispatcher_thread_data, K_FOREVER);
+    /* 等待分发线程完成 */
+    k_thread_join(&g_dispatcher_thread_data, K_FOREVER);
 
-	while (true) {
-		bool busy = false;
+    while (true) {
+        bool busy = false;
 
-		k_mutex_lock(&g_channels_lock, K_FOREVER);
-		for (uint32_t i = 0; i < g_channel_count; i++) {
-			data_bus_channel_t *ch = g_channels[i];
+        k_mutex_lock(&g_channels_lock, K_FOREVER);
+        for (uint32_t i = 0; i < g_channel_count; i++) {
+            data_bus_channel_t* ch = g_channels[i];
 
-			if (ch != NULL &&
-			    (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0)) {
-				busy = true;
-				break;
-			}
-		}
-		k_mutex_unlock(&g_channels_lock);
+            if (ch != NULL && (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0)) {
+                busy = true;
+                break;
+            }
+        }
+        k_mutex_unlock(&g_channels_lock);
 
-		if (!busy) {
-			break;
-		}
-		k_sleep(K_MSEC(1));
-	}
+        if (!busy) {
+            break;
+        }
+        k_sleep(K_MSEC(1));
+    }
 
-	/* 锁定通道表 */
-	k_mutex_lock(&g_channels_lock, K_FOREVER);
+    /* 锁定通道表 */
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
 
-	/* 销毁所有通道（排空队列，释放块） */
-	while (g_channel_count > 0) {
-		data_bus_channel_t *ch = g_channels[0];
-		if (ch != NULL) {
-			/* obj_reset 内部会 drain_pending */
-			data_bus_channel_obj_reset(ch);
-			k_mem_slab_free(&data_bus_channel_slab, ch);
-		}
+    /* 销毁所有通道（排空队列，释放块） */
+    while (g_channel_count > 0) {
+        data_bus_channel_t* ch = g_channels[0];
+        if (ch != NULL) {
+            /* obj_reset 内部会 drain_pending */
+            data_bus_channel_obj_reset(ch);
+            k_mem_slab_free(&data_bus_channel_slab, ch);
+        }
 
-		/* 从表中移除并压缩 */
-		for (uint32_t j = 0; j < g_channel_count - 1; j++) {
-			g_channels[j] = g_channels[j + 1];
-		}
-		g_channels[--g_channel_count] = NULL;
-	}
+        /* 从表中移除并压缩 */
+        for (uint32_t j = 0; j < g_channel_count - 1; j++) {
+            g_channels[j] = g_channels[j + 1];
+        }
+        g_channels[--g_channel_count] = NULL;
+    }
 
-	k_mutex_unlock(&g_channels_lock);
+    k_mutex_unlock(&g_channels_lock);
 
-	atomic_set(&g_initialized, 0);
-	atomic_set(&g_shutting_down, 0);
-	LOG_DBG("Data bus deinitialized");
+    atomic_set(&g_initialized, 0);
+    atomic_set(&g_shutting_down, 0);
+    LOG_DBG("Data bus deinitialized");
 
-	k_mutex_unlock(&g_init_lock);
-	return 0;
+    k_mutex_unlock(&g_init_lock);
+    return 0;
 }
 
 /* ============================================================================
  * 公共 API: 统计
  * ============================================================================ */
 
-void data_bus_channel_get_stats(const data_bus_channel_t *ch, data_bus_stats_t *stats)
-{
-	if (ch == NULL || stats == NULL) {
-		return;
-	}
+void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* stats) {
+    if (ch == NULL || stats == NULL) {
+        return;
+    }
 
-	/* 移除 const 以进行锁访问 — 安全，因为我们只读取 */
-	data_bus_channel_t *ch_rw = (data_bus_channel_t *)ch;
-	k_spinlock_key_t key = k_spin_lock(&ch_rw->lock);
-	stats->publish_count = ch->publish_count;
-	stats->drop_count = ch->drop_count;
-	stats->queue_full_count = ch->queue_full_count;
-	stats->alloc_fail_count = ch->alloc_fail_count;
-	stats->consumer_count = ch->consumer_count;
-	stats->peak_queue_usage = ch->peak_queue_usage;
-	k_spin_unlock(&ch_rw->lock, key);
+    /* 移除 const 以进行锁访问 — 安全，因为我们只读取 */
+    data_bus_channel_t* ch_rw = (data_bus_channel_t*) ch;
+    k_spinlock_key_t    key = k_spin_lock(&ch_rw->lock);
+    stats->publish_count = ch->publish_count;
+    stats->drop_count = ch->drop_count;
+    stats->queue_full_count = ch->queue_full_count;
+    stats->alloc_fail_count = ch->alloc_fail_count;
+    stats->consumer_count = ch->consumer_count;
+    stats->peak_queue_usage = ch->peak_queue_usage;
+    k_spin_unlock(&ch_rw->lock, key);
 }
 
-void data_bus_reset_stats(data_bus_channel_t *ch)
-{
-	if (ch == NULL) {
-		return;
-	}
+void data_bus_reset_stats(data_bus_channel_t* ch) {
+    if (ch == NULL) {
+        return;
+    }
 
-	k_spinlock_key_t key = k_spin_lock(&ch->lock);
-	ch->publish_count = 0;
-	ch->drop_count = 0;
-	ch->queue_full_count = 0;
-	ch->alloc_fail_count = 0;
-	ch->peak_queue_usage = 0;
-	k_spin_unlock(&ch->lock, key);
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    ch->publish_count = 0;
+    ch->drop_count = 0;
+    ch->queue_full_count = 0;
+    ch->alloc_fail_count = 0;
+    ch->peak_queue_usage = 0;
+    k_spin_unlock(&ch->lock, key);
 }
 
 /* ============================================================================
  * 自动初始化
  * ============================================================================ */
 
-static int data_bus_auto_init(void)
-{
-	return data_bus_init();
+static int data_bus_auto_init(void) {
+    return data_bus_init();
 }
 
 SYS_INIT(data_bus_auto_init, POST_KERNEL, APP_INIT_PRIO_DATA_BUS);
