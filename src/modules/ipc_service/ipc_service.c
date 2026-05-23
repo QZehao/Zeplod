@@ -1307,6 +1307,13 @@ int ipc_service_cancel(ipc_service_t* service, ipc_request_id_t request_id) {
     int                    ret = -ENOENT;
 
     if (entry != NULL) {
+        /* SYNC 请求在 response_dispatcher 里可能已经完成，但调用方尚未取走结果。
+         * 这类请求不应再被取消，否则会覆盖已完成的响应。 */
+        if (entry->completed) {
+            k_mutex_unlock(&service->pending_lock);
+            return -EALREADY;
+        }
+
         /* 根据调用模式采取不同的取消策略 */
         if (entry->future != NULL) {
             /* FUTURE 模式：设置取消状态并唤醒等待者 */
