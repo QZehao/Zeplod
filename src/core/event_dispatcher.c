@@ -564,9 +564,6 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    filter = g_dispatcher.filter;
-    filter_user_data = g_dispatcher.filter_user_data;
-    enable_stats = g_dispatcher.config.enable_stats;
     k_mutex_unlock(&g_dispatcher.lock);
 
     event_t        event;
@@ -585,6 +582,9 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
         event_free_data(&event);
         return EVENT_ERR_INVALID_ARG;
     }
+    filter = g_dispatcher.filter;
+    filter_user_data = g_dispatcher.filter_user_data;
+    enable_stats = g_dispatcher.config.enable_stats;
     k_mutex_unlock(&g_dispatcher.lock);
 
     /* 应用过滤器（如果已设置） */
