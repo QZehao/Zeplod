@@ -118,6 +118,39 @@ static uint32_t calculate_idle_time_us(uint64_t last_event_time);
  *
  * @pre 已持有 g_dispatcher.lock
  */
+/**
+ * @brief 校验分发器配置参数
+ *
+ * @param config 配置指针，不可为 NULL
+ * @return EVENT_OK 合法，EVENT_ERR_INVALID_ARG 非法
+ */
+static event_status_t event_dispatcher_validate_config(const dispatcher_config_t* config) {
+    if (config->stack_size < EVENT_DISPATCHER_MIN_STACK_SIZE || config->stack_size > EVENT_DISPATCHER_MAX_STACK_SIZE) {
+        LOG_ERR("Invalid stack size: %u (min: %u, max: %u)", config->stack_size, EVENT_DISPATCHER_MIN_STACK_SIZE,
+                EVENT_DISPATCHER_MAX_STACK_SIZE);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (config->stack_size > DEFAULT_STACK_SIZE) {
+        LOG_ERR("Stack size %u exceeds pre-allocated stack %u", config->stack_size, DEFAULT_STACK_SIZE);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (config->priority < EVENT_DISPATCHER_MIN_PRIORITY || config->priority > EVENT_DISPATCHER_MAX_PRIORITY) {
+        LOG_ERR("Invalid priority: %d (min: %d, max: %d)", config->priority, EVENT_DISPATCHER_MIN_PRIORITY,
+                EVENT_DISPATCHER_MAX_PRIORITY);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (config->max_events_per_cycle > EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE) {
+        LOG_ERR("Invalid max_events_per_cycle: %u (max: %u)", config->max_events_per_cycle,
+                EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE);
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    return EVENT_OK;
+}
+
 static bool event_dispatcher_process_allowed_locked(dispatcher_state_t state, bool thread_started, bool ever_started) {
     if (state == DISPATCHER_PAUSED) {
         return false;
@@ -154,11 +187,16 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
      * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
      * thread_started 在 stop 后会被清零，因此正常重启序列不受限制。 */
-    g_dispatcher_initialized = false;
-
     if (g_dispatcher.thread_started) {
         LOG_WRN("Dispatcher thread already running, refusing re-init");
         return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (config != NULL) {
+        event_status_t vret = event_dispatcher_validate_config(config);
+        if (vret != EVENT_OK) {
+            return vret;
+        }
     }
 
     /* LOW-5: memset 会清除已设置的 filter 与 user_data，导致 stop->init 序列后
@@ -167,6 +205,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     event_filter_t saved_filter = g_dispatcher.filter;
     void*          saved_filter_ud = g_dispatcher.filter_user_data;
 
+    g_dispatcher_initialized = false;
     memset(&g_dispatcher, 0, sizeof(g_dispatcher));
 
     g_dispatcher.filter = saved_filter;
@@ -174,32 +213,6 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
 
     /* 设置默认配置或用户提供的配置 */
     if (config != NULL) {
-        /* SIL-2: 验证配置参数范围 */
-        if (config->stack_size < EVENT_DISPATCHER_MIN_STACK_SIZE ||
-            config->stack_size > EVENT_DISPATCHER_MAX_STACK_SIZE) {
-            LOG_ERR("Invalid stack size: %u (min: %u, max: %u)", config->stack_size, EVENT_DISPATCHER_MIN_STACK_SIZE,
-                    EVENT_DISPATCHER_MAX_STACK_SIZE);
-            return EVENT_ERR_INVALID_ARG;
-        }
-
-        /* SIL-2: 栈大小不能超过预分配的栈数组大小 */
-        if (config->stack_size > DEFAULT_STACK_SIZE) {
-            LOG_ERR("Stack size %u exceeds pre-allocated stack %u", config->stack_size, DEFAULT_STACK_SIZE);
-            return EVENT_ERR_INVALID_ARG;
-        }
-
-        if (config->priority < EVENT_DISPATCHER_MIN_PRIORITY || config->priority > EVENT_DISPATCHER_MAX_PRIORITY) {
-            LOG_ERR("Invalid priority: %d (min: %d, max: %d)", config->priority, EVENT_DISPATCHER_MIN_PRIORITY,
-                    EVENT_DISPATCHER_MAX_PRIORITY);
-            return EVENT_ERR_INVALID_ARG;
-        }
-
-        if (config->max_events_per_cycle > EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE) {
-            LOG_ERR("Invalid max_events_per_cycle: %u (max: %u)", config->max_events_per_cycle,
-                    EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE);
-            return EVENT_ERR_INVALID_ARG;
-        }
-
         g_dispatcher.config = *config;
         if (config->thread_name == NULL) {
             g_dispatcher.config.thread_name = "event_disp";
@@ -240,6 +253,10 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
  * @return EVENT_OK 成功，EVENT_ERR_NO_MEM 线程创建失败
  */
 event_status_t event_dispatcher_start(void) {
+    if (!g_dispatcher_initialized) {
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
     if (g_dispatcher.state == DISPATCHER_RUNNING) {
@@ -304,6 +321,10 @@ event_status_t event_dispatcher_stop(void) {
     bool     should_join = false;
     uint32_t join_gen = 0U;
 
+    if (!g_dispatcher_initialized) {
+        return EVENT_OK;
+    }
+
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
     if (g_dispatcher.state == DISPATCHER_STOPPED) {
@@ -360,6 +381,26 @@ event_status_t event_dispatcher_stop(void) {
 }
 
 /**
+ * @brief 反初始化分发器
+ */
+event_status_t event_dispatcher_deinit(void) {
+    if (!g_dispatcher_initialized) {
+        return EVENT_OK;
+    }
+
+    event_status_t ret = event_dispatcher_stop();
+    if (ret != EVENT_OK) {
+        return ret;
+    }
+
+    g_event_queue = NULL;
+    g_dispatcher_initialized = false;
+
+    LOG_DBG("Event dispatcher deinitialized");
+    return EVENT_OK;
+}
+
+/**
  * @brief 暂停分发器
  *
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确
@@ -404,8 +445,16 @@ event_status_t event_dispatcher_resume(void) {
  *
  * @return 当前分发器状态
  */
+bool event_dispatcher_is_initialized(void) {
+    return g_dispatcher_initialized;
+}
+
 dispatcher_state_t event_dispatcher_get_state(void) {
     dispatcher_state_t state;
+
+    if (!g_dispatcher_initialized) {
+        return DISPATCHER_STOPPED;
+    }
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = g_dispatcher.state;
@@ -619,6 +668,10 @@ void event_dispatcher_stats_inc_dropped(void) {
 uint32_t event_dispatcher_get_current_latency(void) {
     uint64_t last_event_time;
 
+    if (!g_dispatcher_initialized) {
+        return 0U;
+    }
+
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     last_event_time = g_dispatcher.last_event_time;
     k_mutex_unlock(&g_dispatcher.lock);
@@ -764,5 +817,11 @@ static uint32_t calculate_idle_time_us(uint64_t last_event_time) {
         return 0U; /* 防止时间回绕或异常时间戳导致下溢 */
     }
     uint64_t delta_ms = now - last_event_time;
-    return (uint32_t) (delta_ms * 1000U); /* 毫秒转微秒 */
+    uint64_t usec = delta_ms * 1000U;
+
+    if (usec > UINT32_MAX) {
+        return UINT32_MAX;
+    }
+
+    return (uint32_t) usec;
 }

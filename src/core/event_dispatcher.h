@@ -164,6 +164,18 @@ event_status_t event_dispatcher_start(void);
 event_status_t event_dispatcher_stop(void);
 
 /**
+ * @brief 反初始化分发器（停止线程并清除 init 状态）
+ *
+ * 幂等：未初始化时返回 EVENT_OK。
+ *
+ * @return EVENT_OK 成功；stop/join 失败时返回对应错误码（与 event_dispatcher_stop 相同）
+ *
+ * @note 须在 event_system_shutdown() 之后或与之配对使用；stop 仅停线程，deinit 才清除 is_initialized
+ * @note 不得从分发器线程内部调用
+ */
+event_status_t event_dispatcher_deinit(void);
+
+/**
  * @brief 暂停事件处理
  *
  * 暂停后，分发器线程仍存在但不处理事件。
@@ -182,9 +194,16 @@ event_status_t event_dispatcher_resume(void);
 /**
  * @brief 获取分发器当前状态
  *
- * @return 当前分发器状态
+ * @return 当前分发器状态；未初始化时返回 DISPATCHER_STOPPED
  */
 dispatcher_state_t event_dispatcher_get_state(void);
+
+/**
+ * @brief 检查分发器是否已完成初始化
+ *
+ * @return true 已调用 event_dispatcher_init() 且成功，false 尚未初始化
+ */
+bool event_dispatcher_is_initialized(void);
 
 /**
  * @brief 检查当前线程是否为分发器线程

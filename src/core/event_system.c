@@ -407,6 +407,7 @@ static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, cons
 
     memcpy(event->data.ptr, data, data_len);
     event->data_len = (uint32_t) data_len;
+    event_debug_track_alloc(event->data.ptr, data_len, event->priority);
     return true;
 }
 #endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
@@ -565,11 +566,13 @@ event_status_t event_system_start(void) {
     atomic_set(&g_event_system.running, 1);
 
     if (atomic_cas(&g_restart_dispatcher_on_start, 1, 0)) {
-        event_status_t dret = event_dispatcher_start();
-        if (dret != EVENT_OK) {
-            LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
-            atomic_set(&g_event_system.running, 0);
-            return dret;
+        if (event_dispatcher_is_initialized()) {
+            event_status_t dret = event_dispatcher_start();
+            if (dret != EVENT_OK) {
+                LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
+                atomic_set(&g_event_system.running, 0);
+                return dret;
+            }
         }
     }
 
@@ -602,12 +605,14 @@ event_status_t event_system_stop(void) {
     event_publish_in_flight_wait_zero();
 
     {
-        dispatcher_state_t disp_st = event_dispatcher_get_state();
-        if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
-            atomic_set(&g_restart_dispatcher_on_start, 1);
-            event_status_t dret = event_dispatcher_stop();
-            if (dret != EVENT_OK) {
-                LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+        if (event_dispatcher_is_initialized()) {
+            dispatcher_state_t disp_st = event_dispatcher_get_state();
+            if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
+                atomic_set(&g_restart_dispatcher_on_start, 1);
+                event_status_t dret = event_dispatcher_stop();
+                if (dret != EVENT_OK) {
+                    LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+                }
             }
         }
     }
@@ -668,14 +673,16 @@ event_status_t event_system_shutdown(void) {
     /* SIL-2: 主动停止 dispatcher 而非仅做防御性检查（HIGH-1）。
      * event_dispatcher_stop 内部 join 线程，返回后线程已退出，
      * 之后释放队列资源不会与悬挂线程产生竞态。 */
-    event_status_t dret = event_dispatcher_stop();
-    if (dret != EVENT_OK) {
-        LOG_ERR("Failed to stop dispatcher during shutdown: %d", dret);
-        /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
-         * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
-         * 不宜在无人工介入下反复 shutdown。 */
-        atomic_clear_bit(&g_init_lock, 0);
-        return dret;
+    if (event_dispatcher_is_initialized()) {
+        event_status_t dret = event_dispatcher_deinit();
+        if (dret != EVENT_OK) {
+            LOG_ERR("Failed to deinit dispatcher during shutdown: %d", dret);
+            /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
+             * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
+             * 不宜在无人工介入下反复 shutdown。 */
+            atomic_clear_bit(&g_init_lock, 0);
+            return dret;
+        }
     }
 
     /* SIL-2: 反初始化事件队列，释放动态负载和 DROP_LOWEST scratch 缓冲区 */
@@ -1130,6 +1137,8 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
     event->reserved = 0;
     memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
 
+    event_debug_track_alloc(event, sizeof(event_t), priority);
+
     return event;
 }
 
@@ -1271,6 +1280,8 @@ event_t* event_create(event_type_t type, event_priority_t priority) {
     event->reserved = 0;
     memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
 
+    event_debug_track_alloc(event, sizeof(event_t), priority);
+
     return event;
 }
 
@@ -1351,6 +1362,9 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
     event->reserved = 0;
     memcpy(event->data.ptr, data, data_len);
 
+    event_debug_track_alloc(event, sizeof(event_t), priority);
+    event_debug_track_alloc(event->data.ptr, data_len, priority);
+
     return event;
 }
 
@@ -1369,6 +1383,7 @@ void event_free_data(event_t* event) {
     }
 
     if ((event->flags & EVENT_FLAG_DATA_DYNAMIC) && event->data.ptr != NULL) {
+        event_debug_untrack_alloc(event->data.ptr);
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
         if (event->flags & EVENT_FLAG_DATA_FROM_SLAB) {
             /* CRIT-NEW-1: 使用 flags 中记录的 slab 标记，而非按 data_len 重新选择。
@@ -1424,6 +1439,8 @@ void event_free(event_t* event) {
 
     /* SIL-2: 使用统一接口释放动态数据 */
     event_free_data(event);
+
+    event_debug_untrack_alloc(event);
 
     /* 释放 event_t */
     if (event->flags & EVENT_FLAG_FROM_SLAB) {

@@ -301,6 +301,34 @@ uint32_t event_check_leaks(void);
  */
 void event_dump_leaks(void);
 
+/**
+ * @brief 跟踪内存分配（内部调试接口）
+ *
+ * @param ptr 分配的内存指针
+ * @param size 分配大小
+ * @param priority 事件优先级
+ */
+void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority);
+
+/**
+ * @brief 取消跟踪内存分配（内部调试接口）
+ *
+ * @param ptr 要取消跟踪的内存指针
+ */
+void event_debug_untrack_alloc(void* ptr);
+
+#else /* !CONFIG_EVENT_DEBUG_MEM */
+
+static inline void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority) {
+    ARG_UNUSED(ptr);
+    ARG_UNUSED(size);
+    ARG_UNUSED(priority);
+}
+
+static inline void event_debug_untrack_alloc(void* ptr) {
+    ARG_UNUSED(ptr);
+}
+
 #endif /* CONFIG_EVENT_DEBUG_MEM */
 
 #ifdef __cplusplus
