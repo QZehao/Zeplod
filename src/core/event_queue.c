@@ -314,6 +314,15 @@ static event_queue_cb_t* event_queue_find_cb(const struct k_msgq* queue) {
     return NULL;
 }
 
+static event_queue_cb_t* event_queue_find_cb_nolock(const struct k_msgq* queue) {
+    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
+        if (g_queue_cb[i].msgq == queue) {
+            return &g_queue_cb[i];
+        }
+    }
+    return NULL;
+}
+
 /* =============================================================================
  * 队列 API 实现
  * ============================================================================= */
@@ -415,11 +424,19 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
      * ISR 路径直接调用 k_msgq_put（Zephyr 原生支持），跳过 cb 统计。
      * 统计丢失可接受，安全优先。 */
     if (k_is_in_isr()) {
+        event_queue_cb_t* cb = event_queue_find_cb_nolock(queue);
+        if (cb == NULL) {
+            return EVENT_ERR_INVALID_ARG;
+        }
+
         int ret = k_msgq_put(queue, event, K_NO_WAIT);
         if (ret == 0) {
+            atomic_inc(&cb->enqueue_count);
+            update_high_watermark(&cb->high_watermark, k_msgq_num_used_get(queue));
             return EVENT_OK;
         }
         if (ret == -ENOMSG) {
+            atomic_inc(&cb->overflow_count);
             event_system_inc_dropped_count();
             return EVENT_ERR_QUEUE_FULL;
         }

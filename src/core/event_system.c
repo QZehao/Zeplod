@@ -607,14 +607,11 @@ event_status_t event_system_start(void) {
         return EVENT_OK;
     }
 
-    atomic_set(&g_event_system.running, 1);
-
     if (atomic_cas(&g_restart_dispatcher_on_start, 1, 0)) {
         if (event_dispatcher_is_initialized()) {
             event_status_t dret = event_dispatcher_start();
             if (dret != EVENT_OK) {
                 LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
-                atomic_set(&g_event_system.running, 0);
                 atomic_set(&g_restart_dispatcher_on_start, 1);
                 event_system_lifecycle_unlock();
                 return dret;
@@ -622,6 +619,7 @@ event_status_t event_system_start(void) {
         }
     }
 
+    atomic_set(&g_event_system.running, 1);
     event_system_lifecycle_unlock();
     LOG_DBG("Event system started");
     return EVENT_OK;
