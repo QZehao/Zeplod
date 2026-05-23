@@ -19,6 +19,7 @@
  * 2026-05-23       1.0            zeh            初始版本
  *
  */
+
 #include "lock_order.h"
 
 #include <zephyr/logging/log.h>
@@ -26,35 +27,56 @@
 
 #include <string.h>
 
-#ifndef ZEP_LOCK_ORDER_MAX_THREADS
-#define ZEP_LOCK_ORDER_MAX_THREADS 32U
-#endif
-
-#ifndef ZEP_LOCK_ORDER_MAX_DEPTH
-#define ZEP_LOCK_ORDER_MAX_DEPTH 16U
-#endif
-
 LOG_MODULE_REGISTER(zepl_lock_order, LOG_LEVEL_WRN);
 
+/* =============================================================================
+ * 内部数据结构
+ * ============================================================================= */
+
+/** 栈中单层锁记录（与 zepl_lock_token_t 字段一致） */
 typedef struct {
     zepl_lock_level_t level;
     uintptr_t         key;
 } held_lock_t;
 
+/** 单线程锁嵌套状态 */
 typedef struct {
-    bool        active;
-    k_tid_t     tid;
-    uint8_t     depth;
+    bool        active; /**< 槽位是否已绑定线程 */
+    k_tid_t     tid;    /**< 所属线程 ID */
+    uint8_t     depth;  /**< 当前栈深度 */
     held_lock_t stack[ZEP_LOCK_ORDER_MAX_DEPTH];
 } thread_lock_state_t;
 
-static thread_lock_state_t g_thread_states[ZEP_LOCK_ORDER_MAX_THREADS];
-static struct k_spinlock   g_registry_lock;
+/* =============================================================================
+ * 静态变量
+ * ============================================================================= */
 
+/** 各线程锁栈登记（固定容量，由 g_registry_lock 保护） */
+static thread_lock_state_t g_thread_states[ZEP_LOCK_ORDER_MAX_THREADS];
+
+/** 保护 g_thread_states 注册表的自旋锁 */
+static struct k_spinlock g_registry_lock;
+
+/* =============================================================================
+ * 内部函数
+ * ============================================================================= */
+
+/**
+ * @brief 检查 token 的 level 是否在合法枚举范围内
+ */
 static bool token_is_valid(zepl_lock_token_t token) {
     return token.level >= ZEP_LOCK_LEVEL_GLOBAL && token.level <= ZEP_LOCK_LEVEL_RESOURCE;
 }
 
+/**
+ * @brief 查找或分配当前线程的锁栈状态
+ *
+ * @param tid 目标线程 ID
+ * @param create_if_missing true 时若无记录则占用空闲槽位
+ * @return 状态指针，未找到且未创建时返回 NULL
+ *
+ * @note 调用方须已持有 g_registry_lock
+ */
 static thread_lock_state_t* find_state_locked(k_tid_t tid, bool create_if_missing) {
     thread_lock_state_t* free_slot = NULL;
 
@@ -79,6 +101,9 @@ static thread_lock_state_t* find_state_locked(k_tid_t tid, bool create_if_missin
     return free_slot;
 }
 
+/**
+ * @brief 判断入栈是否符合顺序：新锁层级须高于栈顶，或同层 key 不小于栈顶
+ */
 static bool is_push_order_valid(const thread_lock_state_t* state, zepl_lock_token_t token) {
     if (state == NULL) {
         return true;
@@ -101,6 +126,9 @@ static bool is_push_order_valid(const thread_lock_state_t* state, zepl_lock_toke
     return false;
 }
 
+/**
+ * @brief 判断出栈是否与栈顶完全匹配（LIFO）
+ */
 static bool is_pop_order_valid(const thread_lock_state_t* state, zepl_lock_token_t token) {
     if (state == NULL || state->depth == 0U) {
         return false;
@@ -109,6 +137,10 @@ static bool is_pop_order_valid(const thread_lock_state_t* state, zepl_lock_token
     const held_lock_t* top = &state->stack[state->depth - 1U];
     return top->level == token.level && top->key == token.key;
 }
+
+/* =============================================================================
+ * 锁顺序 API 实现
+ * ============================================================================= */
 
 bool zepl_lock_order_is_valid(zepl_lock_level_t level, uintptr_t key) {
     if (k_is_in_isr()) {
