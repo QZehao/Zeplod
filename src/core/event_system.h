@@ -300,6 +300,7 @@ event_status_t event_system_start(void);
  * @note 停止后发布的事件将被拒绝
  * @note 已排队但未处理的动态事件负载会被释放
  * @note 与 event_system_shutdown() 不同：stop 不释放队列与订阅表，可再次 start 恢复投递
+ * @note 不得从事件回调（分发器线程）内部调用；否则返回 EVENT_ERR_INVALID_ARG
  */
 event_status_t event_system_stop(void);
 

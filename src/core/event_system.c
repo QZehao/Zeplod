@@ -162,6 +162,20 @@ static atomic_t g_publish_in_flight;
 /** 串行化订阅者 ID 分配与全局唯一性检查，消除 subscriber_id_in_use 的 TOCTOU */
 static K_MUTEX_DEFINE(g_subscriber_id_lock);
 
+static void event_system_lifecycle_lock_wait(void) {
+    while (atomic_test_and_set_bit(&g_init_lock, 0)) {
+        k_yield();
+    }
+}
+
+static bool event_system_lifecycle_try_lock(void) {
+    return !atomic_test_and_set_bit(&g_init_lock, 0);
+}
+
+static void event_system_lifecycle_unlock(void) {
+    atomic_clear_bit(&g_init_lock, 0);
+}
+
 static void event_publish_in_flight_wait_zero(void) {
     uint32_t spins = 0;
     while (atomic_get(&g_publish_in_flight) != 0) {
@@ -498,15 +512,30 @@ event_status_t event_system_init(void) {
     LOG_DBG("Initializing event system...");
 
     /* SIL-2: 使用原子标志保护初始化，防止多线程竞争 */
-    while (atomic_test_and_set_bit(&g_init_lock, 0)) {
-        /* 等待其他线程完成初始化 */
-        k_yield();
+    if (event_dispatcher_is_current_thread()) {
+        if (!event_system_lifecycle_try_lock()) {
+            LOG_ERR("Cannot init event system from dispatcher thread during lifecycle transition");
+            return EVENT_ERR_INVALID_ARG;
+        }
+    } else {
+        event_system_lifecycle_lock_wait();
     }
 
     if (g_event_system.initialized) {
-        atomic_clear_bit(&g_init_lock, 0);
+        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+            LOG_ERR("Event system initialized flag set but magic is invalid: 0x%08x", g_event_system.magic);
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
+        event_system_lifecycle_unlock();
         LOG_WRN("Event system already initialized");
         return EVENT_OK;
+    }
+
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC_IDLE) {
+        LOG_ERR("Event system magic corruption detected before init: 0x%08x", g_event_system.magic);
+        event_system_lifecycle_unlock();
+        return EVENT_ERR_INVALID_ARG;
     }
 
     /* 初始化控制块（成功前不设置 magic，失败后可完整重试） */
@@ -529,7 +558,7 @@ event_status_t event_system_init(void) {
     event_status_t qret = event_queue_init(&g_event_msgq, g_event_msgq_buffer, CONFIG_EVENT_QUEUE_SIZE);
     if (qret != EVENT_OK) {
         event_system_init_rollback();
-        atomic_clear_bit(&g_init_lock, 0);
+        event_system_lifecycle_unlock();
         LOG_ERR("event_queue_init failed: %d", qret);
         return qret;
     }
@@ -539,7 +568,7 @@ event_status_t event_system_init(void) {
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
 
-    atomic_clear_bit(&g_init_lock, 0);
+    event_system_lifecycle_unlock();
     LOG_DBG("Event system initialized successfully");
     return EVENT_OK;
 }
@@ -552,14 +581,29 @@ event_status_t event_system_init(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 未初始化
  */
 event_status_t event_system_start(void) {
-    EVENT_SYSTEM_VALIDATE();
+    if (!event_system_lifecycle_try_lock()) {
+        LOG_WRN("Event system lifecycle transition in progress; start rejected");
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+        event_system_lifecycle_unlock();
+        return EVENT_ERR_INVALID_ARG;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
+        event_system_lifecycle_unlock();
+        return EVENT_ERR_INVALID_ARG;
+    }
     if (!g_event_system.initialized) {
         LOG_ERR("Event system not initialized");
+        event_system_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
     if (atomic_get(&g_event_system.running) != 0) {
         LOG_WRN("Event system already running");
+        event_system_lifecycle_unlock();
         return EVENT_OK;
     }
 
@@ -571,11 +615,14 @@ event_status_t event_system_start(void) {
             if (dret != EVENT_OK) {
                 LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
                 atomic_set(&g_event_system.running, 0);
+                atomic_set(&g_restart_dispatcher_on_start, 1);
+                event_system_lifecycle_unlock();
                 return dret;
             }
         }
     }
 
+    event_system_lifecycle_unlock();
     LOG_DBG("Event system started");
     return EVENT_OK;
 }
@@ -583,19 +630,29 @@ event_status_t event_system_start(void) {
 /**
  * @brief 停止事件系统
  *
- * @return EVENT_OK 成功
+ * @return EVENT_OK 成功，其他错误码见 event_status_t
  */
 event_status_t event_system_stop(void) {
+    if (event_dispatcher_is_current_thread()) {
+        LOG_ERR("Cannot stop event system from dispatcher thread");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    event_system_lifecycle_lock_wait();
+
     /* 与 shutdown 一致：空闲态下幂等返回 OK，避免 VALIDATE 将 IDLE 误判为非法 */
     if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
+        event_system_lifecycle_unlock();
         return EVENT_OK;
     }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
+        event_system_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
     if (atomic_get(&g_event_system.running) == 0) {
+        event_system_lifecycle_unlock();
         return EVENT_OK;
     }
 
@@ -612,6 +669,8 @@ event_status_t event_system_stop(void) {
                 event_status_t dret = event_dispatcher_stop();
                 if (dret != EVENT_OK) {
                     LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+                    event_system_lifecycle_unlock();
+                    return dret;
                 }
             }
         }
@@ -619,6 +678,7 @@ event_status_t event_system_stop(void) {
 
     event_queue_purge(g_event_system.event_queue);
 
+    event_system_lifecycle_unlock();
     LOG_DBG("Event system stopped");
     return EVENT_OK;
 }
@@ -634,18 +694,9 @@ event_status_t event_system_stop(void) {
  *       否则可能因分发器线程正在执行该 callback 而产生死锁。
  */
 event_status_t event_system_shutdown(void) {
-    /* 幂等：已完成 shutdown 后 magic 为 IDLE，勿再走 VALIDATE（否则会误报 INVALID_ARG） */
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
-        return EVENT_OK;
-    }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
-        return EVENT_ERR_INVALID_ARG;
-    }
-
     /* HIGH-NEW-2: 禁止从分发器线程内部调用 shutdown。
-     * dispatcher 线程调用 stop 时会跳过自 join，导致 shutdown 继续释放队列资源
-     * 而线程仍在运行，引发 use-after-free。 */
+     * 该检查必须在生命周期锁之前执行：若外部线程已在 shutdown 并等待 join，
+     * 分发器回调再阻塞等同一把锁会造成 join 超时。 */
     if (event_dispatcher_is_current_thread()) {
         LOG_ERR("Cannot shutdown event system from dispatcher thread");
         return EVENT_ERR_INVALID_ARG;
@@ -654,13 +705,23 @@ event_status_t event_system_shutdown(void) {
     LOG_DBG("Shutting down event system...");
 
     /* SIL-2: 使用 g_init_lock 防止与 init/shutdown 并发执行（NEW-1）。
-     * 与 event_system_init 共用同一原子标志，串行化整个生命周期变更。 */
-    while (atomic_test_and_set_bit(&g_init_lock, 0)) {
-        k_yield();
+     * 与 event_system_init 共用同一原子标志，串行化整个生命周期变更。
+     * 必须先拿锁再判断 initialized/magic，否则 shutdown 可能在 init 半途早退。 */
+    event_system_lifecycle_lock_wait();
+
+    /* 幂等：已完成 shutdown 后 magic 为 IDLE，勿再走 VALIDATE（否则会误报 INVALID_ARG） */
+    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
+        event_system_lifecycle_unlock();
+        return EVENT_OK;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
+        event_system_lifecycle_unlock();
+        return EVENT_ERR_INVALID_ARG;
     }
 
     if (!g_event_system.initialized) {
-        atomic_clear_bit(&g_init_lock, 0);
+        event_system_lifecycle_unlock();
         return EVENT_OK;
     }
 
@@ -680,7 +741,7 @@ event_status_t event_system_shutdown(void) {
             /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
              * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
              * 不宜在无人工介入下反复 shutdown。 */
-            atomic_clear_bit(&g_init_lock, 0);
+            event_system_lifecycle_unlock();
             return dret;
         }
     }
@@ -695,7 +756,7 @@ event_status_t event_system_shutdown(void) {
     event_system_reset_control_block();
     atomic_clear(&g_restart_dispatcher_on_start);
 
-    atomic_clear_bit(&g_init_lock, 0);
+    event_system_lifecycle_unlock();
     LOG_DBG("Event system shutdown complete");
     return EVENT_OK;
 }

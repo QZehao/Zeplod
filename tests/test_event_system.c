@@ -23,6 +23,19 @@
 
 LOG_MODULE_REGISTER(test_event_system);
 
+#define STOP_FROM_CALLBACK_EVENT_TYPE 240U
+
+static atomic_t       g_stop_from_callback_seen;
+static event_status_t g_stop_from_callback_status;
+
+static void stop_from_callback_handler(const event_t* event, void* user_data) {
+    ARG_UNUSED(event);
+    ARG_UNUSED(user_data);
+
+    g_stop_from_callback_status = event_system_stop();
+    atomic_set(&g_stop_from_callback_seen, 1);
+}
+
 /* =============================================================================
  * 测试用例
  * ============================================================================= */
@@ -586,6 +599,34 @@ ZTEST(test_event_system, test_event_system_stop_restarts_dispatcher) {
 
     zassert_equal(event_system_start(), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief event_system_stop 不允许从分发器回调内部调用
+ */
+ZTEST(test_event_system, test_event_system_stop_rejected_from_callback) {
+    uint32_t subscriber_id;
+
+    atomic_set(&g_stop_from_callback_seen, 0);
+    g_stop_from_callback_status = EVENT_OK;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(STOP_FROM_CALLBACK_EVENT_TYPE, "stop_from_cb"), EVENT_OK, NULL);
+    zassert_equal(event_subscribe(STOP_FROM_CALLBACK_EVENT_TYPE, stop_from_callback_handler, NULL, &subscriber_id),
+                  EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_publish_copy(STOP_FROM_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0), EVENT_OK, NULL);
+    k_msleep(100);
+
+    zassert_equal(atomic_get(&g_stop_from_callback_seen), 1, "回调应已执行");
+    zassert_equal(g_stop_from_callback_status, EVENT_ERR_INVALID_ARG, "回调内 stop 应被拒绝");
+    zassert_true(event_system_is_running(), "被拒绝后事件系统仍应运行");
 
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);

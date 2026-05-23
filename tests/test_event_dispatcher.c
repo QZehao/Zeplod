@@ -21,6 +21,19 @@
 
 LOG_MODULE_REGISTER(test_event_dispatcher);
 
+#define DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE 230U
+
+static atomic_t       g_dispatcher_stop_from_callback_seen;
+static event_status_t g_dispatcher_stop_from_callback_status;
+
+static void dispatcher_stop_from_callback_handler(const event_t* event, void* user_data) {
+    ARG_UNUSED(event);
+    ARG_UNUSED(user_data);
+
+    g_dispatcher_stop_from_callback_status = event_dispatcher_stop();
+    atomic_set(&g_dispatcher_stop_from_callback_seen, 1);
+}
+
 ZTEST(event_dispatcher, test_init_start_stop) {
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -495,6 +508,36 @@ ZTEST(event_dispatcher, test_multiple_stop) {
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_dispatcher_get_state(), DISPATCHER_STOPPED, NULL);
 
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+/**
+ * @brief event_dispatcher_stop 不允许从分发器回调内部调用
+ */
+ZTEST(event_dispatcher, test_dispatcher_stop_rejected_from_callback) {
+    uint32_t subscriber_id;
+
+    atomic_set(&g_dispatcher_stop_from_callback_seen, 0);
+    g_dispatcher_stop_from_callback_status = EVENT_OK;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE, "disp_stop_cb"), EVENT_OK, NULL);
+    zassert_equal(event_subscribe(DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE, dispatcher_stop_from_callback_handler, NULL,
+                                  &subscriber_id),
+                  EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_publish_copy(DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0),
+                  EVENT_OK, NULL);
+    k_msleep(100);
+
+    zassert_equal(atomic_get(&g_dispatcher_stop_from_callback_seen), 1, "回调应已执行");
+    zassert_equal(g_dispatcher_stop_from_callback_status, EVENT_ERR_INVALID_ARG, "回调内 stop 应被拒绝");
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, "被拒绝后分发器仍应运行");
+
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 

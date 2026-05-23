@@ -325,9 +325,19 @@ event_status_t event_dispatcher_stop(void) {
         return EVENT_OK;
     }
 
+    if (event_dispatcher_is_current_thread()) {
+        LOG_ERR("Cannot stop dispatcher from dispatcher thread");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
     if (g_dispatcher.state == DISPATCHER_STOPPED) {
+        if (g_dispatcher.thread_started) {
+            k_mutex_unlock(&g_dispatcher.lock);
+            LOG_WRN("Dispatcher stop/join already in progress");
+            return EVENT_ERR_TIMEOUT;
+        }
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_OK;
     }
@@ -339,7 +349,7 @@ event_status_t event_dispatcher_stop(void) {
     k_mutex_unlock(&g_dispatcher.lock);
 
     /* SIL-2: 等待线程退出，使用有限超时 */
-    if (should_join && k_current_get() != &g_dispatcher.thread) {
+    if (should_join) {
         int jret = k_thread_join(&g_dispatcher.thread, K_MSEC(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS));
 
         if (jret != 0) {
