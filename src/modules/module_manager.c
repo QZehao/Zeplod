@@ -129,9 +129,15 @@ static module_info_t* find_module_by_id_locked(uint32_t module_id);
 static void clear_module_slot_locked(module_info_t* info);
 
 /**
- * @brief 清除模块的所有事件订阅（内部使用，调用方须已持有 g_module_mgr.lock）
+ * @brief 从模块表摘除事件订阅记录（内部使用，调用方须已持有 g_module_mgr.lock）
  */
-static void module_event_clear_all_locked(module_info_t* info);
+static uint8_t module_event_detach_locked(module_info_t* info, event_type_t* types_out, uint32_t* ids_out,
+                                          uint8_t max_out);
+
+/**
+ * @brief 在锁外批量取消事件订阅（内部使用）
+ */
+static void module_event_unsubscribe_batch(const event_type_t* types, const uint32_t* ids, uint8_t count);
 
 /**
  * @brief 通知状态回调（内部获取回调指针需短暂加锁；可在已释放管理器锁后调用）
@@ -231,24 +237,39 @@ static void clear_module_slot_locked(module_info_t* info) {
     (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
 }
 
-/**
- * @brief 清除模块的所有事件订阅
- *
- * @param info 模块信息指针
- *
- * @note 必须持有 g_module_mgr.lock
- */
-static void module_event_clear_all_locked(module_info_t* info) {
-    if (info == NULL) {
+static uint8_t module_event_detach_locked(module_info_t* info, event_type_t* types_out, uint32_t* ids_out,
+                                          uint8_t max_out) {
+    if (info == NULL || types_out == NULL || ids_out == NULL || max_out == 0U) {
+        return 0U;
+    }
+
+    uint8_t n = info->event_subscription_count;
+    if (n > max_out) {
+        n = max_out;
+    }
+
+    for (uint8_t i = 0U; i < n; i++) {
+        types_out[i] = info->event_subscriptions[i].type;
+        ids_out[i] = info->event_subscriptions[i].subscriber_id;
+    }
+
+    /*
+     * 冻结订阅槽位，阻止其他线程在锁外批量退订期间插入新的订阅。
+     * 这里使用上限作为“清理中”占位值；后续会在清理完成后真正清零模块槽位。
+     */
+    info->event_subscription_count = CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS;
+    (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
+    return n;
+}
+
+static void module_event_unsubscribe_batch(const event_type_t* types, const uint32_t* ids, uint8_t count) {
+    if (types == NULL || ids == NULL) {
         return;
     }
 
-    for (uint8_t i = 0; i < info->event_subscription_count; i++) {
-        (void) event_unsubscribe(info->event_subscriptions[i].type, info->event_subscriptions[i].subscriber_id);
+    for (uint8_t i = 0U; i < count; i++) {
+        (void) event_unsubscribe(types[i], ids[i]);
     }
-
-    info->event_subscription_count = 0U;
-    (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
 }
 
 /**
@@ -802,8 +823,17 @@ int module_manager_shutdown(void) {
     for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
         module_info_t* info = &g_module_mgr.modules[i];
 
-        /* 清除所有事件订阅 */
-        module_event_clear_all_locked(info);
+        if (info->event_subscription_count > 0U) {
+            event_type_t types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+            uint32_t     ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+            const uint8_t sub_n =
+                module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
+
+            k_mutex_unlock(&g_module_mgr.lock);
+            module_event_unsubscribe_batch(types, ids, sub_n);
+            k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+            info = &g_module_mgr.modules[i];
+        }
 
         if (info->status != MODULE_STATUS_UNINITIALIZED && info->interface != NULL &&
             info->interface->shutdown != NULL) {
@@ -1074,8 +1104,19 @@ int module_manager_unregister(uint32_t module_id) {
         }
     }
 
-    /* 清除所有事件订阅 */
-    module_event_clear_all_locked(info);
+    event_type_t types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+    uint32_t     ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+    const uint8_t sub_n = module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
+
+    k_mutex_unlock(&g_module_mgr.lock);
+    module_event_unsubscribe_batch(types, ids, sub_n);
+    k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+
+    info = find_module_by_id_locked(module_id);
+    if (info == NULL) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        return MODULE_ERR_NOT_FOUND;
+    }
 
     /* 调用模块 shutdown 函数（shutdown 进行中时跳过，由 shutdown 路径统一调用） */
     if (atomic_get(&g_shutting_down) == 0 && info->interface != NULL && info->interface->shutdown != NULL) {
@@ -1260,6 +1301,7 @@ int module_manager_start_module(uint32_t module_id) {
  */
 int module_manager_stop_module(uint32_t module_id) {
     int (*stop_fn)(void);
+    int         ret = MODULE_OK;
     char        name_buf[MM_MODULE_NAME_MAX];
     const char* name;
 
@@ -1284,13 +1326,29 @@ int module_manager_stop_module(uint32_t module_id) {
     k_mutex_unlock(&g_module_mgr.lock);
 
     if (stop_fn != NULL) {
-        stop_fn();
+        ret = stop_fn();
     }
 
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
 
     info = find_module_by_id_locked(module_id);
-    if (info != NULL && info->status == MODULE_STATUS_RUNNING) {
+    if (info == NULL || info->interface == NULL) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        return MODULE_ERR_NOT_FOUND;
+    }
+
+    if (ret != MODULE_OK) {
+        LOG_ERR("Module '%s' stop failed: %d", name != NULL ? name : "?", ret);
+        if (info->status == MODULE_STATUS_RUNNING) {
+            info->status = MODULE_STATUS_ERROR;
+            g_module_mgr.stats.error_modules++;
+        }
+        k_mutex_unlock(&g_module_mgr.lock);
+        module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_ERROR);
+        return ret;
+    }
+
+    if (info->status == MODULE_STATUS_RUNNING) {
         info->status = MODULE_STATUS_STOPPED;
         if (g_module_mgr.stats.active_modules > 0U) {
             g_module_mgr.stats.active_modules--;
@@ -1534,16 +1592,16 @@ int module_manager_subscribe(uint32_t module_id, event_type_t event_type) {
 
     info = find_module_by_id_locked(module_id);
     if (info == NULL) {
-        (void) event_unsubscribe(event_type, subscriber_id);
         k_mutex_unlock(&g_module_mgr.lock);
+        (void) event_unsubscribe(event_type, subscriber_id);
         return MODULE_ERR_NOT_FOUND;
     }
 
     /* 双重检查订阅数量 */
     if (info->event_subscription_count >= CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS ||
         find_event_sub_index(info, event_type) >= 0) {
-        (void) event_unsubscribe(event_type, subscriber_id);
         k_mutex_unlock(&g_module_mgr.lock);
+        (void) event_unsubscribe(event_type, subscriber_id);
         return MODULE_ERR_BUSY;
     }
 
@@ -1583,8 +1641,6 @@ int module_manager_unsubscribe(uint32_t module_id, event_type_t event_type) {
 
     const uint32_t sub_id = info->event_subscriptions[idx].subscriber_id;
 
-    (void) event_unsubscribe(event_type, sub_id);
-
     /* 使用最后一个元素填补空位 */
     const uint8_t last = (uint8_t) (info->event_subscription_count - 1U);
 
@@ -1596,6 +1652,9 @@ int module_manager_unsubscribe(uint32_t module_id, event_type_t event_type) {
     info->event_subscription_count = last;
 
     k_mutex_unlock(&g_module_mgr.lock);
+
+    (void) event_unsubscribe(event_type, sub_id);
+
     return MODULE_OK;
 }
 
