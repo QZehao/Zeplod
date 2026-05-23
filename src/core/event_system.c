@@ -1377,7 +1377,6 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
  * @param event 要释放数据的事件
  */
 void event_free_data(event_t* event) {
-    EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID();
     if (event == NULL) {
         return;
     }
@@ -1432,7 +1431,6 @@ void event_free_data(event_t* event) {
  * @param event 要释放的事件
  */
 void event_free(event_t* event) {
-    EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID();
     if (event == NULL) {
         return;
     }

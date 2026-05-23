@@ -522,14 +522,36 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     event_queue_cb_t* cb = event_queue_find_cb(queue);
 
     if (event_queue_use_op_lock(cb)) {
-        k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+        k_timepoint_t end = sys_timepoint_calc(timeout);
+
+        while (true) {
+            k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+            int ret = k_msgq_get(queue, event, K_NO_WAIT);
+            k_mutex_unlock(&cb->reorder_lock);
+
+            if (ret == 0) {
+                atomic_inc(&cb->dequeue_count);
+                return EVENT_OK;
+            }
+
+            if (ret != -ENOMSG) {
+                return EVENT_ERR_TIMEOUT;
+            }
+
+            if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+                return EVENT_ERR_QUEUE_EMPTY;
+            }
+
+            if (!K_TIMEOUT_EQ(timeout, K_FOREVER) && sys_timepoint_expired(end)) {
+                return EVENT_ERR_TIMEOUT;
+            }
+
+            k_sleep(K_MSEC(1));
+        }
     }
 
     int ret = k_msgq_get(queue, event, timeout);
     if (ret != 0) {
-        if (event_queue_use_op_lock(cb)) {
-            k_mutex_unlock(&cb->reorder_lock);
-        }
         if (ret == -ENOMSG) {
             return EVENT_ERR_QUEUE_EMPTY;
         }
@@ -543,10 +565,6 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     }
 
     atomic_inc(&cb->dequeue_count);
-
-    if (event_queue_use_op_lock(cb)) {
-        k_mutex_unlock(&cb->reorder_lock);
-    }
 
     return EVENT_OK;
 }
