@@ -136,6 +136,19 @@ event_publish_copy(EVENT_TYPE_MY_EVENT, EVENT_PRIORITY_NORMAL, &data, sizeof(dat
 
 For the full API reference, see [31-event-system-guide.md](../30-core-modules/31-event-system-guide.md).
 
+### State machine and lock ordering (core modules)
+
+The framework provides **`state_machine`** (lifecycle) and **`lock_order`** (multi-lock ordering) under `src/core/`. They are integrated in **`event_system`**, **`module_manager`**, and **`ipc_service`**.
+
+| Topic | Notes |
+|-------|--------|
+| State machine API | `zepl_state_machine_init`, `zepl_state_machine_try_transition`, `zepl_state_machine_get` (see `state_machine.h`) |
+| Lock order API | Pair `zepl_lock_enter` / `zepl_lock_exit` with `k_mutex`; levels GLOBAL → STATE → TABLE → ENTRY → RESOURCE |
+| New modules | Use `zepl_state_machine_t` for init/start/stop; register lock order on every mutex; no external callbacks while holding locks |
+| Caveats | `event_system` does **not** use `ZEP_STATE_ERROR`; `module_manager` has a single global lock; IPC pending + shm release nests TABLE → ENTRY |
+
+Implementation plan and intentional design choices: **[2026-05-23-state-machine-lock-ordering-implementation-plan.md](../../superpowers/plan/2026-05-23-state-machine-lock-ordering-implementation-plan.md)** (under `docs/superpowers/plan/`).
+
 ### Modifying Configuration
 
 - `prj.conf` - Zephyr kernel and app merged config (`CONFIG_*`)

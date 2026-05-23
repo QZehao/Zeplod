@@ -304,6 +304,34 @@ event_publish_from_isr(&my_event);
 - 单元测试若需独占队列消费者，应 `event_system_shutdown()` 收尾（见 `test_event_dispatcher.c`）。
 - `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK=y` 时，`event_publish` 入队使用 `K_FOREVER` 阻塞等待空位；ISR 仍使用 `K_NO_WAIT`。
 
+### 状态机与锁序（核心模块）
+
+`src/core/state_machine.*` 与 `src/core/lock_order.*` 已接入 `event_system`、`module_manager`、`ipc_service`。新模块或多锁路径请遵循：
+
+**状态机**
+
+- 生命周期使用 `zepl_state_machine_t` + `zepl_state_machine_try_transition()`，状态集见 `state_machine.h`（`ZEP_STATE_UNINIT` … `ZEP_STATE_ERROR`）。
+- `event_system` **不使用** `ZEP_STATE_ERROR`，失败仍返回 `event_status_t`；`module_manager` / `ipc_service` 在 start/stop 路径会检查 ERROR。
+- 可与 `initialized`、`running` 等原子/布尔并存：状态机管阶段，原子管热路径与 ISR，勿混用语义。
+
+**锁序**
+
+- 在 `k_mutex_lock` 之后、`k_mutex_unlock` 之前配对调用：
+
+```c
+zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t)&my_lock);
+k_mutex_lock(&my_lock, K_FOREVER);
+/* ... */
+k_mutex_unlock(&my_lock);
+zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t)&my_lock);
+```
+
+- 层级：`GLOBAL(1) → STATE(2) → TABLE(3) → ENTRY(4) → RESOURCE(5)`；同层多锁时 key（锁指针）须单调不减。
+- 持锁期间不要调用可能回调、阻塞或再入本模块的 API；`module_manager` 退订须「锁内冻结、锁外 `event_unsubscribe_all`」。
+- ztest 线程结束可调用 `zepl_lock_reset_current_thread()`。
+
+详细决策与 PR 范围：`docs/superpowers/plan/2026-05-23-state-machine-lock-ordering-implementation-plan.md`。
+
 ---
 
 ## 4. 项目结构
@@ -329,7 +357,9 @@ zeplod/
 │   │   ├── event_system.c/h
 │   │   ├── event_queue.c/h
 │   │   ├── event_dispatcher.c/h
-│   │   └── event_system_compat.c/h
+│   │   ├── event_system_compat.c/h
+│   │   ├── state_machine.c/h    # 通用生命周期状态机
+│   │   └── lock_order.c/h       # 多锁顺序校验（调试辅助）
 │   ├── services/              # 系统服务
 │   │   ├── sys_log.c/h
 │   │   ├── sys_memory.c/h
