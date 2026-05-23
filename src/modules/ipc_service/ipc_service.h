@@ -40,6 +40,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "state_machine.h"
+
 #if !IS_ENABLED(CONFIG_THREAD_IPC_SERVICE)
 #error "ipc_service.h requires CONFIG_THREAD_IPC_SERVICE=y (see THREAD_IPC_SERVICE in Kconfig)"
 #endif
@@ -217,6 +219,7 @@ typedef struct ipc_service {
     ipc_future_t* free_futures; /**< 空闲 Future 链表头 */
 
     struct k_mutex state_lock;  /**< 保护 running 的互斥锁 */
+    zepl_state_machine_t lifecycle; /**< 服务生命周期状态机 */
     bool           initialized; /**< 服务资源是否已初始化。 */
     bool           running;     /**< 服务是否正在运行 */
     atomic_t       shutdown;    /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */

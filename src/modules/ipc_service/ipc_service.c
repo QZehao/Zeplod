@@ -308,6 +308,14 @@ static bool ipc_service_is_accepting_requests(ipc_service_t* service) {
     return accepting;
 }
 
+static zepl_state_t ipc_service_lifecycle_state_locked(const ipc_service_t* service) {
+    if (service == NULL) {
+        return ZEP_STATE_ERROR;
+    }
+
+    return zepl_state_machine_get(&service->lifecycle);
+}
+
 /**
  * @brief 带停止感知的消息投递，避免队列满时永久阻塞 stop 流程
  */
@@ -654,6 +662,7 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
     }
 
     memset(service, 0, sizeof(ipc_service_t));
+    zepl_state_machine_init(&service->lifecycle, ZEP_STATE_UNINIT);
 
     service->name = name;
     service->service_func = service_func;
@@ -699,6 +708,8 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
     }
 #endif
 
+    (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_INITED);
+
     LOG_DBG("IPC service '%s' initialized", name);
 
     return 0;
@@ -717,9 +728,21 @@ int ipc_service_start(ipc_service_t* service) {
 
     k_mutex_lock(&service->state_lock, K_FOREVER);
 
-    if (service->running) {
+    zepl_state_t state = ipc_service_lifecycle_state_locked(service);
+
+    if (state == ZEP_STATE_RUNNING) {
         k_mutex_unlock(&service->state_lock);
         return -EALREADY;
+    }
+
+    if (state == ZEP_STATE_UNINIT || state == ZEP_STATE_ERROR || state == ZEP_STATE_STOPPING) {
+        k_mutex_unlock(&service->state_lock);
+        return -EINVAL;
+    }
+
+    if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STARTING) != 0) {
+        k_mutex_unlock(&service->state_lock);
+        return -EINVAL;
     }
 
     atomic_set(&service->shutdown, 0);
@@ -740,6 +763,7 @@ int ipc_service_start(ipc_service_t* service) {
 #endif
 
     service->running = true;
+    (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_RUNNING);
     k_mutex_unlock(&service->state_lock);
 
     LOG_DBG("IPC service '%s' started", service->name);
@@ -758,14 +782,33 @@ int ipc_service_stop(ipc_service_t* service) {
     }
 
     k_mutex_lock(&service->state_lock, K_FOREVER);
-    if (!service->running) {
+    zepl_state_t state = ipc_service_lifecycle_state_locked(service);
+
+    if (state == ZEP_STATE_UNINIT) {
+        k_mutex_unlock(&service->state_lock);
+        return -EINVAL;
+    }
+
+    if (!service->running || state == ZEP_STATE_INITED || state == ZEP_STATE_STOPPED) {
         k_mutex_unlock(&service->state_lock);
         return 0;
+    }
+
+    if (state == ZEP_STATE_ERROR) {
+        k_mutex_unlock(&service->state_lock);
+        return -EINVAL;
     }
 
     if (k_current_get() == &service->thread || k_current_get() == &service->response_thread) {
         k_mutex_unlock(&service->state_lock);
         return -EDEADLK;
+    }
+
+    if (state != ZEP_STATE_STOPPING) {
+        if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPING) != 0) {
+            k_mutex_unlock(&service->state_lock);
+            return -EINVAL;
+        }
     }
 
     atomic_set(&service->shutdown, 1);
@@ -815,6 +858,7 @@ int ipc_service_stop(ipc_service_t* service) {
         k_mutex_lock(&service->state_lock, K_FOREVER);
         service->running = false;
         atomic_set(&service->shutdown, 0);
+        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
         k_mutex_unlock(&service->state_lock);
     }
 

@@ -29,6 +29,7 @@
 #include <zephyr/sys/atomic.h>
 #include <errno.h>
 #include <string.h>
+#include "lock_order.h"
 #include "ipc_service.h"
 
 LOG_MODULE_REGISTER(ipc_shm, CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_LOG_LEVEL);
@@ -165,6 +166,42 @@ static bool is_block_valid(const ipc_shm_pool_t* pool, uint32_t index) {
     return true;
 }
 
+static void ipc_shm_pool_lock(ipc_shm_pool_t* pool) {
+    if (pool == NULL) {
+        return;
+    }
+
+    zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &pool->pool_lock);
+    k_mutex_lock(&pool->pool_lock, K_FOREVER);
+}
+
+static void ipc_shm_pool_unlock(ipc_shm_pool_t* pool) {
+    if (pool == NULL) {
+        return;
+    }
+
+    k_mutex_unlock(&pool->pool_lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &pool->pool_lock);
+}
+
+static void ipc_shm_block_lock(ipc_shm_block_t* block) {
+    if (block == NULL) {
+        return;
+    }
+
+    zepl_lock_enter(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &block->lock);
+    k_mutex_lock(&block->lock, K_FOREVER);
+}
+
+static void ipc_shm_block_unlock(ipc_shm_block_t* block) {
+    if (block == NULL) {
+        return;
+    }
+
+    k_mutex_unlock(&block->lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &block->lock);
+}
+
 /* =============================================================================
  * 公共 API 实现
  * ============================================================================= */
@@ -269,7 +306,7 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
     ipc_shm_pool_t*  pool = &service->shm_pool;
     ipc_shm_handle_t handle = IPC_SHM_HANDLE_INVALID;
 
-    k_mutex_lock(&pool->pool_lock, K_FOREVER);
+    ipc_shm_pool_lock(pool);
 
     /* SIL-2: 查找空闲块 */
     for (uint32_t i = 0; i < CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE; i++) {
@@ -277,11 +314,11 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
 
         if (block->state == IPC_SHM_STATE_FREE) {
             /* 找到空闲块，分配它 */
-            k_mutex_lock(&block->lock, K_FOREVER);
+            ipc_shm_block_lock(block);
 
             /* SIL-2: 双重检查状态（防止竞争） */
             if (block->state != IPC_SHM_STATE_FREE) {
-                k_mutex_unlock(&block->lock);
+                ipc_shm_block_unlock(block);
                 continue;
             }
 
@@ -304,12 +341,12 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
 
             LOG_DBG("Allocated block %u: handle=0x%08X, size=%u, alloc_id=%u", i, handle, size, block->alloc_id);
 
-            k_mutex_unlock(&block->lock);
+            ipc_shm_block_unlock(block);
             break;
         }
     }
 
-    k_mutex_unlock(&pool->pool_lock);
+    ipc_shm_pool_unlock(pool);
 
     if (handle == IPC_SHM_HANDLE_INVALID) {
         LOG_WRN("Shared memory pool exhausted (active=%u, peak=%u)", (unsigned int) atomic_get(&pool->active_count),
@@ -345,12 +382,12 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     ipc_shm_block_t* block = &pool->blocks[index];
 
     /* SIL-2: 使用块锁保护引用计数操作 */
-    k_mutex_lock(&block->lock, K_FOREVER);
+    ipc_shm_block_lock(block);
 
     /* SIL-2: 验证块状态 */
     if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
         LOG_ERR("Cannot acquire free/invalid block %u", index);
-        k_mutex_unlock(&block->lock);
+        ipc_shm_block_unlock(block);
         return;
     }
 
@@ -364,7 +401,7 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
 
     LOG_DBG("Acquired block %u: ref_count %u -> %u", index, old_ref, old_ref + 1);
 
-    k_mutex_unlock(&block->lock);
+    ipc_shm_block_unlock(block);
 }
 
 /**
@@ -393,7 +430,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
     ipc_shm_block_t* block = &pool->blocks[index];
     int              ret = 0;
 
-    k_mutex_lock(&block->lock, K_FOREVER);
+    ipc_shm_block_lock(block);
 
     /* SIL-2: 验证块状态 */
     if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
@@ -436,7 +473,7 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
 unlock:
-    k_mutex_unlock(&block->lock);
+    ipc_shm_block_unlock(block);
     return ret;
 }
 
@@ -459,13 +496,13 @@ void* ipc_shm_get_ptr(ipc_service_t* service, ipc_shm_handle_t handle) {
     ipc_shm_block_t* block = &pool->blocks[index];
     void*            ptr = NULL;
 
-    k_mutex_lock(&block->lock, K_FOREVER);
+    ipc_shm_block_lock(block);
 
     if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
         ptr = block->ptr;
     }
 
-    k_mutex_unlock(&block->lock);
+    ipc_shm_block_unlock(block);
     return ptr;
 }
 
@@ -488,13 +525,13 @@ size_t ipc_shm_get_size(ipc_service_t* service, ipc_shm_handle_t handle) {
     ipc_shm_block_t* block = &pool->blocks[index];
     size_t           size = 0;
 
-    k_mutex_lock(&block->lock, K_FOREVER);
+    ipc_shm_block_lock(block);
 
     if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
         size = block->size;
     }
 
-    k_mutex_unlock(&block->lock);
+    ipc_shm_block_unlock(block);
     return size;
 }
 
@@ -559,11 +596,11 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
 
     ipc_shm_handle_t handle = IPC_SHM_HANDLE_INVALID;
 
-    k_mutex_lock(&block->lock, K_FOREVER);
+    ipc_shm_block_lock(block);
     if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
         handle = encode_handle(pool, index);
     }
-    k_mutex_unlock(&block->lock);
+    ipc_shm_block_unlock(block);
 
     return handle;
 }
@@ -580,7 +617,7 @@ void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count, uint3
 
     ipc_shm_pool_t* pool = &service->shm_pool;
 
-    k_mutex_lock(&pool->pool_lock, K_FOREVER);
+    ipc_shm_pool_lock(pool);
 
     if (out_active_count != NULL) {
         *out_active_count = (uint32_t) atomic_get(&pool->active_count);
@@ -594,7 +631,7 @@ void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count, uint3
         *out_free_count = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE - (uint32_t) atomic_get(&pool->active_count);
     }
 
-    k_mutex_unlock(&pool->pool_lock);
+    ipc_shm_pool_unlock(pool);
 }
 
 #endif /* CONFIG_THREAD_IPC_SERVICE_SHARED_MEM */

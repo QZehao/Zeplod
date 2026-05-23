@@ -77,6 +77,9 @@ ZTEST(state_machine, test_state_machine_progression) {
     zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_RUNNING), 0, NULL);
     zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_STOPPING), 0, NULL);
     zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_STOPPED), 0, NULL);
+    zassert_true(zepl_state_can_transition(ZEP_STATE_STOPPED, ZEP_STATE_UNINIT), NULL);
+    zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_UNINIT), 0, NULL);
+    zassert_equal(zepl_state_machine_get(&machine), ZEP_STATE_UNINIT, NULL);
 
     zassert_true(zepl_state_is_terminal(ZEP_STATE_STOPPED), NULL);
     zassert_str_equal(zepl_state_name(ZEP_STATE_STOPPED), "STOPPED", NULL);
@@ -111,6 +114,16 @@ ZTEST(state_machine, test_state_machine_invalid_transition) {
     zassert_false(zepl_state_can_transition(ZEP_STATE_RUNNING, ZEP_STATE_INITED), NULL);
     zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_INITED), -EPERM, NULL);
     zassert_equal(zepl_state_machine_get(&machine), ZEP_STATE_RUNNING, NULL);
+}
+
+ZTEST(state_machine, test_state_machine_shutdown_transition) {
+    zepl_state_machine_t machine;
+
+    zepl_state_machine_init(&machine, ZEP_STATE_INITED);
+
+    zassert_true(zepl_state_can_transition(ZEP_STATE_INITED, ZEP_STATE_UNINIT), NULL);
+    zassert_equal(zepl_state_machine_try_transition(&machine, ZEP_STATE_UNINIT), 0, NULL);
+    zassert_equal(zepl_state_machine_get(&machine), ZEP_STATE_UNINIT, NULL);
 }
 
 ZTEST_SUITE(state_machine, NULL, NULL, NULL, NULL, NULL);

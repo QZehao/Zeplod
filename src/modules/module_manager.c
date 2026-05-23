@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include "state_machine.h"
 #include "event_system.h"
 
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
@@ -75,6 +76,7 @@ typedef struct {
     module_mgr_callback_t callback;                    /**< 状态变化回调 */
     void*                 callback_user_data;          /**< 回调用户数据 */
     struct k_mutex        lock;                        /**< 保护内部数据的互斥锁 */
+    zepl_state_machine_t  lifecycle;                   /**< 管理器生命周期状态机 */
     bool                  initialized;                 /**< 管理器是否已初始化 */
     bool                  running;                     /**< 管理器是否正在运行 */
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
@@ -148,6 +150,10 @@ static void module_mgr_notify_callback(uint32_t module_id, module_mgr_event_t ev
  * @brief 模块事件处理函数（内部使用）
  */
 static void module_event_handler(const event_t* event, void* user_data);
+
+static zepl_state_t module_manager_lifecycle_state_locked(void) {
+    return zepl_state_machine_get(&g_module_mgr.lifecycle);
+}
 
 /* =============================================================================
  * 内部辅助函数 (Internal Helpers)
@@ -733,6 +739,7 @@ int module_manager_init(void) {
 
     (void) memset(&g_module_mgr, 0, sizeof(g_module_mgr));
     k_mutex_init(&g_module_mgr.lock);
+    zepl_state_machine_init(&g_module_mgr.lifecycle, ZEP_STATE_UNINIT);
 
     /* 清除 shutdown 标志，支持重新初始化 */
     atomic_set(&g_shutting_down, 0);
@@ -743,6 +750,7 @@ int module_manager_init(void) {
         g_module_mgr.modules[i].id = 0U;
     }
 
+    (void) zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_INITED);
     g_module_mgr.initialized = true;
 
     LOG_DBG("Module manager initialized");
@@ -761,11 +769,27 @@ int module_manager_start(void) {
     }
 
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
-    if (g_module_mgr.running) {
+    zepl_state_t state = module_manager_lifecycle_state_locked();
+
+    if (state == ZEP_STATE_RUNNING) {
         k_mutex_unlock(&g_module_mgr.lock);
         LOG_WRN("Module manager already running");
         return MODULE_ERR_ALREADY_RUNNING;
     }
+
+    if (state == ZEP_STATE_UNINIT || state == ZEP_STATE_ERROR || state == ZEP_STATE_STOPPING) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_ERR("Module manager is not in a startable state: %s", zepl_state_name(state));
+        return MODULE_ERR_INVALID_ARG;
+    }
+
+    if (zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_STARTING) != 0 ||
+        zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_RUNNING) != 0) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_ERR("Failed to transition module manager to RUNNING from %s", zepl_state_name(state));
+        return MODULE_ERR_INVALID_ARG;
+    }
+
     g_module_mgr.running = true;
     k_mutex_unlock(&g_module_mgr.lock);
 
@@ -784,10 +808,42 @@ int module_manager_stop(void) {
         return MODULE_ERR_NOT_INITIALIZED;
     }
 
+    k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
+    zepl_state_t state = module_manager_lifecycle_state_locked();
+
+    if (state == ZEP_STATE_UNINIT) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_ERR("Module manager not initialized");
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
+    if (state == ZEP_STATE_STOPPED) {
+        g_module_mgr.running = false;
+        k_mutex_unlock(&g_module_mgr.lock);
+        return MODULE_OK;
+    }
+
+    if (state == ZEP_STATE_ERROR) {
+        k_mutex_unlock(&g_module_mgr.lock);
+        LOG_ERR("Module manager is in error state");
+        return MODULE_ERR_INVALID_ARG;
+    }
+
+    if (state != ZEP_STATE_STOPPING) {
+        if (zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_STOPPING) != 0) {
+            k_mutex_unlock(&g_module_mgr.lock);
+            LOG_ERR("Failed to transition module manager to STOPPING from %s", zepl_state_name(state));
+            return MODULE_ERR_INVALID_ARG;
+        }
+    }
+
+    g_module_mgr.running = false;
+    k_mutex_unlock(&g_module_mgr.lock);
+
     (void) module_manager_stop_all();
 
     k_mutex_lock(&g_module_mgr.lock, K_FOREVER);
-    g_module_mgr.running = false;
+    (void) zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_STOPPED);
     k_mutex_unlock(&g_module_mgr.lock);
 
     LOG_DBG("Module manager stopped");
@@ -897,6 +953,7 @@ int module_manager_shutdown(void) {
 
     g_module_mgr.module_count = 0U;
     (void) memset(&g_module_mgr.stats, 0, sizeof(g_module_mgr.stats));
+    (void) zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_UNINIT);
     g_module_mgr.initialized = false;
     g_module_mgr.running = false;
 
