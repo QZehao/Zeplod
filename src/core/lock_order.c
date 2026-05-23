@@ -1,0 +1,276 @@
+/**
+ * @file lock_order.c
+ * @brief 锁顺序校验辅助实现
+ *
+ * 为各线程维护锁嵌套栈，在 enter/exit 时校验层级单调递增与同 key 配对释放。
+ * 供事件系统等多锁模块在调试构建中检测违规加锁顺序。
+ *
+ * 主要功能：
+ * - 线程锁状态注册表（自旋锁保护）
+ * - zepl_lock_enter / zepl_lock_exit 与 token 封装
+ * - 当前线程锁栈查询与重置
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-05-23
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-05-23       1.0            zeh            初始版本
+ *
+ */
+#include "lock_order.h"
+
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/__assert.h>
+
+#include <string.h>
+
+#ifndef ZEP_LOCK_ORDER_MAX_THREADS
+#define ZEP_LOCK_ORDER_MAX_THREADS 32U
+#endif
+
+#ifndef ZEP_LOCK_ORDER_MAX_DEPTH
+#define ZEP_LOCK_ORDER_MAX_DEPTH 16U
+#endif
+
+LOG_MODULE_REGISTER(zepl_lock_order, LOG_LEVEL_WRN);
+
+typedef struct {
+    zepl_lock_level_t level;
+    uintptr_t         key;
+} held_lock_t;
+
+typedef struct {
+    bool        active;
+    k_tid_t     tid;
+    uint8_t     depth;
+    held_lock_t stack[ZEP_LOCK_ORDER_MAX_DEPTH];
+} thread_lock_state_t;
+
+static thread_lock_state_t g_thread_states[ZEP_LOCK_ORDER_MAX_THREADS];
+static struct k_spinlock   g_registry_lock;
+
+static bool token_is_valid(zepl_lock_token_t token) {
+    return token.level >= ZEP_LOCK_LEVEL_GLOBAL && token.level <= ZEP_LOCK_LEVEL_RESOURCE;
+}
+
+static thread_lock_state_t* find_state_locked(k_tid_t tid, bool create_if_missing) {
+    thread_lock_state_t* free_slot = NULL;
+
+    for (size_t i = 0; i < ZEP_LOCK_ORDER_MAX_THREADS; i++) {
+        if (g_thread_states[i].active && g_thread_states[i].tid == tid) {
+            return &g_thread_states[i];
+        }
+
+        if (!g_thread_states[i].active && free_slot == NULL) {
+            free_slot = &g_thread_states[i];
+        }
+    }
+
+    if (!create_if_missing || free_slot == NULL) {
+        return NULL;
+    }
+
+    free_slot->active = true;
+    free_slot->tid = tid;
+    free_slot->depth = 0U;
+    memset(free_slot->stack, 0, sizeof(free_slot->stack));
+    return free_slot;
+}
+
+static bool is_push_order_valid(const thread_lock_state_t* state, zepl_lock_token_t token) {
+    if (state == NULL) {
+        return true;
+    }
+
+    if (state->depth == 0U) {
+        return true;
+    }
+
+    const held_lock_t* top = &state->stack[state->depth - 1U];
+
+    if (token.level > top->level) {
+        return true;
+    }
+
+    if (token.level == top->level && token.key >= top->key) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool is_pop_order_valid(const thread_lock_state_t* state, zepl_lock_token_t token) {
+    if (state == NULL || state->depth == 0U) {
+        return false;
+    }
+
+    const held_lock_t* top = &state->stack[state->depth - 1U];
+    return top->level == token.level && top->key == token.key;
+}
+
+bool zepl_lock_order_is_valid(zepl_lock_level_t level, uintptr_t key) {
+    if (k_is_in_isr()) {
+        return false;
+    }
+
+    const zepl_lock_token_t token = {.level = level, .key = key};
+
+    if (!token_is_valid(token)) {
+        return false;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), false);
+    const bool           valid = is_push_order_valid(state, token);
+    k_spin_unlock(&g_registry_lock, spin_key);
+
+    return valid;
+}
+
+void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key) {
+    const zepl_lock_token_t token = {.level = level, .key = key};
+
+    if (k_is_in_isr()) {
+        LOG_WRN("lock-order: enter from ISR is not supported");
+        return;
+    }
+
+    if (!token_is_valid(token)) {
+        LOG_WRN("lock-order: invalid token level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        return;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), true);
+
+    if (state == NULL) {
+        k_spin_unlock(&g_registry_lock, spin_key);
+        LOG_ERR("lock-order: registry exhausted");
+        return;
+    }
+
+    if (!is_push_order_valid(state, token)) {
+        k_spin_unlock(&g_registry_lock, spin_key);
+        LOG_ERR("lock-order violation: level=%u key=%p depth=%u top=(%u,%p)", (unsigned int) token.level,
+                (void*) token.key, state->depth, (unsigned int) state->stack[state->depth - 1U].level,
+                (void*) state->stack[state->depth - 1U].key);
+        return;
+    }
+
+    if (state->depth >= ZEP_LOCK_ORDER_MAX_DEPTH) {
+        k_spin_unlock(&g_registry_lock, spin_key);
+        LOG_ERR("lock-order: stack overflow");
+        return;
+    }
+
+    state->stack[state->depth].level = token.level;
+    state->stack[state->depth].key = token.key;
+    state->depth++;
+
+    k_spin_unlock(&g_registry_lock, spin_key);
+}
+
+void zepl_lock_exit(zepl_lock_level_t level, uintptr_t key) {
+    const zepl_lock_token_t token = {.level = level, .key = key};
+
+    if (k_is_in_isr()) {
+        LOG_WRN("lock-order: exit from ISR is not supported");
+        return;
+    }
+
+    if (!token_is_valid(token)) {
+        LOG_WRN("lock-order: invalid token level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        return;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), false);
+
+    if (!is_pop_order_valid(state, token)) {
+        k_spin_unlock(&g_registry_lock, spin_key);
+        LOG_ERR("lock-order violation on exit: level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        return;
+    }
+
+    state->depth--;
+    if (state->depth == 0U) {
+        state->active = false;
+        state->tid = NULL;
+        memset(state->stack, 0, sizeof(state->stack));
+    } else {
+        state->stack[state->depth].level = 0U;
+        state->stack[state->depth].key = 0U;
+    }
+
+    k_spin_unlock(&g_registry_lock, spin_key);
+}
+
+void zepl_lock_enter_token(zepl_lock_token_t token) {
+    zepl_lock_enter(token.level, token.key);
+}
+
+void zepl_lock_exit_token(zepl_lock_token_t token) {
+    zepl_lock_exit(token.level, token.key);
+}
+
+void zepl_lock_reset_current_thread(void) {
+    if (k_is_in_isr()) {
+        return;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), false);
+    if (state != NULL) {
+        state->active = false;
+        state->tid = NULL;
+        state->depth = 0U;
+        memset(state->stack, 0, sizeof(state->stack));
+    }
+    k_spin_unlock(&g_registry_lock, spin_key);
+}
+
+zepl_lock_token_t zepl_lock_current_token(void) {
+    zepl_lock_token_t token = {.level = 0U, .key = 0U};
+
+    if (k_is_in_isr()) {
+        return token;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), false);
+
+    if (state != NULL && state->depth > 0U) {
+        token.level = state->stack[state->depth - 1U].level;
+        token.key = state->stack[state->depth - 1U].key;
+    }
+
+    k_spin_unlock(&g_registry_lock, spin_key);
+    return token;
+}
+
+zepl_lock_level_t zepl_lock_current_level(void) {
+    return zepl_lock_current_token().level;
+}
+
+uintptr_t zepl_lock_current_key(void) {
+    return zepl_lock_current_token().key;
+}
+
+uint8_t zepl_lock_current_depth(void) {
+    uint8_t depth = 0U;
+
+    if (k_is_in_isr()) {
+        return depth;
+    }
+
+    k_spinlock_key_t     spin_key = k_spin_lock(&g_registry_lock);
+    thread_lock_state_t* state = find_state_locked(k_current_get(), false);
+    if (state != NULL) {
+        depth = state->depth;
+    }
+    k_spin_unlock(&g_registry_lock, spin_key);
+
+    return depth;
+}

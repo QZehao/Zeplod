@@ -36,6 +36,8 @@ target_sources(app PRIVATE
 	${APP_SRC_DIR}/core/event_dispatcher.c
 	${APP_SRC_DIR}/core/event_memory.c
 	${APP_SRC_DIR}/core/event_system_compat.c
+	${APP_SRC_DIR}/core/lock_order.c
+	${APP_SRC_DIR}/core/state_machine.c
 	${APP_SRC_DIR}/services/sys_log.c
 	${APP_SRC_DIR}/modules/module_manager.c
 	${APP_SRC_DIR}/modules/module_manager_compat.c
@@ -51,6 +53,8 @@ target_sources(app PRIVATE
 	test_event_memory.c
 	test_module_manager.c
 	test_sys_log.c
+	test_lock_order.c
+	test_state_machine.c
 )
 
 # 系统内存管理器（可选）

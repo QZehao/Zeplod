@@ -209,6 +209,10 @@ target_sources(app PRIVATE
     src/core/event_system_compat.h
     src/core/event_memory.c
     src/core/event_memory.h
+    src/core/lock_order.c
+    src/core/lock_order.h
+    src/core/state_machine.c
+    src/core/state_machine.h
 )
 
 # System Services
