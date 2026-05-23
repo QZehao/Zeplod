@@ -457,7 +457,7 @@ void* ipc_shm_get_ptr(ipc_service_t* service, ipc_shm_handle_t handle) {
     }
 
     ipc_shm_block_t* block = &pool->blocks[index];
-    void*             ptr = NULL;
+    void*            ptr = NULL;
 
     k_mutex_lock(&block->lock, K_FOREVER);
 
@@ -531,9 +531,9 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
 
     ipc_shm_pool_t* pool = &service->shm_pool;
     /* mem_pool 为 ipc_shm_pool_t 数组成员；需 ipc_service.h 完整类型（本文件经 ipc_shared_mem.h 已包含） */
-    const uint8_t*  pool_start = pool->mem_pool;
-    const uint8_t*  pool_end = pool_start + sizeof(pool->mem_pool);
-    const uint8_t*         p = (const uint8_t*) ptr;
+    const uint8_t* pool_start = pool->mem_pool;
+    const uint8_t* pool_end = pool_start + sizeof(pool->mem_pool);
+    const uint8_t* p = (const uint8_t*) ptr;
 
     if (p < pool_start || p >= pool_end) {
         return IPC_SHM_HANDLE_INVALID;
@@ -557,11 +557,15 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
         return IPC_SHM_HANDLE_INVALID;
     }
 
-    if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
-        return IPC_SHM_HANDLE_INVALID;
-    }
+    ipc_shm_handle_t handle = IPC_SHM_HANDLE_INVALID;
 
-    return encode_handle(pool, index);
+    k_mutex_lock(&block->lock, K_FOREVER);
+    if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
+        handle = encode_handle(pool, index);
+    }
+    k_mutex_unlock(&block->lock);
+
+    return handle;
 }
 
 /**

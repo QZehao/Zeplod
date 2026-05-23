@@ -136,6 +136,8 @@ typedef struct ipc_pending_request {
     const void*          response_data;      /**< 响应数据指针 */
     size_t               response_data_size; /**< 响应数据大小 */
     bool                 in_use;             /**< 槽位是否在使用中 */
+    bool                 completed;          /**< 同步请求是否已收到响应。 */
+    bool                 canceled;           /**< 请求已取消，但调用方仍可能持有槽位。 */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     ipc_shm_handle_t shm_handle; /**< 共享内存句柄（0=未使用） */
 #endif
@@ -214,9 +216,10 @@ typedef struct ipc_service {
     ipc_future_t  futures[CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS];
     ipc_future_t* free_futures; /**< 空闲 Future 链表头 */
 
-    struct k_mutex state_lock; /**< 保护 running 的互斥锁 */
-    bool           running;    /**< 服务是否正在运行 */
-    atomic_t       shutdown;   /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */
+    struct k_mutex state_lock;  /**< 保护 running 的互斥锁 */
+    bool           initialized; /**< 服务资源是否已初始化。 */
+    bool           running;     /**< 服务是否正在运行 */
+    atomic_t       shutdown;    /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     ipc_shm_pool_t shm_pool; /**< 共享内存池（引用计数管理） */

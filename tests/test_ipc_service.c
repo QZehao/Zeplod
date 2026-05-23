@@ -19,8 +19,8 @@
 #include <zephyr/ztest.h>
 #include <string.h>
 
-#include "ipc_service.h"
 #include "example_module_uart.h"
+#include "ipc_service.h"
 
 LOG_MODULE_REGISTER(test_ipc_service);
 
@@ -40,7 +40,7 @@ static int ipc_ut_handler(ipc_request_id_t request_id, const void* data, size_t 
 
 /* 延迟响应的 handler，用于测试异步和 Future */
 static int ipc_delayed_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
-                                size_t* out_data_size) {
+                               size_t* out_data_size) {
     (void) request_id;
     k_msleep(100); /* 模拟处理延迟 */
     *out_data = (void*) data;
@@ -50,7 +50,7 @@ static int ipc_delayed_handler(ipc_request_id_t request_id, const void* data, si
 
 /* 返回错误的 handler */
 static int ipc_error_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
-                              size_t* out_data_size) {
+                             size_t* out_data_size) {
     (void) request_id;
     (void) data;
     (void) data_size;
@@ -62,7 +62,7 @@ static int ipc_error_handler(ipc_request_id_t request_id, const void* data, size
 /* 计数器 handler */
 static int g_handler_call_count = 0;
 static int ipc_counting_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
-                                 size_t* out_data_size) {
+                                size_t* out_data_size) {
     (void) request_id;
     (void) data;
     (void) data_size;
@@ -73,13 +73,13 @@ static int ipc_counting_handler(ipc_request_id_t request_id, const void* data, s
 }
 
 /* 异步回调计数器 */
-static int g_async_callback_count = 0;
-static int g_async_callback_result = 0;
-static size_t g_async_callback_data_size = 0;
+static int              g_async_callback_count = 0;
+static int              g_async_callback_result = 0;
+static size_t           g_async_callback_data_size = 0;
 static ipc_request_id_t g_async_callback_request_id = 0;
 
 static void async_test_callback(ipc_request_id_t request_id, int result, const void* data, size_t data_size,
-                                 void* user_data) {
+                                void* user_data) {
     (void) data;
     (void) user_data;
     g_async_callback_count++;
@@ -92,17 +92,15 @@ static void async_test_callback(ipc_request_id_t request_id, int result, const v
  * 测试套件 setup/teardown
  * ============================================================================= */
 
-static void *test_suite_setup(void)
-{
+static void* test_suite_setup(void) {
     /* 确保 UART 模块不会在后台运行（避免 spinlock 竞争） */
     example_module_uart_stop();
 
     return NULL;
 }
 
-static void test_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void test_suite_teardown(void* fixture) {
+    (void) fixture;
     ipc_service_stop(&g_ipc);
 }
 
@@ -132,10 +130,10 @@ ZTEST(ipc_service, test_init_start_sync_stop) {
 }
 
 ZTEST(ipc_service, test_sync_call_with_large_data) {
-    char large_payload[256];
-    void* out = NULL;
+    char   large_payload[256];
+    void*  out = NULL;
     size_t outsz = 0;
-    int r;
+    int    r;
 
     memset(large_payload, 'A', sizeof(large_payload) - 1);
     large_payload[sizeof(large_payload) - 1] = '\0';
@@ -156,9 +154,9 @@ ZTEST(ipc_service, test_sync_call_with_large_data) {
 
 ZTEST(ipc_service, test_sync_call_error_handler) {
     const char payload[] = "error_test";
-    void* out = NULL;
-    size_t outsz = 0;
-    int r;
+    void*      out = NULL;
+    size_t     outsz = 0;
+    int        r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_error_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -177,9 +175,9 @@ ZTEST(ipc_service, test_sync_call_error_handler) {
  * ============================================================================= */
 
 ZTEST(ipc_service, test_async_call) {
-    const char payload[] = "async_test";
+    const char       payload[] = "async_test";
     ipc_request_id_t request_id = 0;
-    int r;
+    int              r;
 
     g_async_callback_count = 0;
     g_async_callback_result = 0;
@@ -211,9 +209,9 @@ ZTEST(ipc_service, test_async_call) {
 }
 
 ZTEST(ipc_service, test_async_call_with_delayed_handler) {
-    const char payload[] = "delayed_async";
+    const char       payload[] = "delayed_async";
     ipc_request_id_t request_id = 0;
-    int r;
+    int              r;
 
     g_async_callback_count = 0;
 
@@ -243,12 +241,12 @@ ZTEST(ipc_service, test_async_call_with_delayed_handler) {
  * ============================================================================= */
 
 ZTEST(ipc_service, test_future_call) {
-    const char payload[] = "future_test";
+    const char    payload[] = "future_test";
     ipc_future_t* future = NULL;
-    int result = -1;
-    const void* out_data = NULL;
-    size_t out_size = 0;
-    int r;
+    int           result = -1;
+    const void*   out_data = NULL;
+    size_t        out_size = 0;
+    int           r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -277,9 +275,9 @@ ZTEST(ipc_service, test_future_call) {
 }
 
 ZTEST(ipc_service, test_future_is_ready) {
-    const char payload[] = "future_ready_test";
+    const char    payload[] = "future_ready_test";
     ipc_future_t* future = NULL;
-    int r;
+    int           r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -309,12 +307,12 @@ ZTEST(ipc_service, test_future_is_ready) {
 }
 
 ZTEST(ipc_service, test_future_wait_timeout) {
-    const char payload[] = "timeout_test";
+    const char    payload[] = "timeout_test";
     ipc_future_t* future = NULL;
-    int result = 0;
-    const void* out_data = NULL;
-    size_t out_size = 0;
-    int r;
+    int           result = 0;
+    const void*   out_data = NULL;
+    size_t        out_size = 0;
+    int           r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -340,14 +338,52 @@ ZTEST(ipc_service, test_future_wait_timeout) {
     ipc_service_stop(&g_ipc);
 }
 
+ZTEST(ipc_service, test_stop_completes_pending_future) {
+    const char    payload[] = "future_stop_test";
+    ipc_future_t* future = NULL;
+    int           future_result = 0;
+    const void*   out_data = NULL;
+    size_t        out_size = 0;
+    int           r;
+
+    r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_start failed: %d", r);
+
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
+    zassert_equal(r, 0, "ipc_call_future failed: %d", r);
+    zassert_not_null(future, "future should not be NULL");
+
+    /* stop 必须唤醒 future 等待者，不能让 future 悬挂在 pending 表中。 */
+    r = ipc_service_stop(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_stop failed: %d", r);
+
+    zassert_true(ipc_future_is_ready(future), "future should be completed by stop");
+
+    r = ipc_future_wait(&g_ipc, future, &future_result, &out_data, &out_size, K_NO_WAIT);
+    zassert_equal(r, 0, "ipc_future_wait after stop failed: %d", r);
+    zassert_equal(future_result, -ECANCELED, "future should be canceled by stop");
+    zassert_is_null(out_data, "canceled future should not expose data");
+    zassert_equal(out_size, 0, "canceled future data size should be 0");
+
+    r = ipc_future_release(&g_ipc, future);
+    zassert_equal(r, 0, "ipc_future_release failed: %d", r);
+}
+
 /* =============================================================================
  * 请求管理测试
  * ============================================================================= */
 
 ZTEST(ipc_service, test_get_pending_count) {
-    const char payload[] = "pending_test";
+    const char       payload[] = "pending_test";
     ipc_request_id_t request_id = 0;
-    int r;
+    int              r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -384,9 +420,9 @@ ZTEST(ipc_service, test_get_pending_count) {
 }
 
 ZTEST(ipc_service, test_cancel_request) {
-    const char payload[] = "cancel_test";
+    const char       payload[] = "cancel_test";
     ipc_request_id_t request_id = 0;
-    int r;
+    int              r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -454,8 +490,8 @@ ZTEST(ipc_service, test_stop_without_start) {
 
 ZTEST(ipc_service, test_sync_call_before_start) {
     const char payload[] = "test";
-    void* out = NULL;
-    size_t outsz = 0;
+    void*      out = NULL;
+    size_t     outsz = 0;
 
     int r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -466,9 +502,9 @@ ZTEST(ipc_service, test_sync_call_before_start) {
 
 ZTEST(ipc_service, test_multiple_start_stop_cycles) {
     const char payload[] = "cycle_test";
-    void* out = NULL;
-    size_t outsz = 0;
-    int r;
+    void*      out = NULL;
+    size_t     outsz = 0;
+    int        r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -491,13 +527,13 @@ ZTEST(ipc_service, test_concurrent_requests) {
     const char payload1[] = "req1";
     const char payload2[] = "req2";
     const char payload3[] = "req3";
-    void* out1 = NULL;
-    void* out2 = NULL;
-    void* out3 = NULL;
-    size_t outsz1 = 0;
-    size_t outsz2 = 0;
-    size_t outsz3 = 0;
-    int r;
+    void*      out1 = NULL;
+    void*      out2 = NULL;
+    void*      out3 = NULL;
+    size_t     outsz1 = 0;
+    size_t     outsz2 = 0;
+    size_t     outsz3 = 0;
+    int        r;
 
     g_handler_call_count = 0;
 
@@ -524,9 +560,9 @@ ZTEST(ipc_service, test_concurrent_requests) {
 
 ZTEST(ipc_service, test_sync_call_timeout) {
     const char payload[] = "timeout_test";
-    void* out = NULL;
-    size_t outsz = 0;
-    int r;
+    void*      out = NULL;
+    size_t     outsz = 0;
+    int        r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -545,9 +581,9 @@ ZTEST(ipc_service, test_sync_call_timeout) {
 }
 
 ZTEST(ipc_service, test_async_null_callback) {
-    const char payload[] = "null_cb_test";
+    const char       payload[] = "null_cb_test";
     ipc_request_id_t request_id = 0;
-    int r;
+    int              r;
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -669,7 +705,7 @@ ZTEST(ipc_service, test_shared_memory_basic) {
 
 /* 测试共享内存池统计 */
 ZTEST(ipc_service, test_shared_memory_stats) {
-    int r;
+    int      r;
     uint32_t active, peak, free;
 
     r = ipc_service_init(&g_ipc, "shm_stats", ipc_shm_alloc_handler, 5);
@@ -703,8 +739,8 @@ ZTEST(ipc_service, test_shared_memory_stats) {
 
 /* 测试共享内存池耗尽 */
 ZTEST(ipc_service, test_shared_memory_exhaustion) {
-    int r;
-    uint32_t pool_size = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE;
+    int              r;
+    uint32_t         pool_size = CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE;
     ipc_shm_handle_t handles[16]; /* 假设池大小至少 8 */
 
     r = ipc_service_init(&g_ipc, "shm_exhaust", ipc_shm_alloc_handler, 5);
