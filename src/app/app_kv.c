@@ -76,6 +76,9 @@ static int find_free_locked(void) {
 #define KV_PERSIST_VERSION 1U
 #define KV_SETTINGS_KEY    "app_kv/d"
 
+/** 持久化编解码缓冲（静态，避免 SYS_INIT/shell 栈上分配 APP_KV_PERSIST_BLOB_MAX） */
+static uint8_t g_kv_persist_blob[APP_KV_PERSIST_BLOB_MAX];
+
 static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
     if (len < 8U) {
         return APP_ERR_INVALID_PARAM;
@@ -202,21 +205,18 @@ void app_kv_init(void) {
     if (settings_subsys_init() != 0) {
         LOG_WRN("settings_subsys_init failed; app_kv not loaded from flash");
     } else {
-        uint8_t blob[APP_KV_PERSIST_BLOB_MAX];
-        ssize_t n = settings_load_one(KV_SETTINGS_KEY, blob, sizeof(blob));
+        k_mutex_lock(&g_kv_lock, K_FOREVER);
+        ssize_t n = settings_load_one(KV_SETTINGS_KEY, g_kv_persist_blob, sizeof(g_kv_persist_blob));
         if (n < 0 && n != -ENOENT) {
             LOG_WRN("settings_load_one(%s) failed: %zd", KV_SETTINGS_KEY, n);
         } else if (n > 0) {
-            k_mutex_lock(&g_kv_lock, K_FOREVER);
-            int d = kv_decode_into_slots(blob, (size_t) n);
-            k_mutex_unlock(&g_kv_lock);
+            int d = kv_decode_into_slots(g_kv_persist_blob, (size_t) n);
             if (d != APP_OK) {
                 LOG_WRN("app_kv flash blob invalid or corrupt (err=%d), cleared RAM table", d);
-                k_mutex_lock(&g_kv_lock, K_FOREVER);
                 memset(g_kv, 0, sizeof(g_kv));
-                k_mutex_unlock(&g_kv_lock);
             }
         }
+        k_mutex_unlock(&g_kv_lock);
     }
 #endif
 
@@ -388,10 +388,9 @@ int app_kv_save(void) {
     if (!g_kv_ready) {
         return APP_ERR_INIT;
     }
-    uint8_t blob[APP_KV_PERSIST_BLOB_MAX];
-    size_t  len = 0U;
+    size_t len = 0U;
     k_mutex_lock(&g_kv_lock, K_FOREVER);
-    int enc = kv_encode_blob_locked(blob, sizeof(blob), &len);
+    int enc = kv_encode_blob_locked(g_kv_persist_blob, sizeof(g_kv_persist_blob), &len);
     k_mutex_unlock(&g_kv_lock);
     if (enc != APP_OK) {
         return enc;
@@ -399,7 +398,7 @@ int app_kv_save(void) {
     if (settings_subsys_init() != 0) {
         return APP_ERR_INIT;
     }
-    int w = settings_save_one(KV_SETTINGS_KEY, blob, len);
+    int w = settings_save_one(KV_SETTINGS_KEY, g_kv_persist_blob, len);
     return w == 0 ? APP_OK : APP_ERR_IO;
 #endif
 }
@@ -414,9 +413,10 @@ int app_kv_load(void) {
     if (settings_subsys_init() != 0) {
         return APP_ERR_INIT;
     }
-    uint8_t blob[APP_KV_PERSIST_BLOB_MAX];
-    ssize_t n = settings_load_one(KV_SETTINGS_KEY, blob, sizeof(blob));
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    ssize_t n = settings_load_one(KV_SETTINGS_KEY, g_kv_persist_blob, sizeof(g_kv_persist_blob));
     if (n < 0) {
+        k_mutex_unlock(&g_kv_lock);
         if (n == -ENOENT) {
             k_mutex_lock(&g_kv_lock, K_FOREVER);
             memset(g_kv, 0, sizeof(g_kv));
@@ -425,8 +425,7 @@ int app_kv_load(void) {
         }
         return APP_ERR_IO;
     }
-    k_mutex_lock(&g_kv_lock, K_FOREVER);
-    int d = kv_decode_into_slots(blob, (size_t) n);
+    int d = kv_decode_into_slots(g_kv_persist_blob, (size_t) n);
     if (d != APP_OK) {
         memset(g_kv, 0, sizeof(g_kv));
     }

@@ -42,9 +42,9 @@ LOG_MODULE_REGISTER(app_main, CONFIG_SYS_LOG_LEVEL);
 typedef struct {
     app_config_t config;
     bool         initialized;
-    bool         running;
+    atomic_t     running;
     uint32_t     start_time;
-    uint32_t     heartbeat_count;
+    atomic_t     heartbeat_count;
 } app_cb_t;
 
 /* =============================================================================
@@ -62,6 +62,7 @@ static sys_timer_handle_t g_heartbeat_timer;
  * ============================================================================= */
 
 static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_data);
+static void app_heartbeat_timer_teardown(void);
 static void app_print_banner(void);
 static void app_apply_runtime_config(void);
 
@@ -258,9 +259,9 @@ static int cmd_app_status(const struct shell* shell, size_t argc, char** argv) {
     shell_print(shell, "Application Status:");
     shell_print(shell, "  Version: %s", version_str);
     shell_print(shell, "  Info: %s", info_str);
-    shell_print(shell, "  State: %s", g_app.running ? "RUNNING" : "STOPPED");
+    shell_print(shell, "  State: %s", atomic_get(&g_app.running) ? "RUNNING" : "STOPPED");
     shell_print(shell, "  Uptime: %d ms", app_get_uptime());
-    shell_print(shell, "  Heartbeats: %d", g_app.heartbeat_count);
+    shell_print(shell, "  Heartbeats: %d", (int) atomic_get(&g_app.heartbeat_count));
 
     return 0;
 }
@@ -449,7 +450,7 @@ int app_start(void) {
         return APP_ERR_INIT;
     }
 
-    if (g_app.running) {
+    if (atomic_get(&g_app.running)) {
         LOG_WRN("Application already running");
         return APP_OK;
     }
@@ -464,7 +465,11 @@ int app_start(void) {
 
 #if APP_CONFIG_ENABLE_WATCHDOG
     if (g_app.config.enable_watchdog) {
-        sys_wdt_start();
+        int wdt_rc = sys_wdt_start();
+        if (wdt_rc != 0) {
+            LOG_ERR("sys_wdt_start failed: %d", wdt_rc);
+            return APP_ERR_INIT;
+        }
     }
 #endif
 
@@ -478,15 +483,20 @@ int app_start(void) {
                                                .name = "heartbeat",
                                                .priority = APP_PRIORITY_MODULE_LOW};
         g_heartbeat_timer = sys_timer_create(&heartbeat_config);
-        if (g_heartbeat_timer != NULL) {
-            (void) sys_timer_start(g_heartbeat_timer);
-        } else {
-            LOG_WRN("Heartbeat timer create failed");
+        if (g_heartbeat_timer == NULL) {
+            LOG_ERR("Heartbeat timer create failed");
+            return APP_ERR_INIT;
+        }
+        int tmr_rc = sys_timer_start(g_heartbeat_timer);
+        if (tmr_rc != 0) {
+            LOG_ERR("sys_timer_start(heartbeat) failed: %d", tmr_rc);
+            app_heartbeat_timer_teardown();
+            return APP_ERR_INIT;
         }
     }
 #endif
 
-    g_app.running = true;
+    atomic_set(&g_app.running, 1);
     g_app.start_time = k_uptime_get_32();
 
     app_print_banner();
@@ -496,13 +506,17 @@ int app_start(void) {
 }
 
 int app_stop(void) {
-    if (!g_app.running) {
+    if (!atomic_get(&g_app.running)) {
         return APP_OK;
     }
 
     LOG_INF("Stopping application...");
 
-    g_app.running = false;
+#if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
+    app_heartbeat_timer_teardown();
+#endif
+
+    atomic_set(&g_app.running, 0);
 
     /* 停止所有模块 */
     module_compat_stop_all();
@@ -525,39 +539,49 @@ int app_stop(void) {
     }
 #endif
 
-#if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
-    if (g_heartbeat_timer != NULL) {
-        (void) sys_timer_stop(g_heartbeat_timer);
-        (void) sys_timer_delete(g_heartbeat_timer);
-        g_heartbeat_timer = NULL;
-    }
-#endif
-
     LOG_INF("Application stopped");
     return APP_OK;
 }
 
 uint32_t app_get_uptime(void) {
-    if (!g_app.initialized || !g_app.running) {
+    if (!g_app.initialized || !atomic_get(&g_app.running)) {
         return 0;
     }
     return k_uptime_get_32() - g_app.start_time;
 }
 
 bool app_is_running(void) {
-    return g_app.running;
+    return atomic_get(&g_app.running) != 0;
 }
 
 uint32_t app_get_heartbeat_count(void) {
-    return g_app.heartbeat_count;
+    return (uint32_t) atomic_get(&g_app.heartbeat_count);
 }
 
 /* =============================================================================
  * 内部函数
  * ============================================================================= */
 
+#if APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0)
+static void app_heartbeat_timer_teardown(void) {
+    if (g_heartbeat_timer == NULL) {
+        return;
+    }
+    (void) sys_timer_stop(g_heartbeat_timer);
+    (void) sys_timer_delete(g_heartbeat_timer);
+    g_heartbeat_timer = NULL;
+}
+#endif
+
 static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_data) {
-    g_app.heartbeat_count++;
+    ARG_UNUSED(timer);
+    ARG_UNUSED(user_data);
+
+    if (!atomic_get(&g_app.running)) {
+        return;
+    }
+
+    uint32_t count = (uint32_t) atomic_inc(&g_app.heartbeat_count);
 
     /* 喂看门狗 */
 #if APP_CONFIG_ENABLE_WATCHDOG
@@ -565,8 +589,8 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 #endif
 
     /* 记录周期性状态 */
-    if (g_app.heartbeat_count % 10 == 0) {
-        LOG_DBG("Heartbeat: %d, Uptime: %dms", g_app.heartbeat_count, app_get_uptime());
+    if (count % 10U == 0U) {
+        LOG_DBG("Heartbeat: %u, Uptime: %ums", count, app_get_uptime());
     }
 }
 
