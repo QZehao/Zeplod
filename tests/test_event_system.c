@@ -564,6 +564,29 @@ ZTEST(test_event_system, test_event_subscribe_unregistered_type) {
 /**
  * @brief 测试 event_system_start/stop 多次调用
  */
+ZTEST(test_event_system, test_event_system_lifecycle_start_stop_cycle) {
+    event_status_t status;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_false(event_system_is_running(), "init 后不应运行");
+
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_true(event_system_is_running(), "start 后应运行");
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+    zassert_false(event_system_is_running(), "stop 后不应运行");
+
+    /* STOPPED 后应允许再次 start（状态机 STOPPED -> STARTING -> RUNNING） */
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_true(event_system_is_running(), "二次 start 后应运行");
+
+    status = event_system_stop();
+    zassert_equal(status, EVENT_OK, NULL);
+
+    zassert_equal(event_system_shutdown(), EVENT_OK, NULL);
+    zassert_false(event_system_is_running(), "shutdown 后不应运行");
+}
+
 ZTEST(test_event_system, test_event_system_start_stop_multiple) {
     event_status_t status;
 

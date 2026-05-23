@@ -419,6 +419,77 @@ ZTEST(ipc_service, test_get_pending_count) {
     ipc_service_stop(&g_ipc);
 }
 
+ZTEST(ipc_service, test_cancel_future_before_stop) {
+    const char    payload[] = "cancel_future_stop";
+    ipc_future_t* future = NULL;
+    int           future_result = 0;
+    const void*   out_data = NULL;
+    size_t        out_size = 0;
+    int           r;
+
+    r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_start failed: %d", r);
+
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
+    zassert_equal(r, 0, "ipc_call_future failed: %d", r);
+    zassert_not_null(future, "future should not be NULL");
+
+    r = ipc_service_cancel(&g_ipc, future->request_id);
+    zassert_equal(r, 0, "cancel future request failed: %d", r);
+    zassert_true(ipc_future_is_ready(future), "future should be ready after cancel");
+
+    r = ipc_future_wait(&g_ipc, future, &future_result, &out_data, &out_size, K_NO_WAIT);
+    zassert_equal(r, 0, "ipc_future_wait after cancel failed: %d", r);
+    zassert_equal(future_result, -ECANCELED, "canceled future should return -ECANCELED");
+
+    r = ipc_future_release(&g_ipc, future);
+    zassert_equal(r, 0, "ipc_future_release failed: %d", r);
+
+    /* cancel 已收尾 pending 后，stop 仍应正常完成且可再次 start */
+    r = ipc_service_stop(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_stop after cancel failed: %d", r);
+
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_start after cancel+stop failed: %d", r);
+
+    ipc_service_stop(&g_ipc);
+}
+
+ZTEST(ipc_service, test_cancel_async_then_stop) {
+    const char       payload[] = "cancel_async_stop";
+    ipc_request_id_t request_id = 0;
+    int              r;
+
+    g_async_callback_count = 0;
+
+    r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_start failed: %d", r);
+
+    r = ipc_call_async(&g_ipc, payload, sizeof(payload), async_test_callback, NULL,
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                       0,
+#endif
+                       &request_id);
+    zassert_equal(r, 0, "ipc_call_async failed: %d", r);
+
+    (void) ipc_service_cancel(&g_ipc, request_id);
+
+    r = ipc_service_stop(&g_ipc);
+    zassert_equal(r, 0, "ipc_service_stop after cancel+async failed: %d", r);
+
+    zassert_equal(ipc_service_get_pending_count(&g_ipc), 0U, "stop 后 pending 应为 0");
+}
+
 ZTEST(ipc_service, test_cancel_request) {
     const char       payload[] = "cancel_test";
     ipc_request_id_t request_id = 0;

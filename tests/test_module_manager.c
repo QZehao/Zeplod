@@ -15,6 +15,7 @@
  */
 
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
 #include "event_system.h"
 #include "module_manager.h"
@@ -81,6 +82,56 @@ static void stub3_on_event(const event_t* event, void* user_data) {
 }
 
 DECLARE_MODULE_INTERFACE_MINIMAL(stub3);
+
+/* 用于 shutdown / unregister 交叠场景：统计 shutdown 调用次数 */
+static atomic_t g_counting_shutdown_calls;
+
+static int counting_init(void* config) {
+    (void) config;
+    return 0;
+}
+
+static int counting_start(void) {
+    return 0;
+}
+
+static int counting_stop(void) {
+    return 0;
+}
+
+static int counting_shutdown(void) {
+    atomic_inc(&g_counting_shutdown_calls);
+    return MODULE_OK;
+}
+
+static void counting_on_event(const event_t* event, void* user_data) {
+    (void) event;
+    (void) user_data;
+}
+
+static module_status_t counting_get_status(void) {
+    return MODULE_STATUS_RUNNING;
+}
+
+static int counting_control(int cmd, void* arg) {
+    (void) cmd;
+    (void) arg;
+    return 0;
+}
+
+const module_interface_t counting_stub_interface = {
+    .name = "counting_stub",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
+    .init = counting_init,
+    .start = counting_start,
+    .stop = counting_stop,
+    .shutdown = counting_shutdown,
+    .on_event = counting_on_event,
+    .get_status = counting_get_status,
+    .control = counting_control,
+};
 
 /* =============================================================================
  * 测试夹具 (Test Fixtures)
@@ -263,6 +314,45 @@ ZTEST(module_manager, test_dump_info) {
     module_manager_dump_info();
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
+}
+
+ZTEST(module_manager, test_shutdown_invokes_module_shutdown_once) {
+    uint32_t id = 0U;
+
+    atomic_set(&g_counting_shutdown_calls, 0);
+
+    zassert_equal(module_manager_register(&counting_stub_interface, NULL, &id), 0, NULL);
+    zassert_equal(module_manager_start_module(id), 0, NULL);
+
+    zassert_equal(module_manager_shutdown(), MODULE_OK, NULL);
+    zassert_equal(atomic_get(&g_counting_shutdown_calls), 1, "manager shutdown 应调用模块 shutdown 一次");
+
+    module_mgr_stats_t stats;
+    module_manager_get_stats(&stats);
+    zassert_equal(stats.total_modules, 0U, "shutdown 后模块表应清空");
+
+    zassert_equal(module_manager_init(), MODULE_OK, NULL);
+    zassert_equal(module_manager_start(), MODULE_OK, NULL);
+}
+
+ZTEST(module_manager, test_unregister_skips_shutdown_during_manager_shutdown) {
+    uint32_t id = 0U;
+
+    atomic_set(&g_counting_shutdown_calls, 0);
+
+    zassert_equal(module_manager_register(&counting_stub_interface, NULL, &id), 0, NULL);
+    zassert_equal(module_manager_start_module(id), 0, NULL);
+
+    zassert_equal(module_manager_shutdown(), MODULE_OK, NULL);
+    const int shutdown_calls_after_mgr_shutdown = atomic_get(&g_counting_shutdown_calls);
+
+    /* shutdown 后管理器已反初始化；unregister 应拒绝且不得再次调用模块 shutdown */
+    zassert_equal(module_manager_unregister(id), MODULE_ERR_NOT_INITIALIZED, NULL);
+    zassert_equal(atomic_get(&g_counting_shutdown_calls), shutdown_calls_after_mgr_shutdown,
+                  "shutdown 完成后 unregister 不应再次调用模块 shutdown");
+
+    zassert_equal(module_manager_init(), MODULE_OK, NULL);
+    zassert_equal(module_manager_start(), MODULE_OK, NULL);
 }
 
 ZTEST(module_manager, test_set_callback) {
