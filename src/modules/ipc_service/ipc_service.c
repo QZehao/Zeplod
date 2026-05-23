@@ -32,6 +32,9 @@
 
 #include "ipc_service.h"
 
+#include "lock_order.h"
+#include "state_machine.h"
+
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -301,9 +304,9 @@ static bool ipc_service_is_accepting_requests(ipc_service_t* service) {
         return false;
     }
 
-    k_mutex_lock(&service->state_lock, K_FOREVER);
+    ipc_service_state_lock(service);
     bool accepting = service->running && atomic_get(&service->shutdown) == 0;
-    k_mutex_unlock(&service->state_lock);
+    ipc_service_state_unlock(service);
 
     return accepting;
 }
@@ -314,6 +317,26 @@ static zepl_state_t ipc_service_lifecycle_state_locked(const ipc_service_t* serv
     }
 
     return zepl_state_machine_get(&service->lifecycle);
+}
+
+static void ipc_service_state_lock(ipc_service_t* service) {
+    zepl_lock_enter(ZEP_LOCK_LEVEL_STATE, (uintptr_t) &service->state_lock);
+    k_mutex_lock(&service->state_lock, K_FOREVER);
+}
+
+static void ipc_service_state_unlock(ipc_service_t* service) {
+    k_mutex_unlock(&service->state_lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_STATE, (uintptr_t) &service->state_lock);
+}
+
+static void ipc_service_pending_lock(ipc_service_t* service) {
+    zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &service->pending_lock);
+    k_mutex_lock(&service->pending_lock, K_FOREVER);
+}
+
+static void ipc_service_pending_unlock(ipc_service_t* service) {
+    k_mutex_unlock(&service->pending_lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &service->pending_lock);
 }
 
 /**
@@ -422,10 +445,10 @@ static void service_thread_func(void* p1, void* p2, void* p3) {
         }
 
         /* 取消/超时已释放 pending 后，队列里仍可能有该 request_id：跳过业务并释放随请求传递的 shm 引用 */
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
         ipc_pending_request_t* tracked = find_pending_entry(service, request_msg.request_id);
         bool                   still_tracked = (tracked != NULL && tracked->in_use && !tracked->canceled);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
 
         if (!still_tracked) {
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
@@ -550,7 +573,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
             continue;
         }
 
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
 
         /* 根据 request_id 查找对应的待处理请求 */
         ipc_pending_request_t* entry = find_pending_entry(service, response_msg.request_id);
@@ -562,7 +585,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
                     ipc_shm_release(service, response_msg.shm_handle);
                 }
 #endif
-                k_mutex_unlock(&service->pending_lock);
+                ipc_service_pending_unlock(service);
                 continue;
             }
 
@@ -590,7 +613,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
                 entry->shm_handle = 0;
 #endif
                 release_pending_entry(service, entry);
-                k_mutex_unlock(&service->pending_lock);
+                ipc_service_pending_unlock(service);
 
                 /* SIL-2: 验证回调函数非空后再调用 */
                 if (cb != NULL) {
@@ -639,7 +662,7 @@ static void response_dispatcher_thread(void* p1, void* p2, void* p3) {
 #endif
         }
 
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
     }
 
     LOG_DBG("IPC service '%s' dispatcher stopped", service->name);
@@ -726,22 +749,22 @@ int ipc_service_start(ipc_service_t* service) {
         return -EINVAL;
     }
 
-    k_mutex_lock(&service->state_lock, K_FOREVER);
+    ipc_service_state_lock(service);
 
     zepl_state_t state = ipc_service_lifecycle_state_locked(service);
 
     if (state == ZEP_STATE_RUNNING) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EALREADY;
     }
 
     if (state == ZEP_STATE_UNINIT || state == ZEP_STATE_ERROR || state == ZEP_STATE_STOPPING) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EINVAL;
     }
 
     if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STARTING) != 0) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EINVAL;
     }
 
@@ -764,7 +787,7 @@ int ipc_service_start(ipc_service_t* service) {
 
     service->running = true;
     (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_RUNNING);
-    k_mutex_unlock(&service->state_lock);
+    ipc_service_state_unlock(service);
 
     LOG_DBG("IPC service '%s' started", service->name);
 
@@ -781,38 +804,38 @@ int ipc_service_stop(ipc_service_t* service) {
         return -EINVAL;
     }
 
-    k_mutex_lock(&service->state_lock, K_FOREVER);
+    ipc_service_state_lock(service);
     zepl_state_t state = ipc_service_lifecycle_state_locked(service);
 
     if (state == ZEP_STATE_UNINIT) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EINVAL;
     }
 
     if (!service->running || state == ZEP_STATE_INITED || state == ZEP_STATE_STOPPED) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return 0;
     }
 
     if (state == ZEP_STATE_ERROR) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EINVAL;
     }
 
     if (k_current_get() == &service->thread || k_current_get() == &service->response_thread) {
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
         return -EDEADLK;
     }
 
     if (state != ZEP_STATE_STOPPING) {
         if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPING) != 0) {
-            k_mutex_unlock(&service->state_lock);
+            ipc_service_state_unlock(service);
             return -EINVAL;
         }
     }
 
     atomic_set(&service->shutdown, 1);
-    k_mutex_unlock(&service->state_lock);
+    ipc_service_state_unlock(service);
 
     /* SIL-2: 非阻塞投递哑消息，唤醒可能阻塞在 k_msgq_get 的 worker/dispatcher */
     ipc_request_msg_t dummy_request;
@@ -855,15 +878,15 @@ int ipc_service_stop(ipc_service_t* service) {
     k_msgq_purge(&service->response_queue);
 
     if (stop_err == 0) {
-        k_mutex_lock(&service->state_lock, K_FOREVER);
+        ipc_service_state_lock(service);
         service->running = false;
         atomic_set(&service->shutdown, 0);
         (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
-        k_mutex_unlock(&service->state_lock);
+        ipc_service_state_unlock(service);
     }
 
     /* SIL-2: 清理所有 pending 请求，防止资源泄漏 */
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
     for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
         ipc_pending_request_t* entry = &service->pending_requests[i];
 
@@ -895,7 +918,7 @@ int ipc_service_stop(ipc_service_t* service) {
             k_sem_give(&entry->response_sem);
         }
     }
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     /* 反初始化共享内存池（检查泄漏） */
@@ -944,19 +967,19 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
 
     ipc_request_id_t request_id = ipc_generate_request_id();
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     ipc_pending_request_t* entry = allocate_pending_entry(service);
 
     if (entry == NULL) {
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         LOG_ERR("No pending slot available");
         return -ENOMEM;
     }
 
     init_pending_entry(service, entry, request_id, k_current_get(), NULL, NULL, NULL);
 
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     ipc_request_msg_t request_msg = {
         .request_id = request_id,
@@ -973,9 +996,9 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
     int ret = put_msgq_until_shutdown(&service->request_queue, &request_msg, &service->shutdown);
 
     if (ret != 0) {
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
         release_pending_entry(service, entry);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
         if (in_shm_handle != 0) {
             ipc_shm_release(service, in_shm_handle);
@@ -986,18 +1009,18 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
 
     ret = k_sem_take(&entry->response_sem, timeout);
     if (ret != 0) {
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
         if (entry->in_use) {
             release_pending_entry(service, entry);
         }
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return ret;
     }
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     if (!entry->in_use) {
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return -ECANCELED;
     }
 
@@ -1007,7 +1030,7 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
 
         entry->shm_handle = 0;
         release_pending_entry(service, entry);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         ipc_shm_release(service, leaked);
         LOG_WRN("ipc_call_sync: shm output requires ipc_call_sync_shm");
         return -ENOTSUP;
@@ -1024,7 +1047,7 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
 #endif
 
     release_pending_entry(service, entry);
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     if (out_shm_handle != NULL) {
@@ -1088,19 +1111,19 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
         *out_request_id = request_id;
     }
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     ipc_pending_request_t* entry = allocate_pending_entry(service);
 
     if (entry == NULL) {
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return -ENOMEM;
     }
 
     /* 初始化为 ASYNC 模式（设置 callback） */
     init_pending_entry(service, entry, request_id, k_current_get(), callback, user_data, NULL);
 
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     /* 构建请求消息 */
     ipc_request_msg_t request_msg = {
@@ -1119,9 +1142,9 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
     int ret = put_msgq_until_shutdown(&service->request_queue, &request_msg, &service->shutdown);
 
     if (ret != 0) {
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
         release_pending_entry(service, entry);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
         if (in_shm_handle != 0) {
             ipc_shm_release(service, in_shm_handle);
@@ -1157,13 +1180,13 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
 
     ipc_request_id_t request_id = ipc_generate_request_id();
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     /* 分配 future 对象 */
     ipc_future_t* future = allocate_future(service);
 
     if (future == NULL) {
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return -ENOMEM;
     }
 
@@ -1180,14 +1203,14 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
 
     if (entry == NULL) {
         release_future(service, future);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return -ENOMEM;
     }
 
     /* 初始化为 FUTURE 模式（设置 future） */
     init_pending_entry(service, entry, request_id, k_current_get(), NULL, NULL, future);
 
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     /* 构建请求消息 */
     ipc_request_msg_t request_msg = {
@@ -1206,10 +1229,10 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
     int ret = put_msgq_until_shutdown(&service->request_queue, &request_msg, &service->shutdown);
 
     if (ret != 0) {
-        k_mutex_lock(&service->pending_lock, K_FOREVER);
+        ipc_service_pending_lock(service);
         release_pending_entry(service, entry);
         release_future(service, future);
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
         if (in_shm_handle != 0) {
             ipc_shm_release(service, in_shm_handle);
@@ -1291,24 +1314,24 @@ int ipc_future_release(ipc_service_t* service, ipc_future_t* future) {
         return -EINVAL;
     }
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     /* 防止重复释放（重复入空闲链表） */
     if (future_is_in_free_list(service, future)) {
-        k_mutex_unlock(&service->pending_lock);
+        ipc_service_pending_unlock(service);
         return -EALREADY;
     }
 
     /* 仍被 pending 请求引用时不可释放 */
     for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
         if (service->pending_requests[i].in_use && service->pending_requests[i].future == future) {
-            k_mutex_unlock(&service->pending_lock);
+            ipc_service_pending_unlock(service);
             return -EBUSY;
         }
     }
 
     release_future(service, future);
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     return 0;
 }
@@ -1323,7 +1346,7 @@ size_t ipc_service_get_pending_count(ipc_service_t* service) {
 
     size_t count = 0;
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     /* 统计 in_use 为 true 的条目数 */
     for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
@@ -1332,7 +1355,7 @@ size_t ipc_service_get_pending_count(ipc_service_t* service) {
         }
     }
 
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     return count;
 }
@@ -1345,7 +1368,7 @@ int ipc_service_cancel(ipc_service_t* service, ipc_request_id_t request_id) {
         return -EINVAL;
     }
 
-    k_mutex_lock(&service->pending_lock, K_FOREVER);
+    ipc_service_pending_lock(service);
 
     ipc_pending_request_t* entry = find_pending_entry(service, request_id);
     int                    ret = -ENOENT;
@@ -1354,7 +1377,7 @@ int ipc_service_cancel(ipc_service_t* service, ipc_request_id_t request_id) {
         /* SYNC 请求在 response_dispatcher 里可能已经完成，但调用方尚未取走结果。
          * 这类请求不应再被取消，否则会覆盖已完成的响应。 */
         if (entry->completed) {
-            k_mutex_unlock(&service->pending_lock);
+            ipc_service_pending_unlock(service);
             return -EALREADY;
         }
 
@@ -1394,7 +1417,7 @@ int ipc_service_cancel(ipc_service_t* service, ipc_request_id_t request_id) {
         }
     }
 
-    k_mutex_unlock(&service->pending_lock);
+    ipc_service_pending_unlock(service);
 
     return ret;
 }

@@ -29,6 +29,8 @@
 #include "event_dispatcher.h"
 #include "event_memory.h"
 #include "event_queue.h"
+#include "lock_order.h"
+#include "state_machine.h"
 
 LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 
@@ -124,14 +126,15 @@ static atomic_t g_restart_dispatcher_on_start;
  * 包含事件系统的全局状态和数据结构。
  */
 typedef struct {
-    uint32_t           magic;                        /**< 魔术字，用于验证有效性 */
-    bool               initialized;                  /**< 系统是否已初始化 */
-    atomic_t           running;                      /**< 非 0：允许投递（线程与 ISR 可读） */
-    struct k_msgq*     event_queue;                  /**< 事件队列指针 */
-    event_type_entry_t event_types[MAX_EVENT_TYPES]; /**< 事件类型表 */
-    uint32_t           total_events;                 /**< 已处理的事件总数 */
-    struct k_mutex     stats_lock;                   /**< 保护统计信息的互斥锁 */
-    atomic_t           next_subscriber_id;           /**< 下一个可用的订阅者 ID (原子操作保护) */
+    uint32_t             magic;                        /**< 魔术字，用于验证有效性 */
+    bool                 initialized;                  /**< 系统是否已初始化 */
+    atomic_t             running;                      /**< 非 0：允许投递（线程与 ISR 可读） */
+    zepl_state_machine_t lifecycle;                    /**< init/start/stop/shutdown 生命周期状态机 */
+    struct k_msgq*       event_queue;                  /**< 事件队列指针 */
+    event_type_entry_t   event_types[MAX_EVENT_TYPES]; /**< 事件类型表 */
+    uint32_t             total_events;                 /**< 已处理的事件总数 */
+    struct k_mutex       stats_lock;                   /**< 保护统计信息的互斥锁 */
+    atomic_t             next_subscriber_id;           /**< 下一个可用的订阅者 ID (原子操作保护) */
 } event_system_cb_t;
 
 /* =============================================================================
@@ -174,6 +177,40 @@ static bool event_system_lifecycle_try_lock(void) {
 
 static void event_system_lifecycle_unlock(void) {
     atomic_clear_bit(&g_init_lock, 0);
+}
+
+static zepl_state_t event_system_lifecycle_state(void) {
+    return zepl_state_machine_get(&g_event_system.lifecycle);
+}
+
+static void event_system_stats_lock(void) {
+    zepl_lock_enter(ZEP_LOCK_LEVEL_GLOBAL, (uintptr_t) &g_event_system.stats_lock);
+    k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
+}
+
+static void event_system_stats_unlock(void) {
+    k_mutex_unlock(&g_event_system.stats_lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_GLOBAL, (uintptr_t) &g_event_system.stats_lock);
+}
+
+static void event_system_subscriber_id_lock(void) {
+    zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &g_subscriber_id_lock);
+    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
+}
+
+static void event_system_subscriber_id_unlock(void) {
+    k_mutex_unlock(&g_subscriber_id_lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &g_subscriber_id_lock);
+}
+
+static void event_system_entry_lock(event_type_entry_t* entry) {
+    zepl_lock_enter(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &entry->lock);
+    k_mutex_lock(&entry->lock, K_FOREVER);
+}
+
+static void event_system_entry_unlock(event_type_entry_t* entry) {
+    k_mutex_unlock(&entry->lock);
+    zepl_lock_exit(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &entry->lock);
 }
 
 static void event_publish_in_flight_wait_zero(void) {
@@ -436,13 +473,13 @@ static void event_system_cleanup_event_types(void) {
      * 避免 name 异常为 NULL 时订阅者数组不被清理 */
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
-        k_mutex_lock(&entry->lock, K_FOREVER);
+        event_system_entry_lock(entry);
         atomic_set(&entry->registered, 0);
         entry->name = NULL;
         entry->name_storage[0] = '\0';
         entry->subscriber_count = 0;
         memset(entry->subscribers, 0, sizeof(entry->subscribers));
-        k_mutex_unlock(&entry->lock);
+        event_system_entry_unlock(entry);
     }
 }
 
@@ -453,6 +490,7 @@ static void event_system_cleanup_event_types(void) {
  */
 static void event_system_reset_control_block(void) {
     /* SIL-2: 重置控制块 */
+    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_UNINIT);
     g_event_system.initialized = false;
     g_event_system.total_events = 0;
     atomic_set(&g_event_system.next_subscriber_id, 1);
@@ -541,6 +579,7 @@ event_status_t event_system_init(void) {
     /* 初始化控制块（成功前不设置 magic，失败后可完整重试） */
     memset(&g_event_system, 0, sizeof(g_event_system));
     atomic_set(&g_publish_in_flight, 0);
+    zepl_state_machine_init(&g_event_system.lifecycle, ZEP_STATE_UNINIT);
 
     /* 初始化互斥锁 */
     k_mutex_init(&g_event_system.stats_lock);
@@ -567,6 +606,12 @@ event_status_t event_system_init(void) {
     atomic_set(&g_event_system.next_subscriber_id, 1);
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
+    if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_INITED) != 0) {
+        event_system_init_rollback();
+        event_system_lifecycle_unlock();
+        LOG_ERR("Failed to transition event system to INITED");
+        return EVENT_ERR_INVALID_ARG;
+    }
 
     event_system_lifecycle_unlock();
     LOG_DBG("Event system initialized successfully");
@@ -601,10 +646,27 @@ event_status_t event_system_start(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (atomic_get(&g_event_system.running) != 0) {
-        LOG_WRN("Event system already running");
-        event_system_lifecycle_unlock();
-        return EVENT_OK;
+    {
+        const zepl_state_t lc_state = event_system_lifecycle_state();
+
+        if (lc_state == ZEP_STATE_RUNNING && atomic_get(&g_event_system.running) != 0) {
+            LOG_WRN("Event system already running");
+            event_system_lifecycle_unlock();
+            return EVENT_OK;
+        }
+
+        if (lc_state != ZEP_STATE_INITED && lc_state != ZEP_STATE_STOPPED) {
+            LOG_ERR("Event system not in a startable state: %s", zepl_state_name(lc_state));
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
+
+        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STARTING) != 0 ||
+            zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_RUNNING) != 0) {
+            LOG_ERR("Failed to transition event system to RUNNING from %s", zepl_state_name(lc_state));
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
     }
 
     if (atomic_cas(&g_restart_dispatcher_on_start, 1, 0)) {
@@ -654,6 +716,17 @@ event_status_t event_system_stop(void) {
         return EVENT_OK;
     }
 
+    {
+        const zepl_state_t lc_state = event_system_lifecycle_state();
+
+        if (lc_state == ZEP_STATE_RUNNING &&
+            zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING) != 0) {
+            LOG_ERR("Failed to transition event system to STOPPING");
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
+    }
+
     atomic_set(&g_event_system.running, 0);
 
     /* 等待进行中的 publish 完成后再停分发器 / purge，避免 stop 返回后仍有事件入队 */
@@ -675,6 +748,8 @@ event_status_t event_system_stop(void) {
     }
 
     event_queue_purge(g_event_system.event_queue);
+
+    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
 
     event_system_lifecycle_unlock();
     LOG_DBG("Event system stopped");
@@ -805,10 +880,10 @@ event_status_t event_register_type(event_type_t type, const char* name) {
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_entry_lock(entry);
 
     if (entry->name != NULL) {
-        k_mutex_unlock(&entry->lock);
+        event_system_entry_unlock(entry);
         LOG_WRN("Event type %d already registered", type);
         return EVENT_OK; /* 幂等操作 */
     }
@@ -820,7 +895,7 @@ event_status_t event_register_type(event_type_t type, const char* name) {
     entry->subscriber_count = 0;
     memset(entry->subscribers, 0, sizeof(entry->subscribers));
 
-    k_mutex_unlock(&entry->lock);
+    event_system_entry_unlock(entry);
 
     LOG_DBG("Registered event type: %s (%d)", name, type);
     return EVENT_OK;
@@ -845,16 +920,16 @@ event_status_t event_unregister_type(event_type_t type) {
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_entry_lock(entry);
 
     if (entry->name == NULL) {
-        k_mutex_unlock(&entry->lock);
+        event_system_entry_unlock(entry);
         return EVENT_ERR_NOT_FOUND;
     }
 
     /* 检查是否有活跃订阅者 */
     if (entry->subscriber_count > 0) {
-        k_mutex_unlock(&entry->lock);
+        event_system_entry_unlock(entry);
         LOG_WRN("Cannot unregister type %d with active subscribers", type);
         return EVENT_ERR_NO_SUBSCRIBER;
     }
@@ -864,7 +939,7 @@ event_status_t event_unregister_type(event_type_t type) {
     entry->name_storage[0] = '\0';
     entry->subscriber_count = 0;
 
-    k_mutex_unlock(&entry->lock);
+    event_system_entry_unlock(entry);
 
     LOG_DBG("Unregistered event type: %d", type);
     return EVENT_OK;
@@ -896,12 +971,12 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
     /* 固定锁顺序：g_subscriber_id_lock → entry->lock，与 unsubscribe 一致 */
-    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_subscriber_id_lock();
+    event_system_entry_lock(entry);
 
     if (entry->name == NULL) {
-        k_mutex_unlock(&entry->lock);
-        k_mutex_unlock(&g_subscriber_id_lock);
+        event_system_entry_unlock(entry);
+        event_system_subscriber_id_unlock();
         return EVENT_ERR_NOT_FOUND;
     }
 
@@ -918,8 +993,8 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
                 }
                 if (++attempts > UINT16_MAX) {
                     LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
-                    k_mutex_unlock(&entry->lock);
-                    k_mutex_unlock(&g_subscriber_id_lock);
+                    event_system_entry_unlock(entry);
+                    event_system_subscriber_id_unlock();
                     return EVENT_ERR_NO_MEM;
                 }
             } while (subscriber_id_in_use(new_id));
@@ -931,15 +1006,15 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             entry->subscriber_count++;
             *subscriber_id = new_id;
 
-            k_mutex_unlock(&entry->lock);
-            k_mutex_unlock(&g_subscriber_id_lock);
+            event_system_entry_unlock(entry);
+            event_system_subscriber_id_unlock();
             LOG_DBG("Subscriber %d registered for event type %d", new_id, type);
             return EVENT_OK;
         }
     }
 
-    k_mutex_unlock(&entry->lock);
-    k_mutex_unlock(&g_subscriber_id_lock);
+    event_system_entry_unlock(entry);
+    event_system_subscriber_id_unlock();
     LOG_ERR("No room for more subscribers on event type %d", type);
     return EVENT_ERR_QUEUE_FULL;
 }
@@ -963,13 +1038,13 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
-    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_subscriber_id_lock();
+    event_system_entry_lock(entry);
 
     subscriber_entry_t* sub = find_subscriber(entry, subscriber_id);
     if (sub == NULL) {
-        k_mutex_unlock(&entry->lock);
-        k_mutex_unlock(&g_subscriber_id_lock);
+        event_system_entry_unlock(entry);
+        event_system_subscriber_id_unlock();
         return EVENT_ERR_NOT_FOUND;
     }
 
@@ -978,8 +1053,8 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
     sub->user_data = NULL;
     entry->subscriber_count--;
 
-    k_mutex_unlock(&entry->lock);
-    k_mutex_unlock(&g_subscriber_id_lock);
+    event_system_entry_unlock(entry);
+    event_system_subscriber_id_unlock();
     LOG_DBG("Subscriber %d removed from event type %d", subscriber_id, type);
     return EVENT_OK;
 }
@@ -995,7 +1070,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
         return;
     }
 
-    k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
+    event_system_subscriber_id_lock();
 
     /* 注意：event_type_t 是 uint8_t，需要用 int 避免溢出死循环 */
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
@@ -1005,7 +1080,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
             continue;
         }
 
-        k_mutex_lock(&entry->lock, K_FOREVER);
+        event_system_entry_lock(entry);
 
         subscriber_entry_t* sub = find_subscriber(entry, subscriber_id);
         if (sub != NULL) {
@@ -1015,10 +1090,10 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
             entry->subscriber_count--;
         }
 
-        k_mutex_unlock(&entry->lock);
+        event_system_entry_unlock(entry);
     }
 
-    k_mutex_unlock(&g_subscriber_id_lock);
+    event_system_subscriber_id_unlock();
 
     LOG_DBG("Subscriber %d removed from all event types", subscriber_id);
 }
@@ -1559,9 +1634,9 @@ uint32_t event_get_subscriber_count(event_type_t type) {
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_entry_lock(entry);
     uint32_t count = entry->subscriber_count;
-    k_mutex_unlock(&entry->lock);
+    event_system_entry_unlock(entry);
 
     return count;
 }
@@ -1592,12 +1667,12 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
         return;
     }
 
-    k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
+    event_system_stats_lock();
 
     /* HIGH-NEW-3: 在锁内重检 initialized 状态，防止 shutdown 在窗口期内
      * 释放队列后仍访问 g_event_system.event_queue。 */
     if (!g_event_system.initialized) {
-        k_mutex_unlock(&g_event_system.stats_lock);
+        event_system_stats_unlock();
         return;
     }
 
@@ -1611,7 +1686,7 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
         *dropped_events = (uint32_t) atomic_get(&g_event_dropped_count);
     }
 
-    k_mutex_unlock(&g_event_system.stats_lock);
+    event_system_stats_unlock();
 }
 
 /**
@@ -1631,9 +1706,9 @@ void event_system_reset_statistics(void) {
         return;
     }
 
-    k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
+    event_system_stats_lock();
     g_event_system.total_events = 0;
-    k_mutex_unlock(&g_event_system.stats_lock);
+    event_system_stats_unlock();
 
     atomic_set(&g_event_dropped_count, 0);
 
@@ -1682,13 +1757,13 @@ event_status_t event_notify_subscribers(const event_t* event) {
     sub_snap_t snap[CONFIG_EVENT_MAX_SUBSCRIBERS];
     uint32_t   n = 0U;
 
-    k_mutex_lock(&entry->lock, K_FOREVER);
+    event_system_entry_lock(entry);
 
     if (entry->subscriber_count == 0) {
-        k_mutex_unlock(&entry->lock);
-        k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
+        event_system_entry_unlock(entry);
+        event_system_stats_lock();
         g_event_system.total_events++;
-        k_mutex_unlock(&g_event_system.stats_lock);
+        event_system_stats_unlock();
         return EVENT_ERR_NO_SUBSCRIBER;
     }
 
@@ -1703,7 +1778,7 @@ event_status_t event_notify_subscribers(const event_t* event) {
         }
     }
 
-    k_mutex_unlock(&entry->lock);
+    event_system_entry_unlock(entry);
 
     /* SIL-2: 在锁外调用所有回调，添加空指针检查 */
     for (uint32_t i = 0; i < n; i++) {
@@ -1715,9 +1790,9 @@ event_status_t event_notify_subscribers(const event_t* event) {
         }
     }
 
-    k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
+    event_system_stats_lock();
     g_event_system.total_events++;
-    k_mutex_unlock(&g_event_system.stats_lock);
+    event_system_stats_unlock();
 
     return EVENT_OK;
 }
