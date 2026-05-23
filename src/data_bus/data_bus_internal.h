@@ -44,6 +44,8 @@ struct data_bus_consumer {
     data_bus_consume_fn_t callback;
     void*                 user_data;
     uint32_t              last_seq;
+    uint32_t              generation;
+    atomic_t              callback_hold;
     atomic_t              active;
 };
 
@@ -58,6 +60,7 @@ struct data_bus_channel {
     data_bus_consumer_t consumers[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
     bool            consumer_slot_in_use[CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL];
     uint32_t        consumer_count;
+    uint32_t        next_consumer_generation;
 
     uint32_t        next_seq;
     uint32_t        publish_count;
@@ -66,6 +69,7 @@ struct data_bus_channel {
     uint32_t        alloc_fail_count;
     uint32_t        peak_queue_usage;
     uint32_t        queue_used;
+    atomic_t        publish_hold;
     atomic_t        dispatch_hold;
 };
 

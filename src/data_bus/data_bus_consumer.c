@@ -35,6 +35,7 @@ typedef struct {
 	bool manual_release;
 	data_bus_consume_fn_t callback;
 	void *user_data;
+	uint32_t generation;
 } data_bus_consumer_snap_t;
 
 /* ============================================================================
@@ -104,6 +105,8 @@ int data_bus_consumer_register(data_bus_channel_t *ch,
 	consumer->callback = cfg->callback;
 	consumer->user_data = cfg->user_data;
 	consumer->last_seq = 0;
+	consumer->generation = ++ch->next_consumer_generation;
+	atomic_set(&consumer->callback_hold, 0);
 	atomic_set(&consumer->active, 1);
 
 	ch->consumer_slot_in_use[slot] = true;
@@ -163,6 +166,23 @@ int data_bus_consumer_unregister(data_bus_consumer_t *consumer)
 	(void)snprintf(log_name, sizeof(log_name), "%s", consumer->name_storage);
 
 	atomic_set(&consumer->active, 0);
+	k_spin_unlock(&found_ch->lock, key);
+
+	while (atomic_get(&consumer->callback_hold) != 0) {
+		k_sleep(K_MSEC(1));
+	}
+
+	key = k_spin_lock(&found_ch->lock);
+
+	if (found_idx >= CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL ||
+	    !found_ch->consumer_slot_in_use[found_idx] ||
+	    &found_ch->consumers[found_idx] != consumer) {
+		k_spin_unlock(&found_ch->lock, key);
+		k_mutex_unlock(&g_channels_lock);
+		LOG_WRN("Consumer unregister failed: slot changed on channel '%s'", found_ch->name);
+		return -EINVAL;
+	}
+
 	consumer->channel = NULL;
 	memset(consumer, 0, sizeof(*consumer));
 	found_ch->consumer_slot_in_use[found_idx] = false;
@@ -204,6 +224,7 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 		snaps[snap_count].manual_release = c->manual_release;
 		snaps[snap_count].callback = c->callback;
 		snaps[snap_count].user_data = c->user_data;
+		snaps[snap_count].generation = c->generation;
 		snap_count++;
 	}
 	k_spin_unlock(&ch->lock, key);
@@ -235,20 +256,44 @@ void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block)
 			continue;
 		}
 
-		LOG_DBG("  -> consumer manual_release=%d", snaps[i].manual_release);
-
-		snaps[i].callback(ch, block, snaps[i].user_data);
-
-		/* 框架自动释放隐式引用，除非消费者选择手动释放 */
-		if (!snaps[i].manual_release) {
-			data_bus_block_release(block);
-		}
+		data_bus_consume_fn_t callback = NULL;
+		void *user_data = NULL;
+		bool manual_release = false;
 
 		k_spinlock_key_t lk = k_spin_lock(&ch->lock);
 		data_bus_consumer_t *target = snaps[i].consumer;
-		if (target != NULL && atomic_get(&target->active)) {
-			target->last_seq = block->seq;
+		if (target != NULL && atomic_get(&target->active) &&
+		    target->generation == snaps[i].generation) {
+			(void)atomic_inc(&target->callback_hold);
+			callback = target->callback;
+			user_data = target->user_data;
+			manual_release = target->manual_release;
 		}
+		k_spin_unlock(&ch->lock, lk);
+
+		if (callback == NULL) {
+			data_bus_block_release(block);
+			continue;
+		}
+
+		uint32_t block_seq = block->seq;
+
+		LOG_DBG("  -> consumer manual_release=%d", manual_release);
+
+		callback(ch, block, user_data);
+
+		/* 框架自动释放隐式引用，除非消费者选择手动释放 */
+		if (!manual_release) {
+			data_bus_block_release(block);
+		}
+
+		lk = k_spin_lock(&ch->lock);
+		target = snaps[i].consumer;
+		if (target != NULL && atomic_get(&target->active) &&
+		    target->generation == snaps[i].generation) {
+			target->last_seq = block_seq;
+		}
+		(void)atomic_dec(&snaps[i].consumer->callback_hold);
 		k_spin_unlock(&ch->lock, lk);
 	}
 }

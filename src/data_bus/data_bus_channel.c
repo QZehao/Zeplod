@@ -61,6 +61,55 @@ static data_bus_channel_t* find_in_table(const char* name) {
     return NULL;
 }
 
+static bool channel_in_table_locked(const data_bus_channel_t* ch) {
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        if (g_channels[i] == ch) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int channel_publish_acquire(data_bus_channel_t* ch, bool in_isr) {
+    if (ch == NULL) {
+        return -EINVAL;
+    }
+
+    if (in_isr) {
+        k_spinlock_key_t key = k_spin_lock(&ch->lock);
+        if (!atomic_get(&ch->active)) {
+            k_spin_unlock(&ch->lock, key);
+            return -ESHUTDOWN;
+        }
+        (void) atomic_inc(&ch->publish_hold);
+        k_spin_unlock(&ch->lock, key);
+        return 0;
+    }
+
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    if (!channel_in_table_locked(ch)) {
+        k_mutex_unlock(&g_channels_lock);
+        return -EINVAL;
+    }
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    if (!atomic_get(&ch->active)) {
+        k_spin_unlock(&ch->lock, key);
+        k_mutex_unlock(&g_channels_lock);
+        return -ESHUTDOWN;
+    }
+    (void) atomic_inc(&ch->publish_hold);
+    k_spin_unlock(&ch->lock, key);
+    k_mutex_unlock(&g_channels_lock);
+    return 0;
+}
+
+static void channel_publish_release(data_bus_channel_t* ch) {
+    if (ch != NULL) {
+        (void) atomic_dec(&ch->publish_hold);
+    }
+}
+
 /* ============================================================================
  * 通道对象初始化/重置
  * ============================================================================ */
@@ -85,6 +134,7 @@ int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
     /* k_spinlock 零初始化是有效的 */
     atomic_set(&ch->active, 1);
     ch->next_seq = 0;
+    atomic_set(&ch->publish_hold, 0);
     atomic_set(&ch->dispatch_hold, 0);
 
     return 0;
@@ -233,7 +283,7 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
     atomic_set(&ch->active, 0);
     k_spin_unlock(&ch->lock, key);
 
-    if (atomic_get(&ch->dispatch_hold) != 0) {
+    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0) {
         atomic_set(&ch->active, 1);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
@@ -252,7 +302,7 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         return -EAGAIN;
     }
 
-    if (atomic_get(&ch->dispatch_hold) != 0) {
+    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0) {
         atomic_set(&ch->active, 1);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
@@ -328,8 +378,11 @@ static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* 
  * @brief 入队失败时释放块并更新统计
  * @return -ESHUTDOWN 通道已关闭；-ENOBUFS 队列已满
  */
-static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t enqueue_ret) {
-    data_bus_mem_free(block);
+static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t enqueue_ret,
+                                          bool free_block) {
+    if (free_block) {
+        data_bus_mem_free(block);
+    }
 
     k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
     if (!atomic_get(&ch->active)) {
@@ -351,6 +404,7 @@ static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block
 
 int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     int ready = data_bus_require_initialized();
+    bool in_isr = k_is_in_isr();
 
     if (ready != 0) {
         return ready;
@@ -362,10 +416,10 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
         return -EINVAL;
     }
 
-    if (!atomic_get(&ch->active)) {
-        return -ESHUTDOWN;
+    ready = channel_publish_acquire(ch, in_isr);
+    if (ready != 0) {
+        return ready;
     }
-    bool              in_isr = k_is_in_isr();
     data_bus_block_t* block = NULL;
 
     /* 分配块 */
@@ -379,6 +433,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
         k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
         ch->alloc_fail_count++;
         k_spin_unlock(&ch->lock, fkey);
+        channel_publish_release(ch);
         return -ENOMEM;
     }
 
@@ -389,6 +444,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     /* 分配期间 destroy 可能已置 inactive，入队前再次校验 */
     if (!atomic_get(&ch->active)) {
         data_bus_mem_free(block);
+        channel_publish_release(ch);
         return -ESHUTDOWN;
     }
 
@@ -396,10 +452,15 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     uint32_t ret = channel_enqueue_block(ch, block);
 
     if (ret != sizeof(block)) {
-        return publish_handle_enqueue_failure(ch, block, ret);
+        int err = publish_handle_enqueue_failure(ch, block, ret, true);
+        channel_publish_release(ch);
+        return err;
     }
 
-    LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, block->seq, len);
+    uint32_t published_seq = block->seq;
+    size_t   published_len = block->len;
+
+    LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 
     /* 通知分发线程 */
     k_sem_give(&g_dispatcher_sem);
@@ -407,15 +468,17 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     /* 事件桥接（仅线程路径） */
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
     if (!in_isr) {
-        data_bus_event_bridge_notify(ch, block->seq, block->len);
+        data_bus_event_bridge_notify(ch, published_seq, published_len);
     }
 #endif
 
+    channel_publish_release(ch);
     return 0;
 }
 
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
     int ready = data_bus_require_initialized();
+    bool in_isr = k_is_in_isr();
 
     if (ready != 0) {
         return ready;
@@ -430,25 +493,32 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
         return -EINVAL;
     }
 
-    if (!atomic_get(&ch->active)) {
-        return -ESHUTDOWN;
+    ready = channel_publish_acquire(ch, in_isr);
+    if (ready != 0) {
+        return ready;
     }
 
     uint32_t ret = channel_enqueue_block(ch, block);
     if (ret != sizeof(block)) {
-        return publish_handle_enqueue_failure(ch, block, ret);
+        int err = publish_handle_enqueue_failure(ch, block, ret, false);
+        channel_publish_release(ch);
+        return err;
     }
 
-    LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, block->seq, block->len);
+    uint32_t published_seq = block->seq;
+    size_t   published_len = block->len;
+
+    LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 
     /* 通知分发器 */
     k_sem_give(&g_dispatcher_sem);
 
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
     if (!k_is_in_isr()) {
-        data_bus_event_bridge_notify(ch, block->seq, block->len);
+        data_bus_event_bridge_notify(ch, published_seq, published_len);
     }
 #endif
 
+    channel_publish_release(ch);
     return 0;
 }

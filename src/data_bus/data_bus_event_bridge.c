@@ -99,6 +99,15 @@ void data_bus_event_bridge_notify(data_bus_channel_t *ch, uint32_t seq, size_t l
 	st = event_publish_copy((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
 				EVENT_PRIORITY_NORMAL,
 				&notification, sizeof(notification));
+	if (st == EVENT_ERR_NOT_FOUND) {
+		atomic_set(&g_event_type_registered, 0);
+		data_bus_event_bridge_ensure_registered();
+		if (atomic_get(&g_event_type_registered)) {
+			st = event_publish_copy((event_type_t)CONFIG_DATA_BUS_EVENT_TYPE_ID,
+						EVENT_PRIORITY_NORMAL,
+						&notification, sizeof(notification));
+		}
+	}
 	if (st != EVENT_OK) {
 		LOG_WRN("Bridge publish failed ch='%s' seq=%u: %d",
 			notification.channel_name, seq, st);

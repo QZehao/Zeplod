@@ -186,6 +186,11 @@ int data_bus_deinit(void)
 	}
 
 	/* 发出关闭信号 */
+	if (k_current_get() == &g_dispatcher_thread_data) {
+		k_mutex_unlock(&g_init_lock);
+		return -EINVAL;
+	}
+
 	atomic_set(&g_shutting_down, 1);
 
 	/* 唤醒分发线程使其退出 */
@@ -193,6 +198,27 @@ int data_bus_deinit(void)
 
 	/* 等待分发线程完成 */
 	k_thread_join(&g_dispatcher_thread_data, K_FOREVER);
+
+	while (true) {
+		bool busy = false;
+
+		k_mutex_lock(&g_channels_lock, K_FOREVER);
+		for (uint32_t i = 0; i < g_channel_count; i++) {
+			data_bus_channel_t *ch = g_channels[i];
+
+			if (ch != NULL &&
+			    (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0)) {
+				busy = true;
+				break;
+			}
+		}
+		k_mutex_unlock(&g_channels_lock);
+
+		if (!busy) {
+			break;
+		}
+		k_sleep(K_MSEC(1));
+	}
 
 	/* 锁定通道表 */
 	k_mutex_lock(&g_channels_lock, K_FOREVER);
