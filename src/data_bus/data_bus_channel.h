@@ -27,19 +27,19 @@ extern "C" {
  * @brief 初始化预分配的通道对象
  * @return 成功返回 0
  */
-int data_bus_channel_obj_init(data_bus_channel_t *ch, const char *name);
+int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name);
 
 /**
  * @brief 重置通道对象（清空消费者，排空队列）
  * 不释放通道对象本身。
  */
-void data_bus_channel_obj_reset(data_bus_channel_t *ch);
+void data_bus_channel_obj_reset(data_bus_channel_t* ch);
 
 /**
  * @brief 排空通道上已入队的块
  * @param run_dispatch true：先分发给消费者再 release；false：仅 release（销毁/重置）
  */
-void data_bus_channel_drain_pending(data_bus_channel_t *ch, bool run_dispatch);
+void data_bus_channel_drain_pending(data_bus_channel_t* ch, bool run_dispatch);
 
 #ifdef __cplusplus
 }

@@ -392,10 +392,12 @@ ZTEST(test_event_queue, test_null_parameters) {
     zassert_equal(status, EVENT_OK, "队列初始化失败");
 
     /* NULL 队列入队 */
-    zassert_equal(event_queue_enqueue(NULL, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_ERR_INVALID_ARG, NULL);
+    zassert_equal(event_queue_enqueue(NULL, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_ERR_INVALID_ARG,
+                  NULL);
 
     /* NULL 事件入队 */
-    zassert_equal(event_queue_enqueue(&test_queue, NULL, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_ERR_INVALID_ARG, NULL);
+    zassert_equal(event_queue_enqueue(&test_queue, NULL, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_ERR_INVALID_ARG,
+                  NULL);
 
     /* NULL 队列出队 */
     zassert_equal(event_queue_dequeue(NULL, &out, K_NO_WAIT), EVENT_ERR_INVALID_ARG, NULL);
@@ -435,7 +437,7 @@ ZTEST(test_event_queue, test_invalid_event_type) {
     char           buffer[3 * sizeof(event_t)];
     event_status_t status;
     /* 事件类型 255 是有效的（最大 uint8_t），但可以测试边界 */
-    event_t        event = {.type = 255, .priority = EVENT_PRIORITY_NORMAL};
+    event_t event = {.type = 255, .priority = EVENT_PRIORITY_NORMAL};
 
     status = event_queue_init(&test_queue, buffer, 3);
     zassert_equal(status, EVENT_OK, "队列初始化失败");

@@ -190,8 +190,8 @@ ZTEST(test_event_system, test_event_publish_invalid_payload) {
  * @brief 测试 event_create_with_data
  */
 ZTEST(test_event_system, test_event_create_with_data) {
-    event_t*  event;
-    uint32_t  test_data = 0x12345678;
+    event_t* event;
+    uint32_t test_data = 0x12345678;
 
     event_system_init();
 
@@ -210,7 +210,7 @@ ZTEST(test_event_system, test_event_create_with_data) {
         zassert_mem_equal(event->data.inline_data, &test_data, sizeof(test_data), "内联数据不正确");
     } else if (event->flags & EVENT_FLAG_DATA_DYNAMIC) {
         zassert_not_null(event->data.ptr, "动态数据指针不应为 NULL");
-        zassert_equal(*(uint32_t*)event->data.ptr, 0x12345678, "动态数据副本不正确");
+        zassert_equal(*(uint32_t*) event->data.ptr, 0x12345678, "动态数据副本不正确");
     }
 
     event_free(event);
@@ -236,7 +236,7 @@ ZTEST(test_event_system, test_event_notify_subscribers) {
     event_register_type(60, "notify_test");
 
     /* 订阅事件 */
-    status = event_subscribe(60, (event_callback_t)0x1000, NULL, &subscriber_id);
+    status = event_subscribe(60, (event_callback_t) 0x1000, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
 
     /* 创建并发布事件 */
@@ -267,13 +267,13 @@ ZTEST(test_event_system, test_event_unsubscribe_all) {
     event_register_type(72, "unsubscribe_all_test3");
 
     /* 同一回调订阅多个事件类型，每次订阅会得到不同的 subscriber_id */
-    status = event_subscribe(70, (event_callback_t)0x1000, NULL, &sub_id1);
+    status = event_subscribe(70, (event_callback_t) 0x1000, NULL, &sub_id1);
     zassert_equal(status, EVENT_OK, "订阅 70 失败");
 
-    status = event_subscribe(71, (event_callback_t)0x1000, NULL, &sub_id2);
+    status = event_subscribe(71, (event_callback_t) 0x1000, NULL, &sub_id2);
     zassert_equal(status, EVENT_OK, "订阅 71 失败");
 
-    status = event_subscribe(72, (event_callback_t)0x1000, NULL, &sub_id3);
+    status = event_subscribe(72, (event_callback_t) 0x1000, NULL, &sub_id3);
     zassert_equal(status, EVENT_OK, "订阅 72 失败");
 
     /* 验证每次订阅都得到不同的 subscriber_id */
@@ -307,7 +307,7 @@ ZTEST(test_event_system, test_event_unregister_type) {
     zassert_equal(status, EVENT_OK, "注册失败");
 
     /* 订阅事件 */
-    status = event_subscribe(80, (event_callback_t)0x1000, NULL, &subscriber_id);
+    status = event_subscribe(80, (event_callback_t) 0x1000, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
 
     /* 尝试注销有订阅者的类型（应失败）*/
@@ -346,7 +346,7 @@ ZTEST(test_event_system, test_event_system_shutdown) {
 
     event_system_init();
     event_register_type(90, "shutdown_test");
-    event_subscribe(90, (event_callback_t)0x1000, NULL, &subscriber_id);
+    event_subscribe(90, (event_callback_t) 0x1000, NULL, &subscriber_id);
     event_system_start();
 
     /* 关闭系统 */
@@ -397,12 +397,12 @@ ZTEST(test_event_system, test_event_subscribe_max_subscribers) {
 
     /* 订阅直到达到上限 */
     for (int i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
-        status = event_subscribe(110, (event_callback_t)(0x1000 + i), NULL, &subscriber_ids[i]);
+        status = event_subscribe(110, (event_callback_t) (0x1000 + i), NULL, &subscriber_ids[i]);
         zassert_equal(status, EVENT_OK, "订阅 %d 失败", i);
     }
 
     /* 超过上限应失败 */
-    status = event_subscribe(110, (event_callback_t)0x2000, NULL, &subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS]);
+    status = event_subscribe(110, (event_callback_t) 0x2000, NULL, &subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS]);
     zassert_equal(status, EVENT_ERR_QUEUE_FULL, "超过订阅上限应返回 QUEUE_FULL");
 
     /* 清理 */
@@ -459,7 +459,7 @@ ZTEST(test_event_system, test_event_create_with_data_rt) {
     uint8_t  large_data[256];
 
     for (int i = 0; i < 256; i++) {
-        large_data[i] = (uint8_t)i;
+        large_data[i] = (uint8_t) i;
     }
 
     event_system_init();
@@ -557,7 +557,7 @@ ZTEST(test_event_system, test_event_subscribe_unregistered_type) {
     event_system_init();
     /* 不注册类型 160 */
 
-    status = event_subscribe(160, (event_callback_t)0x1000, NULL, &subscriber_id);
+    status = event_subscribe(160, (event_callback_t) 0x1000, NULL, &subscriber_id);
     zassert_equal(status, EVENT_ERR_NOT_FOUND, "订阅未注册类型应返回 NOT_FOUND");
 }
 
@@ -664,8 +664,7 @@ static struct k_thread block_pub_thread;
 static atomic_t        block_pub_done;
 static event_status_t  block_pub_result;
 
-static void block_publish_thread_entry(void* p1, void* p2, void* p3)
-{
+static void block_publish_thread_entry(void* p1, void* p2, void* p3) {
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
@@ -679,8 +678,7 @@ static void block_publish_thread_entry(void* p1, void* p2, void* p3)
 /**
  * @brief BLOCK 策略：队列满时 stop 应使阻塞中的 publish 返回 NOT_RUNNING（不死锁）
  */
-ZTEST(test_event_system, test_block_publish_unblocks_on_stop)
-{
+ZTEST(test_event_system, test_block_publish_unblocks_on_stop) {
     struct k_msgq* q;
     uint32_t       cap;
     event_t        filler = {.type = BLOCK_TEST_EVENT_TYPE, .priority = EVENT_PRIORITY_LOW};
@@ -740,17 +738,15 @@ ZTEST(test_event_system, test_event_is_running) {
  * 测试夹具 (Test Fixtures)
  * ============================================================================= */
 
-static void *event_system_suite_setup(void)
-{
+static void* event_system_suite_setup(void) {
     /* 全局初始化 - 允许重复初始化（返回 -EALREADY）*/
     event_system_init();
     event_system_start();
     return NULL;
 }
 
-static void event_system_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void event_system_suite_teardown(void* fixture) {
+    (void) fixture;
     event_system_stop();
 }
 
@@ -759,9 +755,8 @@ static void event_system_suite_teardown(void *fixture)
  *
  * 确保测试间的状态隔离。
  */
-static void event_system_test_teardown(void *fixture)
-{
-    (void)fixture;
+static void event_system_test_teardown(void* fixture) {
+    (void) fixture;
     /* 停止并关闭事件系统，清理所有注册的类型和订阅 */
     event_system_stop();
     event_system_shutdown();
@@ -772,4 +767,5 @@ static void event_system_test_teardown(void *fixture)
  * 测试套件
  * ============================================================================= */
 
-ZTEST_SUITE(test_event_system, NULL, event_system_suite_setup, event_system_suite_teardown, NULL, event_system_test_teardown);
+ZTEST_SUITE(test_event_system, NULL, event_system_suite_setup, event_system_suite_teardown, NULL,
+            event_system_test_teardown);

@@ -72,16 +72,14 @@ static int version_snprintf(char* buf, size_t size, size_t min_size, const char*
 }
 
 int app_version_get_string(char* buffer, size_t size) {
-    return version_snprintf(buffer, size, VERSION_STRING_MAX_LEN, "%d.%d.%d",
-                            g_version_info.major, g_version_info.minor, g_version_info.patch);
+    return version_snprintf(buffer, size, VERSION_STRING_MAX_LEN, "%d.%d.%d", g_version_info.major,
+                            g_version_info.minor, g_version_info.patch);
 }
 
 int app_version_get_info_string(char* buffer, size_t size) {
-    return version_snprintf(buffer, size, VERSION_INFO_STRING_MAX_LEN,
-                            "v%d.%d.%d (%s) [%s] %s - %s",
-                            g_version_info.major, g_version_info.minor, g_version_info.patch,
-                            g_version_info.git_commit, g_version_info.build_type,
-                            g_version_info.build_timestamp, g_version_info.build_target);
+    return version_snprintf(buffer, size, VERSION_INFO_STRING_MAX_LEN, "v%d.%d.%d (%s) [%s] %s - %s",
+                            g_version_info.major, g_version_info.minor, g_version_info.patch, g_version_info.git_commit,
+                            g_version_info.build_type, g_version_info.build_timestamp, g_version_info.build_target);
 }
 
 uint32_t app_version_get_code(void) {

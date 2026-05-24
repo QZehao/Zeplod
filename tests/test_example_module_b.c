@@ -12,13 +12,13 @@
  *
  */
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include <zephyr/kernel.h>
 #include <string.h>
 #include "event_system.h"
-#include "module_manager.h"
 #include "example_module_b.h"
+#include "module_manager.h"
 
 LOG_MODULE_REGISTER(test_example_module_b);
 
@@ -26,8 +26,7 @@ LOG_MODULE_REGISTER(test_example_module_b);
  * 测试夹具 (Test Fixtures)
  * ============================================================================= */
 
-static void *test_suite_setup(void)
-{
+static void* test_suite_setup(void) {
     int ret;
 
     /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
@@ -46,9 +45,8 @@ static void *test_suite_setup(void)
     return NULL;
 }
 
-static void test_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void test_suite_teardown(void* fixture) {
+    (void) fixture;
     module_manager_shutdown();
     event_system_stop();
 }
@@ -60,8 +58,7 @@ static void test_suite_teardown(void *fixture)
 /**
  * @brief 测试模块初始化 - NULL 配置
  */
-ZTEST(example_module_b, test_init_null_config)
-{
+ZTEST(example_module_b, test_init_null_config) {
     /* 先确保处于干净状态 */
     example_module_b_shutdown();
 
@@ -75,12 +72,8 @@ ZTEST(example_module_b, test_init_null_config)
 /**
  * @brief 测试模块初始化 - 有效配置
  */
-ZTEST(example_module_b, test_init_valid_config)
-{
-    example_module_b_config_t config = {
-        .tx_buffer_size = 512,
-        .rx_buffer_size = 1024,
-        .timeout_ms = 1000};
+ZTEST(example_module_b, test_init_valid_config) {
+    example_module_b_config_t config = {.tx_buffer_size = 512, .rx_buffer_size = 1024, .timeout_ms = 1000};
 
     example_module_b_init(&config);
 
@@ -95,8 +88,7 @@ ZTEST(example_module_b, test_init_valid_config)
 /**
  * @brief 测试模块启动
  */
-ZTEST(example_module_b, test_start)
-{
+ZTEST(example_module_b, test_start) {
     example_module_b_init(NULL);
 
     int ret = example_module_b_start();
@@ -112,8 +104,7 @@ ZTEST(example_module_b, test_start)
 /**
  * @brief 测试模块停止
  */
-ZTEST(example_module_b, test_stop)
-{
+ZTEST(example_module_b, test_stop) {
     example_module_b_init(NULL);
     example_module_b_start();
 
@@ -129,8 +120,7 @@ ZTEST(example_module_b, test_stop)
 /**
  * @brief 测试停止后重启
  */
-ZTEST(example_module_b, test_restart)
-{
+ZTEST(example_module_b, test_restart) {
     example_module_b_init(NULL);
     example_module_b_start();
     example_module_b_stop();
@@ -152,8 +142,7 @@ ZTEST(example_module_b, test_restart)
 /**
  * @brief 测试发送数据 - 空参数
  */
-ZTEST(example_module_b, test_send_null)
-{
+ZTEST(example_module_b, test_send_null) {
     example_module_b_init(NULL);
     example_module_b_start();
 
@@ -168,8 +157,7 @@ ZTEST(example_module_b, test_send_null)
 /**
  * @brief 测试接收数据 - 空参数
  */
-ZTEST(example_module_b, test_receive_null)
-{
+ZTEST(example_module_b, test_receive_null) {
     example_module_b_init(NULL);
     example_module_b_start();
 
@@ -184,19 +172,18 @@ ZTEST(example_module_b, test_receive_null)
 /**
  * @brief 测试发送接收流程
  */
-ZTEST(example_module_b, test_send_receive)
-{
+ZTEST(example_module_b, test_send_receive) {
     example_module_b_init(NULL);
     example_module_b_start();
 
     /* 发送测试数据 */
     const char test_data[] = "Hello, Module B!";
-    int sent = example_module_b_send(test_data, sizeof(test_data));
+    int        sent = example_module_b_send(test_data, sizeof(test_data));
     zassert_true(sent >= 0, "发送应成功");
 
     /* 接收数据 */
     char recv_buf[64];
-    int received = example_module_b_receive(recv_buf, sizeof(recv_buf));
+    int  received = example_module_b_receive(recv_buf, sizeof(recv_buf));
     zassert_true(received >= 0, "接收应成功");
 
     example_module_b_stop();
@@ -206,8 +193,7 @@ ZTEST(example_module_b, test_send_receive)
 /**
  * @brief 测试通信统计
  */
-ZTEST(example_module_b, test_get_stats)
-{
+ZTEST(example_module_b, test_get_stats) {
     example_module_b_init(NULL);
     example_module_b_start();
 
@@ -238,8 +224,7 @@ ZTEST(example_module_b, test_get_stats)
 /**
  * @brief 测试无效控制命令
  */
-ZTEST(example_module_b, test_control_invalid)
-{
+ZTEST(example_module_b, test_control_invalid) {
     example_module_b_init(NULL);
 
     int ret = example_module_b_control(9999, NULL);
@@ -255,8 +240,7 @@ ZTEST(example_module_b, test_control_invalid)
 /**
  * @brief 测试事件处理 - NULL 事件
  */
-ZTEST(example_module_b, test_event_null)
-{
+ZTEST(example_module_b, test_event_null) {
     example_module_b_on_event(NULL, NULL);
     /* 不应崩溃 */
 }
@@ -264,8 +248,7 @@ ZTEST(example_module_b, test_event_null)
 /**
  * @brief 测试事件处理 - NULL user_data
  */
-ZTEST(example_module_b, test_event_null_user_data)
-{
+ZTEST(example_module_b, test_event_null_user_data) {
     event_t event = {0};
     event.type = EVENT_TYPE_GENERIC;
     event.priority = EVENT_PRIORITY_NORMAL;
@@ -282,8 +265,7 @@ ZTEST(example_module_b, test_event_null_user_data)
 /**
  * @brief 测试完整生命周期
  */
-ZTEST(example_module_b, test_lifecycle)
-{
+ZTEST(example_module_b, test_lifecycle) {
     module_status_t status;
 
     /* 初始化 */
@@ -314,9 +296,8 @@ ZTEST(example_module_b, test_lifecycle)
 /**
  * @brief 测试获取接口
  */
-ZTEST(example_module_b, test_get_interface)
-{
-    const module_interface_t *iface = example_module_b_get_interface();
+ZTEST(example_module_b, test_get_interface) {
+    const module_interface_t* iface = example_module_b_get_interface();
 
     zassert_not_null(iface, "接口不应为 NULL");
     zassert_true(strcmp(iface->name, "example_module_b") == 0, "接口名称应匹配");

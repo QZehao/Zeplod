@@ -44,8 +44,7 @@ static bool state_can_transition_default(zepl_state_t from, zepl_state_t to) {
     case ZEP_STATE_UNINIT:
         return to == ZEP_STATE_INITED || to == ZEP_STATE_ERROR;
     case ZEP_STATE_INITED:
-        return to == ZEP_STATE_STARTING || to == ZEP_STATE_STOPPING || to == ZEP_STATE_UNINIT ||
-               to == ZEP_STATE_ERROR;
+        return to == ZEP_STATE_STARTING || to == ZEP_STATE_STOPPING || to == ZEP_STATE_UNINIT || to == ZEP_STATE_ERROR;
     case ZEP_STATE_STARTING:
         return to == ZEP_STATE_RUNNING || to == ZEP_STATE_STOPPING || to == ZEP_STATE_ERROR;
     case ZEP_STATE_RUNNING:
@@ -53,8 +52,7 @@ static bool state_can_transition_default(zepl_state_t from, zepl_state_t to) {
     case ZEP_STATE_STOPPING:
         return to == ZEP_STATE_STOPPED || to == ZEP_STATE_ERROR;
     case ZEP_STATE_STOPPED:
-        return to == ZEP_STATE_INITED || to == ZEP_STATE_STARTING || to == ZEP_STATE_UNINIT ||
-               to == ZEP_STATE_ERROR;
+        return to == ZEP_STATE_INITED || to == ZEP_STATE_STARTING || to == ZEP_STATE_UNINIT || to == ZEP_STATE_ERROR;
     case ZEP_STATE_ERROR:
         return to == ZEP_STATE_UNINIT || to == ZEP_STATE_INITED || to == ZEP_STATE_STOPPED;
     default:

@@ -12,13 +12,13 @@
  *
  */
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include <zephyr/kernel.h>
 #include <string.h>
 #include "event_system.h"
-#include "module_manager.h"
 #include "example_module_gpio.h"
+#include "module_manager.h"
 
 LOG_MODULE_REGISTER(test_example_module_gpio);
 
@@ -26,17 +26,15 @@ LOG_MODULE_REGISTER(test_example_module_gpio);
  * 测试夹具
  * ============================================================================= */
 
-static void *test_suite_setup(void)
-{
+static void* test_suite_setup(void) {
     zassert_equal(event_system_init(), EVENT_OK, "事件系统初始化失败");
     zassert_equal(module_manager_init(), 0, "模块管理器初始化失败");
     zassert_equal(module_manager_start(), 0, "模块管理器启动失败");
     return NULL;
 }
 
-static void test_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void test_suite_teardown(void* fixture) {
+    (void) fixture;
     module_manager_shutdown();
     event_system_stop();
 }
@@ -48,8 +46,7 @@ static void test_suite_teardown(void *fixture)
 /**
  * @brief 测试模块初始化 - NULL 配置
  */
-ZTEST(example_module_gpio, test_init_null_config)
-{
+ZTEST(example_module_gpio, test_init_null_config) {
     example_module_gpio_shutdown(); /* 确保干净状态 */
 
     int ret = example_module_gpio_init(NULL);
@@ -62,13 +59,9 @@ ZTEST(example_module_gpio, test_init_null_config)
 /**
  * @brief 测试模块初始化 - 有效配置
  */
-ZTEST(example_module_gpio, test_init_valid_config)
-{
+ZTEST(example_module_gpio, test_init_valid_config) {
     example_module_gpio_config_t config = {
-        .led_pin = "GPIO0_5",
-        .button_pin = "GPIO0_6",
-        .blink_interval_ms = 100,
-        .enable_button = true};
+        .led_pin = "GPIO0_5", .button_pin = "GPIO0_6", .blink_interval_ms = 100, .enable_button = true};
 
     int ret = example_module_gpio_init(&config);
     zassert_equal(ret, 0, "有效配置初始化应返回 0");
@@ -84,8 +77,7 @@ ZTEST(example_module_gpio, test_init_valid_config)
 /**
  * @brief 测试模块启动
  */
-ZTEST(example_module_gpio, test_start)
-{
+ZTEST(example_module_gpio, test_start) {
     example_module_gpio_init(NULL);
 
     int ret = example_module_gpio_start();
@@ -101,8 +93,7 @@ ZTEST(example_module_gpio, test_start)
 /**
  * @brief 测试模块停止
  */
-ZTEST(example_module_gpio, test_stop)
-{
+ZTEST(example_module_gpio, test_stop) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -118,8 +109,7 @@ ZTEST(example_module_gpio, test_stop)
 /**
  * @brief 测试完整生命周期
  */
-ZTEST(example_module_gpio, test_lifecycle)
-{
+ZTEST(example_module_gpio, test_lifecycle) {
     module_status_t status;
 
     /* 初始化 */
@@ -150,8 +140,7 @@ ZTEST(example_module_gpio, test_lifecycle)
 /**
  * @brief 测试设置 LED 状态
  */
-ZTEST(example_module_gpio, test_set_led)
-{
+ZTEST(example_module_gpio, test_set_led) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -170,8 +159,7 @@ ZTEST(example_module_gpio, test_set_led)
 /**
  * @brief 测试切换 LED 状态
  */
-ZTEST(example_module_gpio, test_toggle_led)
-{
+ZTEST(example_module_gpio, test_toggle_led) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -193,8 +181,7 @@ ZTEST(example_module_gpio, test_toggle_led)
 /**
  * @brief 测试获取按键状态
  */
-ZTEST(example_module_gpio, test_get_button)
-{
+ZTEST(example_module_gpio, test_get_button) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -204,7 +191,7 @@ ZTEST(example_module_gpio, test_get_button)
 
     /* 再获取一次确认稳定 */
     bool pressed2 = example_module_gpio_get_button();
-    (void)pressed2;
+    (void) pressed2;
 
     example_module_gpio_stop();
     example_module_gpio_shutdown();
@@ -213,8 +200,7 @@ ZTEST(example_module_gpio, test_get_button)
 /**
  * @brief 测试设置闪烁间隔
  */
-ZTEST(example_module_gpio, test_set_blink_interval)
-{
+ZTEST(example_module_gpio, test_set_blink_interval) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -237,13 +223,12 @@ ZTEST(example_module_gpio, test_set_blink_interval)
 /**
  * @brief 测试控制命令 - 设置 LED
  */
-ZTEST(example_module_gpio, test_control_set_led)
-{
+ZTEST(example_module_gpio, test_control_set_led) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
     uint8_t led_on = 1;
-    int ret = example_module_gpio_control(GPIO_CMD_SET_LED, &led_on);
+    int     ret = example_module_gpio_control(GPIO_CMD_SET_LED, &led_on);
     zassert_equal(ret, 0, "SET_LED 命令应返回 0");
 
     uint8_t led_off = 0;
@@ -257,8 +242,7 @@ ZTEST(example_module_gpio, test_control_set_led)
 /**
  * @brief 测试控制命令 - 切换 LED
  */
-ZTEST(example_module_gpio, test_control_toggle_led)
-{
+ZTEST(example_module_gpio, test_control_toggle_led) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
@@ -276,13 +260,12 @@ ZTEST(example_module_gpio, test_control_toggle_led)
 /**
  * @brief 测试控制命令 - 获取按键
  */
-ZTEST(example_module_gpio, test_control_get_button)
-{
+ZTEST(example_module_gpio, test_control_get_button) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
     uint8_t button_state = 0;
-    int ret = example_module_gpio_control(GPIO_CMD_GET_BUTTON, &button_state);
+    int     ret = example_module_gpio_control(GPIO_CMD_GET_BUTTON, &button_state);
     zassert_equal(ret, 0, "GET_BUTTON 命令应返回 0");
     /* button_state 应为 0 或 1 */
 
@@ -293,13 +276,12 @@ ZTEST(example_module_gpio, test_control_get_button)
 /**
  * @brief 测试控制命令 - 设置闪烁
  */
-ZTEST(example_module_gpio, test_control_set_blink)
-{
+ZTEST(example_module_gpio, test_control_set_blink) {
     example_module_gpio_init(NULL);
     example_module_gpio_start();
 
     uint32_t interval = 150;
-    int ret = example_module_gpio_control(GPIO_CMD_SET_BLINK, &interval);
+    int      ret = example_module_gpio_control(GPIO_CMD_SET_BLINK, &interval);
     zassert_equal(ret, 0, "SET_BLINK 命令应返回 0");
 
     example_module_gpio_stop();
@@ -309,8 +291,7 @@ ZTEST(example_module_gpio, test_control_set_blink)
 /**
  * @brief 测试无效控制命令
  */
-ZTEST(example_module_gpio, test_control_invalid)
-{
+ZTEST(example_module_gpio, test_control_invalid) {
     example_module_gpio_init(NULL);
 
     int ret = example_module_gpio_control(9999, NULL);
@@ -326,8 +307,7 @@ ZTEST(example_module_gpio, test_control_invalid)
 /**
  * @brief 测试事件处理 - NULL
  */
-ZTEST(example_module_gpio, test_event_null)
-{
+ZTEST(example_module_gpio, test_event_null) {
     example_module_gpio_on_event(NULL, NULL);
     /* 不应崩溃 */
 
@@ -342,14 +322,12 @@ ZTEST(example_module_gpio, test_event_null)
 /**
  * @brief 测试事件类型常量
  */
-ZTEST(example_module_gpio, test_event_types)
-{
+ZTEST(example_module_gpio, test_event_types) {
     /* 验证事件类型定义正确 */
     zassert_true(EVENT_TYPE_GPIO_BUTTON_PRESSED > 0, "按键按下事件类型应 > 0");
     zassert_true(EVENT_TYPE_GPIO_BUTTON_RELEASED > 0, "按键释放事件类型应 > 0");
     zassert_true(EVENT_TYPE_GPIO_LED_STATE > 0, "LED状态事件类型应 > 0");
-    zassert_true(EVENT_TYPE_GPIO_BUTTON_PRESSED != EVENT_TYPE_GPIO_BUTTON_RELEASED,
-                 "按下和释放事件类型应不同");
+    zassert_true(EVENT_TYPE_GPIO_BUTTON_PRESSED != EVENT_TYPE_GPIO_BUTTON_RELEASED, "按下和释放事件类型应不同");
 }
 
 /* =============================================================================
@@ -359,9 +337,8 @@ ZTEST(example_module_gpio, test_event_types)
 /**
  * @brief 测试获取接口
  */
-ZTEST(example_module_gpio, test_get_interface)
-{
-    const module_interface_t *iface = example_module_gpio_get_interface();
+ZTEST(example_module_gpio, test_get_interface) {
+    const module_interface_t* iface = example_module_gpio_get_interface();
 
     zassert_not_null(iface, "接口不应为 NULL");
     zassert_true(strcmp(iface->name, "example_module_gpio") == 0, "接口名称应匹配");

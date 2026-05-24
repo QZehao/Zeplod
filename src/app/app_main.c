@@ -597,12 +597,8 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 static void app_print_banner(void) {
 #if APP_CONFIG_ENABLE_BANNER
     printk(APP_BANNER_LOGO);
-    printk(APP_BANNER_INFO,
-           "Version:", APP_VERSION_STRING,
-           "Target:", BUILD_TARGET,
-           "Git:", GIT_BRANCH, GIT_COMMIT_HASH,
-           "Build:", BUILD_TIMESTAMP,
-           "Ver code:", (unsigned int) APP_VERSION_CODE,
+    printk(APP_BANNER_INFO, "Version:", APP_VERSION_STRING, "Target:", BUILD_TARGET, "Git:", GIT_BRANCH,
+           GIT_COMMIT_HASH, "Build:", BUILD_TIMESTAMP, "Ver code:", (unsigned int) APP_VERSION_CODE,
            "Build type:", BUILD_TYPE);
     printk("\r\n");
 #endif
@@ -628,7 +624,7 @@ int main(void) {
 
     /* 主循环 - 事件驱动设计中，此处大部分时间空闲 */
     while (1) {
-            /* 睡眠以节省功耗 */
+        /* 睡眠以节省功耗 */
         k_msleep(1000);
 
         /* 如需可在此处添加主循环任务 */

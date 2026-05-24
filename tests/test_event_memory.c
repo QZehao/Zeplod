@@ -290,8 +290,7 @@ ZTEST(test_event_memory, test_slab_stats_after_allocation) {
     event_get_slab_stats(&stats_after);
 
 #if EVENT_SLAB_ENABLED
-    zassert_true(stats_after.normal_used >= stats_before.normal_used + allocated,
-                 "已用块应增加");
+    zassert_true(stats_after.normal_used >= stats_before.normal_used + allocated, "已用块应增加");
 #endif
 
     /* 释放事件 */
@@ -308,7 +307,7 @@ ZTEST(test_event_memory, test_slab_stats_after_allocation) {
 
 #if defined(CONFIG_EVENT_SLAB_EXHAUSTED_CB) && (CONFIG_EVENT_SLAB_EXHAUSTED_CB == 1)
 
-static int g_exhausted_callback_count = 0;
+static int              g_exhausted_callback_count = 0;
 static event_priority_t g_last_exhausted_priority = 0;
 
 static void test_exhausted_callback(event_priority_t priority, const char* slab_name) {
@@ -427,7 +426,7 @@ ZTEST(test_event_memory, test_event_create_with_data_rt_integration) {
     uint8_t  data[32];
 
     for (int i = 0; i < 32; i++) {
-        data[i] = (uint8_t)(i * 7);
+        data[i] = (uint8_t) (i * 7);
     }
 
     event = event_create_with_data_rt(220, EVENT_PRIORITY_HIGH, data, sizeof(data));
@@ -468,7 +467,7 @@ ZTEST(test_event_memory, test_mass_allocation) {
     /* 检查 Slab 状态 */
     event_slab_stats_t stats;
     event_get_slab_stats(&stats);
-    zassert_true(stats.normal_used >= (uint32_t)allocated, "已用块数应正确");
+    zassert_true(stats.normal_used >= (uint32_t) allocated, "已用块数应正确");
 #endif
 
     /* 全部释放 */
@@ -492,21 +491,26 @@ ZTEST(test_event_memory, test_mixed_priority_allocation) {
 
     /* 混合优先级分配 */
     events[allocated] = event_create_rt(240, EVENT_PRIORITY_CRITICAL);
-    if (events[allocated] != NULL) allocated++;
+    if (events[allocated] != NULL)
+        allocated++;
 
     events[allocated] = event_create_rt(241, EVENT_PRIORITY_HIGH);
-    if (events[allocated] != NULL) allocated++;
+    if (events[allocated] != NULL)
+        allocated++;
 
     events[allocated] = event_create_rt(242, EVENT_PRIORITY_NORMAL);
-    if (events[allocated] != NULL) allocated++;
+    if (events[allocated] != NULL)
+        allocated++;
 
     events[allocated] = event_create_rt(243, EVENT_PRIORITY_LOW);
-    if (events[allocated] != NULL) allocated++;
+    if (events[allocated] != NULL)
+        allocated++;
 
     /* 再分配一些 */
     for (int i = 0; i < 8; i++) {
         events[allocated] = event_create_rt(250 + i, EVENT_PRIORITY_NORMAL);
-        if (events[allocated] != NULL) allocated++;
+        if (events[allocated] != NULL)
+            allocated++;
     }
 
     /* 全部释放 */

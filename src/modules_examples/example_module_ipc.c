@@ -98,8 +98,7 @@ int example_module_ipc_init(void* config) {
     memset(&g_mod_ipc, 0, sizeof(g_mod_ipc));
 
     /* 线程栈大小和队列大小通过 Kconfig 配置，无需传入参数 */
-    int ret =
-        ipc_service_init(&g_mod_ipc.ipc, "mod_ipc_svc", mod_ipc_service_func, CONFIG_THREAD_IPC_SERVICE_PRIORITY);
+    int ret = ipc_service_init(&g_mod_ipc.ipc, "mod_ipc_svc", mod_ipc_service_func, CONFIG_THREAD_IPC_SERVICE_PRIORITY);
 
     if (ret != 0) {
         LOG_ERR("ipc_service_init failed: %d", ret);
@@ -127,7 +126,7 @@ int example_module_ipc_start(void) {
         int ret =
             ipc_service_init(&g_mod_ipc.ipc, “mod_ipc_svc”, mod_ipc_service_func, CONFIG_THREAD_IPC_SERVICE_PRIORITY);
         if (ret != 0) {
-            LOG_ERR(“ipc_service_init (restart) failed: %d”, ret);
+            LOG_ERR(“ipc_service_init(restart) failed : % d”, ret);
             return ret;
         }
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE)

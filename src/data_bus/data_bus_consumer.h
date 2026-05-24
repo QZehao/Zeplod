@@ -33,7 +33,7 @@ extern "C" {
  * @param ch    通道
  * @param block 待分发的块（bus 持有 ref_count == 1）
  */
-void data_bus_consumer_dispatch(data_bus_channel_t *ch, data_bus_block_t *block);
+void data_bus_consumer_dispatch(data_bus_channel_t* ch, data_bus_block_t* block);
 
 #ifdef __cplusplus
 }

@@ -23,10 +23,10 @@
  *
  */
 
-#include "app_config.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
+#include "app_config.h"
 
 #include "ipc_service.h"
 

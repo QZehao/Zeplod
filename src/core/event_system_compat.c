@@ -14,8 +14,8 @@
  */
 
 #include "event_system_compat.h"
-#include <errno.h>
 #include <zephyr/logging/log.h>
+#include <errno.h>
 #include <string.h>
 #include "event_system.h"
 
@@ -28,12 +28,18 @@ LOG_MODULE_REGISTER(event_system_compat, CONFIG_SYS_LOG_LEVEL);
 #if !EVENT_COMPAT_USE_PRO
 static inline int event_status_to_errno(event_status_t status) {
     switch (status) {
-    case EVENT_OK: return 0;
-    case EVENT_ERR_NO_MEM: return -ENOMEM;
-    case EVENT_ERR_INVALID_ARG: return -EINVAL;
-    case EVENT_ERR_TIMEOUT: return -ETIMEDOUT;
-    case EVENT_ERR_NOT_RUNNING: return -ECANCELED;
-    default: return -EIO;
+    case EVENT_OK:
+        return 0;
+    case EVENT_ERR_NO_MEM:
+        return -ENOMEM;
+    case EVENT_ERR_INVALID_ARG:
+        return -EINVAL;
+    case EVENT_ERR_TIMEOUT:
+        return -ETIMEDOUT;
+    case EVENT_ERR_NOT_RUNNING:
+        return -ECANCELED;
+    default:
+        return -EIO;
     }
 }
 #endif

@@ -402,7 +402,7 @@ static bool event_slab_ptr_in_pool(const void* ptr, const event_slab_meta_t* met
     }
 
     uintptr_t block = (uintptr_t) ptr;
-    uintptr_t base  = (uintptr_t) meta->slab->buffer;
+    uintptr_t base = (uintptr_t) meta->slab->buffer;
     size_t    total = meta->block_size * meta->num_blocks;
 
     if (block < base || block >= (base + total)) {
@@ -722,7 +722,8 @@ event_status_t event_system_stop(void) {
 
     if (atomic_get(&g_event_system.running) == 0) {
         /* If a previous stop failed after clearing running, this remains idempotent.
-         * API docs call out that dispatcher termination is not guaranteed in that fault state.
+         * API docs call out that
+         * dispatcher termination is not guaranteed in that fault state.
          */
         event_system_lifecycle_unlock();
         return EVENT_OK;

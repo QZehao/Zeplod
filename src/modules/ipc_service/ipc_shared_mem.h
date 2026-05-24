@@ -136,7 +136,7 @@ typedef struct ipc_shm_block {
 typedef struct ipc_shm_pool {
     ipc_shm_block_t blocks[CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE]; /**< 静态分配的块数组 */
     uint8_t         mem_pool[CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE *
-                     CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE]; /**< 实际内存池 */
+                             CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE]; /**< 实际内存池 */
     struct k_mutex  pool_lock;                                                 /**< 保护池分配的互斥锁 */
     uint32_t        alloc_counter;                                             /**< 分配计数器（用于生成唯一 ID） */
     atomic_t        active_count; /**< 当前活跃（已分配）块数量（原子：release 末路与 alloc 无需反向嵌套锁） */

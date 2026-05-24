@@ -32,9 +32,9 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include "event_system.h"
 #include "lock_order.h"
 #include "state_machine.h"
-#include "event_system.h"
 
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
 
@@ -114,8 +114,9 @@ static module_manager_cb_t g_module_mgr;
 static atomic_t g_shutting_down = ATOMIC_INIT(0);
 
 /* module_manager_foreach / dump_info 使用栈上快照；若超出典型线程栈（4KB）的一半，编译报错提示调整配置 */
-BUILD_ASSERT(sizeof(module_info_t) * CONFIG_MAX_MODULES <= 2048,
-             "module_manager snapshot too large for stack; reduce CONFIG_MAX_MODULES or CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS");
+BUILD_ASSERT(
+    sizeof(module_info_t) * CONFIG_MAX_MODULES <= 2048,
+    "module_manager snapshot too large for stack; reduce CONFIG_MAX_MODULES or CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS");
 
 /* =============================================================================
  * 前置声明
@@ -431,7 +432,7 @@ static bool mm_adj_matrix_test(const uint32_t adj[][MM_ADJ_ROW_WORDS], int row, 
  * 每一步在入度为 0 的节点中取 priority 最小者。若仍有环则退回仅按 priority 排序。
  */
 static int dependency_order_start_batch(start_order_entry_t* entries, int n) {
-    bool     valid[CONFIG_MAX_MODULES];
+    bool valid[CONFIG_MAX_MODULES];
     uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
@@ -891,10 +892,9 @@ int module_manager_shutdown(void) {
         module_info_t* info = &g_module_mgr.modules[i];
 
         if (info->event_subscription_count > 0U) {
-            event_type_t types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
-            uint32_t     ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
-            const uint8_t sub_n =
-                module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
+            event_type_t  types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+            uint32_t      ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+            const uint8_t sub_n = module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
 
             module_manager_unlock();
             module_event_unsubscribe_batch(types, ids, sub_n);
@@ -1172,8 +1172,8 @@ int module_manager_unregister(uint32_t module_id) {
         }
     }
 
-    event_type_t types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
-    uint32_t     ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+    event_type_t  types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
+    uint32_t      ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
     const uint8_t sub_n = module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
 
     module_manager_unlock();

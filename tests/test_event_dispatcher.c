@@ -16,8 +16,8 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "event_system.h"
 #include "event_dispatcher.h"
+#include "event_system.h"
 
 LOG_MODULE_REGISTER(test_event_dispatcher);
 
@@ -91,7 +91,7 @@ ZTEST(event_dispatcher, test_set_filter) {
 
     /* 定义过滤函数：只允许特定类型的事件 */
     bool test_filter(const event_t* event, void* user_data) {
-        (void)user_data;
+        (void) user_data;
         filter_call_count++;
         return event->type == 100; /* 只允许 type=100 的事件 */
     }
@@ -143,8 +143,7 @@ ZTEST(event_dispatcher, test_process_all) {
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
 
     for (int i = 0; i < 5; i++) {
-        zassert_equal(event_publish_copy((event_type_t)(201 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK,
-                      NULL);
+        zassert_equal(event_publish_copy((event_type_t) (201 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
     }
 
     processed = event_dispatcher_process_all(0);
@@ -204,13 +203,11 @@ ZTEST(event_dispatcher, test_stats_comprehensive) {
 }
 
 ZTEST(event_dispatcher, test_custom_config) {
-    dispatcher_config_t config = {
-        .stack_size = 1024,
-        .priority = 7,
-        .thread_name = "test_disp",
-        .enable_stats = true,
-        .max_events_per_cycle = 50
-    };
+    dispatcher_config_t config = {.stack_size = 1024,
+                                  .priority = 7,
+                                  .thread_name = "test_disp",
+                                  .enable_stats = true,
+                                  .max_events_per_cycle = 50};
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -228,13 +225,11 @@ ZTEST(event_dispatcher, test_custom_config) {
  * @brief 测试无效配置参数 - 栈大小过小
  */
 ZTEST(event_dispatcher, test_invalid_config_stack_too_small) {
-    dispatcher_config_t config = {
-        .stack_size = 128, /* 小于 EVENT_DISPATCHER_MIN_STACK_SIZE (256) */
-        .priority = 5,
-        .thread_name = "test_disp",
-        .enable_stats = true,
-        .max_events_per_cycle = 100
-    };
+    dispatcher_config_t config = {.stack_size = 128, /* 小于 EVENT_DISPATCHER_MIN_STACK_SIZE (256) */
+                                  .priority = 5,
+                                  .thread_name = "test_disp",
+                                  .enable_stats = true,
+                                  .max_events_per_cycle = 100};
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -248,13 +243,11 @@ ZTEST(event_dispatcher, test_invalid_config_stack_too_small) {
  * @brief 测试无效配置参数 - 栈大小过大
  */
 ZTEST(event_dispatcher, test_invalid_config_stack_too_large) {
-    dispatcher_config_t config = {
-        .stack_size = 128 * 1024, /* 超过 EVENT_DISPATCHER_MAX_STACK_SIZE (64KB) */
-        .priority = 5,
-        .thread_name = "test_disp",
-        .enable_stats = true,
-        .max_events_per_cycle = 100
-    };
+    dispatcher_config_t config = {.stack_size = 128 * 1024, /* 超过 EVENT_DISPATCHER_MAX_STACK_SIZE (64KB) */
+                                  .priority = 5,
+                                  .thread_name = "test_disp",
+                                  .enable_stats = true,
+                                  .max_events_per_cycle = 100};
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -268,21 +261,17 @@ ZTEST(event_dispatcher, test_invalid_config_stack_too_large) {
  * @brief 测试无效配置参数 - 优先级超出范围
  */
 ZTEST(event_dispatcher, test_invalid_config_priority_out_of_range) {
-    dispatcher_config_t config_low = {
-        .stack_size = 1024,
-        .priority = -1, /* 小于 EVENT_DISPATCHER_MIN_PRIORITY (0) */
-        .thread_name = "test_disp",
-        .enable_stats = true,
-        .max_events_per_cycle = 100
-    };
+    dispatcher_config_t config_low = {.stack_size = 1024,
+                                      .priority = -1, /* 小于 EVENT_DISPATCHER_MIN_PRIORITY (0) */
+                                      .thread_name = "test_disp",
+                                      .enable_stats = true,
+                                      .max_events_per_cycle = 100};
 
-    dispatcher_config_t config_high = {
-        .stack_size = 1024,
-        .priority = 20, /* 大于 EVENT_DISPATCHER_MAX_PRIORITY (15) */
-        .thread_name = "test_disp",
-        .enable_stats = true,
-        .max_events_per_cycle = 100
-    };
+    dispatcher_config_t config_high = {.stack_size = 1024,
+                                       .priority = 20, /* 大于 EVENT_DISPATCHER_MAX_PRIORITY (15) */
+                                       .thread_name = "test_disp",
+                                       .enable_stats = true,
+                                       .max_events_per_cycle = 100};
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -449,8 +438,8 @@ ZTEST(event_dispatcher, test_filter_block_all) {
 
     /* 设置一个总是返回 false 的过滤器 */
     bool block_all_filter(const event_t* event, void* user_data) {
-        (void)event;
-        (void)user_data;
+        (void) event;
+        (void) user_data;
         dropped_count++;
         return false;
     }
@@ -562,7 +551,7 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
     zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
 
     for (int i = 0; i < 10; i++) {
-        zassert_equal(event_publish_copy((event_type_t)(220 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
+        zassert_equal(event_publish_copy((event_type_t) (220 + i), EVENT_PRIORITY_NORMAL, "test", 4), EVENT_OK, NULL);
     }
 
     processed = event_dispatcher_process_all(3);
@@ -572,12 +561,12 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
-static void event_dispatcher_after_each(void *fixture)
-{
-    (void)fixture;
+static void event_dispatcher_after_each(void* fixture) {
+    (void) fixture;
     /* 完整 shutdown：清空已注册事件类型与分发器状态。仅 stop 不会清理类型表，
-     * 否则本套件注册的 type（如 100/101/210）会污染后续 test_event_system 等套件。 */
-    (void)event_system_shutdown();
+     * 否则本套件注册的 type（如
+     * 100/101/210）会污染后续 test_event_system 等套件。 */
+    (void) event_system_shutdown();
 }
 
 ZTEST_SUITE(event_dispatcher, NULL, NULL, NULL, event_dispatcher_after_each, NULL);

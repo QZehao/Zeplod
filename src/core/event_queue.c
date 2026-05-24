@@ -20,11 +20,11 @@
  */
 
 #include "event_queue.h"
-#include <errno.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
+#include <errno.h>
 
 LOG_MODULE_REGISTER(event_queue, CONFIG_SYS_LOG_LEVEL);
 
@@ -57,7 +57,7 @@ typedef struct {
 
 /* 静态队列控制块数组，用于跟踪统计信息 */
 /* SIL-2: 增加数组大小以支持更多测试场景和并发队列 */
-#define MAX_QUEUE_CB_ENTRIES 32
+#define MAX_QUEUE_CB_ENTRIES              32
 
 /** DROP_LOWEST purge 时每处理若干条消息后短暂开中断，避免长时间屏蔽 ISR */
 #define EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH 16U

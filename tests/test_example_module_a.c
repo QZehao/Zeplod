@@ -12,14 +12,14 @@
  *
  */
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include <zephyr/kernel.h>
 #include <string.h>
-#include "event_system.h"
 #include "event_dispatcher.h"
-#include "module_manager.h"
+#include "event_system.h"
 #include "example_module_a.h"
+#include "module_manager.h"
 
 LOG_MODULE_REGISTER(test_example_module_a);
 
@@ -27,8 +27,7 @@ LOG_MODULE_REGISTER(test_example_module_a);
  * 测试夹具 (Test Fixtures)
  * ============================================================================= */
 
-static void *test_suite_setup(void)
-{
+static void* test_suite_setup(void) {
     int ret;
 
     /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
@@ -54,9 +53,8 @@ static void *test_suite_setup(void)
     return NULL;
 }
 
-static void test_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void test_suite_teardown(void* fixture) {
+    (void) fixture;
     module_manager_shutdown();
     event_dispatcher_stop();
     event_system_stop();
@@ -67,19 +65,23 @@ static void test_suite_teardown(void *fixture)
  * ============================================================================= */
 
 /* 简单的存根模块，用于测试模块管理器（使用唯一前缀避免符号冲突）*/
-static int stub_a_init(void *config)
-{
-    (void)config;
+static int stub_a_init(void* config) {
+    (void) config;
     return 0;
 }
 
-static int stub_a_start(void) { return 0; }
-static int stub_a_stop(void) { return 0; }
-static int stub_a_shutdown(void) { return 0; }
-static void stub_a_on_event(const event_t *event, void *user_data)
-{
-    (void)event;
-    (void)user_data;
+static int stub_a_start(void) {
+    return 0;
+}
+static int stub_a_stop(void) {
+    return 0;
+}
+static int stub_a_shutdown(void) {
+    return 0;
+}
+static void stub_a_on_event(const event_t* event, void* user_data) {
+    (void) event;
+    (void) user_data;
 }
 
 DECLARE_MODULE_INTERFACE_MINIMAL(stub_a);
@@ -89,13 +91,13 @@ DECLARE_MODULE_INTERFACE_MINIMAL(stub_a);
  * ============================================================================= */
 
 /* 控制命令 */
-#define CMD_SET_RATE  1
-#define CMD_GET_RATE  2
-#define CMD_RESET     3
+#define CMD_SET_RATE 1
+#define CMD_GET_RATE 2
+#define CMD_RESET    3
 
 /* 传感器采样数据类型 */
 typedef struct {
-    int32_t value;
+    int32_t  value;
     uint32_t timestamp;
 } sensor_sample_t;
 
@@ -106,8 +108,7 @@ typedef struct {
 /**
  * @brief 测试模块初始化 - 空配置
  */
-ZTEST(example_module_a, test_init_with_null_config)
-{
+ZTEST(example_module_a, test_init_with_null_config) {
     int ret;
 
     /* 使用 NULL 配置初始化 */
@@ -122,12 +123,8 @@ ZTEST(example_module_a, test_init_with_null_config)
 /**
  * @brief 测试模块初始化 - 有效配置
  */
-ZTEST(example_module_a, test_init_with_valid_config)
-{
-    example_module_a_config_t config = {
-        .sample_rate_ms = 50,
-        .buffer_size = 128,
-        .enable_filtering = false};
+ZTEST(example_module_a, test_init_with_valid_config) {
+    example_module_a_config_t config = {.sample_rate_ms = 50, .buffer_size = 128, .enable_filtering = false};
 
     /* 先关闭模块（如果之前已启动） */
     example_module_a_stop();
@@ -143,12 +140,10 @@ ZTEST(example_module_a, test_init_with_valid_config)
 /**
  * @brief 测试模块初始化 - 无效配置（sample_rate_ms = 0）
  */
-ZTEST(example_module_a, test_init_with_invalid_config)
-{
-    example_module_a_config_t config = {
-        .sample_rate_ms = 0, /* 无效值 */
-        .buffer_size = 128,
-        .enable_filtering = false};
+ZTEST(example_module_a, test_init_with_invalid_config) {
+    example_module_a_config_t config = {.sample_rate_ms = 0, /* 无效值 */
+                                        .buffer_size = 128,
+                                        .enable_filtering = false};
 
     /* 模块应能初始化，但后续操作会用到默认值 */
     int ret = example_module_a_init(&config);
@@ -162,8 +157,7 @@ ZTEST(example_module_a, test_init_with_invalid_config)
 /**
  * @brief 测试模块启动
  */
-ZTEST(example_module_a, test_start)
-{
+ZTEST(example_module_a, test_start) {
     /* 先初始化 */
     example_module_a_init(NULL);
 
@@ -181,8 +175,7 @@ ZTEST(example_module_a, test_start)
 /**
  * @brief 测试模块重复启动
  */
-ZTEST(example_module_a, test_start_twice)
-{
+ZTEST(example_module_a, test_start_twice) {
     example_module_a_init(NULL);
 
     /* 第一次启动 */
@@ -200,8 +193,7 @@ ZTEST(example_module_a, test_start_twice)
 /**
  * @brief 测试模块停止
  */
-ZTEST(example_module_a, test_stop)
-{
+ZTEST(example_module_a, test_stop) {
     example_module_a_init(NULL);
     example_module_a_start();
 
@@ -217,8 +209,7 @@ ZTEST(example_module_a, test_stop)
 /**
  * @brief 测试模块停止后重新启动
  */
-ZTEST(example_module_a, test_restart)
-{
+ZTEST(example_module_a, test_restart) {
     example_module_a_init(NULL);
     example_module_a_start();
     example_module_a_stop();
@@ -241,12 +232,11 @@ ZTEST(example_module_a, test_restart)
 /**
  * @brief 测试设置采样率
  */
-ZTEST(example_module_a, test_control_set_rate)
-{
+ZTEST(example_module_a, test_control_set_rate) {
     example_module_a_init(NULL);
 
     uint32_t rate = 200;
-    int ret = example_module_a_control(CMD_SET_RATE, &rate);
+    int      ret = example_module_a_control(CMD_SET_RATE, &rate);
     zassert_equal(ret, 0, "设置采样率应返回 0");
 
     /* 验证 */
@@ -261,17 +251,13 @@ ZTEST(example_module_a, test_control_set_rate)
 /**
  * @brief 测试获取采样率
  */
-ZTEST(example_module_a, test_control_get_rate)
-{
-    example_module_a_config_t config = {
-        .sample_rate_ms = 150,
-        .buffer_size = 256,
-        .enable_filtering = true};
+ZTEST(example_module_a, test_control_get_rate) {
+    example_module_a_config_t config = {.sample_rate_ms = 150, .buffer_size = 256, .enable_filtering = true};
 
     example_module_a_init(&config);
 
     uint32_t rate = 0;
-    int ret = example_module_a_control(CMD_GET_RATE, &rate);
+    int      ret = example_module_a_control(CMD_GET_RATE, &rate);
     zassert_equal(ret, 0, "获取采样率应返回 0");
     zassert_equal(rate, 150, "采样率应匹配配置");
 
@@ -281,8 +267,7 @@ ZTEST(example_module_a, test_control_get_rate)
 /**
  * @brief 测试重置模块
  */
-ZTEST(example_module_a, test_control_reset)
-{
+ZTEST(example_module_a, test_control_reset) {
     example_module_a_init(NULL);
     example_module_a_start();
 
@@ -304,8 +289,7 @@ ZTEST(example_module_a, test_control_reset)
 /**
  * @brief 测试无效命令
  */
-ZTEST(example_module_a, test_control_invalid_cmd)
-{
+ZTEST(example_module_a, test_control_invalid_cmd) {
     example_module_a_init(NULL);
 
     int ret = example_module_a_control(9999, NULL); /* 无效命令 */
@@ -317,8 +301,7 @@ ZTEST(example_module_a, test_control_invalid_cmd)
 /**
  * @brief 测试 NULL 参数
  */
-ZTEST(example_module_a, test_control_null_arg)
-{
+ZTEST(example_module_a, test_control_null_arg) {
     example_module_a_init(NULL);
 
     /* SET_RATE 需要非 NULL 参数 */
@@ -339,9 +322,8 @@ ZTEST(example_module_a, test_control_null_arg)
 /**
  * @brief 测试获取接口
  */
-ZTEST(example_module_a, test_get_interface)
-{
-    const module_interface_t *iface = example_module_a_get_interface();
+ZTEST(example_module_a, test_get_interface) {
+    const module_interface_t* iface = example_module_a_get_interface();
 
     zassert_not_null(iface, "接口不应为 NULL");
     zassert_true(strcmp(iface->name, "example_module_a") == 0, "接口名称应匹配");
@@ -351,8 +333,7 @@ ZTEST(example_module_a, test_get_interface)
 /**
  * @brief 测试获取数据 - 空缓冲区
  */
-ZTEST(example_module_a, test_get_data_null)
-{
+ZTEST(example_module_a, test_get_data_null) {
     example_module_a_init(NULL);
     example_module_a_start();
 
@@ -372,12 +353,10 @@ ZTEST(example_module_a, test_get_data_null)
 /**
  * @brief 测试获取数据 - 正常运行
  */
-ZTEST(example_module_a, test_get_data_normal)
-{
-    example_module_a_config_t config = {
-        .sample_rate_ms = 10, /* 10ms 采样率，加快测试 */
-        .buffer_size = 256,
-        .enable_filtering = true};
+ZTEST(example_module_a, test_get_data_normal) {
+    example_module_a_config_t config = {.sample_rate_ms = 10, /* 10ms 采样率，加快测试 */
+                                        .buffer_size = 256,
+                                        .enable_filtering = true};
 
     example_module_a_init(&config);
     example_module_a_start();
@@ -387,7 +366,7 @@ ZTEST(example_module_a, test_get_data_normal)
 
     /* 尝试读取数据 */
     sensor_sample_t samples[10];
-    int ret = example_module_a_get_data(samples, sizeof(samples));
+    int             ret = example_module_a_get_data(samples, sizeof(samples));
 
     /* 至少应该有一些数据 */
     zassert_true(ret >= 0, "获取数据应返回 >= 0");
@@ -399,8 +378,7 @@ ZTEST(example_module_a, test_get_data_normal)
 /**
  * @brief 测试设置采样率 API
  */
-ZTEST(example_module_a, test_set_rate)
-{
+ZTEST(example_module_a, test_set_rate) {
     example_module_a_init(NULL);
 
     /* 有效采样率 */
@@ -421,8 +399,7 @@ ZTEST(example_module_a, test_set_rate)
 /**
  * @brief 测试事件处理 - SENSOR_CONFIG 事件
  */
-ZTEST(example_module_a, test_event_sensor_config)
-{
+ZTEST(example_module_a, test_event_sensor_config) {
     example_module_a_init(NULL);
     example_module_a_start();
 
@@ -445,8 +422,7 @@ ZTEST(example_module_a, test_event_sensor_config)
 /**
  * @brief 测试事件处理 - NULL 事件
  */
-ZTEST(example_module_a, test_event_null)
-{
+ZTEST(example_module_a, test_event_null) {
     /* 传入 NULL 应不崩溃 */
     example_module_a_on_event(NULL, NULL);
     /* 不应崩溃 */
@@ -455,8 +431,7 @@ ZTEST(example_module_a, test_event_null)
 /**
  * @brief 测试事件处理 - NULL user_data
  */
-ZTEST(example_module_a, test_event_null_user_data)
-{
+ZTEST(example_module_a, test_event_null_user_data) {
     event_t event = {0};
     event.type = EVENT_TYPE_SENSOR_CONFIG;
     event.priority = EVENT_PRIORITY_NORMAL;
@@ -474,8 +449,7 @@ ZTEST(example_module_a, test_event_null_user_data)
 /**
  * @brief 测试完整生命周期
  */
-ZTEST(example_module_a, test_lifecycle)
-{
+ZTEST(example_module_a, test_lifecycle) {
     module_status_t status;
 
     /* 1. 初始状态（刚初始化后） */
@@ -502,8 +476,7 @@ ZTEST(example_module_a, test_lifecycle)
 /**
  * @brief 测试未初始化就启动
  */
-ZTEST(example_module_a, test_start_without_init)
-{
+ZTEST(example_module_a, test_start_without_init) {
     /* 先确保处于未初始化状态 */
     example_module_a_shutdown();
 
@@ -515,8 +488,7 @@ ZTEST(example_module_a, test_start_without_init)
 /**
  * @brief 测试重复关闭
  */
-ZTEST(example_module_a, test_shutdown_twice)
-{
+ZTEST(example_module_a, test_shutdown_twice) {
     example_module_a_init(NULL);
     example_module_a_start();
     example_module_a_stop();
@@ -537,8 +509,7 @@ ZTEST(example_module_a, test_shutdown_twice)
 /**
  * @brief 测试并发访问
  */
-ZTEST(example_module_a, test_concurrent_access)
-{
+ZTEST(example_module_a, test_concurrent_access) {
     example_module_a_init(NULL);
     example_module_a_start();
 

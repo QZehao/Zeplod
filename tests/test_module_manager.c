@@ -137,8 +137,7 @@ const module_interface_t counting_stub_interface = {
  * 测试夹具 (Test Fixtures)
  * ============================================================================= */
 
-static void *module_manager_suite_setup(void)
-{
+static void* module_manager_suite_setup(void) {
     int ret;
 
     /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
@@ -154,9 +153,8 @@ static void *module_manager_suite_setup(void)
     return NULL;
 }
 
-static void module_manager_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void module_manager_suite_teardown(void* fixture) {
+    (void) fixture;
     module_manager_shutdown();
 }
 
@@ -165,9 +163,8 @@ static void module_manager_suite_teardown(void *fixture)
  *
  * 确保测试间的状态隔离，即使某个测试失败，也不会影响后续测试。
  */
-static void module_manager_test_teardown(void *fixture)
-{
-    (void)fixture;
+static void module_manager_test_teardown(void* fixture) {
+    (void) fixture;
     /* 直接调用 shutdown，它内部会处理 stop 和清理 */
     module_manager_shutdown();
     /* 重新初始化和启动 */
@@ -230,7 +227,7 @@ ZTEST(module_manager, test_suspend_resume) {
 }
 
 ZTEST(module_manager, test_get_module_info) {
-    uint32_t id = 0U;
+    uint32_t      id = 0U;
     module_info_t info;
 
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, "register 失败");
@@ -276,9 +273,9 @@ ZTEST(module_manager, test_foreach) {
     zassert_equal(module_manager_register(&stub3_interface, NULL, &id3), 0, NULL);
 
     /* 遍历回调 */
-    void count_callback(module_info_t* info, void* user_data) {
-        (void)info;
-        (void)user_data;
+    void count_callback(module_info_t * info, void* user_data) {
+        (void) info;
+        (void) user_data;
         count++;
     }
 
@@ -360,9 +357,9 @@ ZTEST(module_manager, test_set_callback) {
 
     /* 设置回调 */
     void mgr_callback(uint32_t module_id, module_mgr_event_t event, void* user_data) {
-        (void)module_id;
-        (void)event;
-        (void)user_data;
+        (void) module_id;
+        (void) event;
+        (void) user_data;
         callback_count++;
     }
 
@@ -380,4 +377,4 @@ ZTEST(module_manager, test_set_callback) {
 
 /* Zephyr: setup, before_each, after_each, suite_teardown — 每测清理须在 arg5 */
 ZTEST_SUITE(module_manager, NULL, module_manager_suite_setup, NULL, module_manager_test_teardown,
-	    module_manager_suite_teardown);
+            module_manager_suite_teardown);

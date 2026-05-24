@@ -29,8 +29,8 @@
 #include <zephyr/sys/atomic.h>
 #include <errno.h>
 #include <string.h>
-#include "lock_order.h"
 #include "ipc_service.h"
+#include "lock_order.h"
 
 LOG_MODULE_REGISTER(ipc_shm, CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_LOG_LEVEL);
 

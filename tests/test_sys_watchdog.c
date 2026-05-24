@@ -147,15 +147,13 @@ ZTEST(sys_watchdog, test_simulate_expire) {
 }
 
 ZTEST(sys_watchdog, test_custom_config) {
-    wdt_config_t config = {
-        .mode = WDT_MODE_SOFTWARE,
-        .timeout_ms = 1000,
-        .feed_margin_ms = 100,
-        .pre_expire_callback = NULL,
-        .callback_user_data = NULL,
-        .reset_on_expire = false,
-        .name = "test_wdt"
-    };
+    wdt_config_t config = {.mode = WDT_MODE_SOFTWARE,
+                           .timeout_ms = 1000,
+                           .feed_margin_ms = 100,
+                           .pre_expire_callback = NULL,
+                           .callback_user_data = NULL,
+                           .reset_on_expire = false,
+                           .name = "test_wdt"};
 
     /* 使用自定义配置初始化 */
     zassert_equal(sys_wdt_init(&config), 0, "自定义配置初始化应成功");
@@ -170,39 +168,37 @@ ZTEST(sys_watchdog, test_monitor_thread) {
 
     /* 注册当前线程进行监控 */
     k_tid_t my_tid = k_current_get();
-    int ret = sys_wdt_monitor_thread(my_tid, "test_thread", 5000);
+    int     ret = sys_wdt_monitor_thread(my_tid, "test_thread", 5000);
     /* 在 native_posix 上可能不支持，但不应崩溃 */
-    (void)ret;
+    (void) ret;
 
     /* 标记线程存活 */
     ret = sys_wdt_thread_alive(my_tid);
-    (void)ret;
+    (void) ret;
 
     /* 取消监控 */
     ret = sys_wdt_unmonitor_thread(my_tid);
-    (void)ret;
+    (void) ret;
 
     sys_wdt_stop();
 }
 
 ZTEST(sys_watchdog, test_hardware_watchdog_init) {
-    wdt_config_t hw_config = {
-        .mode = WDT_MODE_HARDWARE,
-        .timeout_ms = CONFIG_SYS_WATCHDOG_TIMEOUT_MS,
-        .feed_margin_ms = 1000,
-        .pre_expire_callback = NULL,
-        .callback_user_data = NULL,
-        .reset_on_expire = false,
-        .name = "hw_wdt_test"
-    };
+    wdt_config_t hw_config = {.mode = WDT_MODE_HARDWARE,
+                              .timeout_ms = CONFIG_SYS_WATCHDOG_TIMEOUT_MS,
+                              .feed_margin_ms = 1000,
+                              .pre_expire_callback = NULL,
+                              .callback_user_data = NULL,
+                              .reset_on_expire = false,
+                              .name = "hw_wdt_test"};
 
     /* 尝试初始化硬件看门狗 */
     int ret = sys_wdt_init(&hw_config);
-    
+
 #ifdef CONFIG_WATCHDOG
     /* 有硬件看门狗配置时应成功 */
     zassert_equal(ret, 0, "硬件看门狗初始化应成功");
-    
+
     /* 验证模式（如果硬件不可用会降级为软件）*/
     wdt_status_t status = sys_wdt_get_status();
     zassert_true(status == WDT_STATUS_STOPPED, "初始化后应为 STOPPED");

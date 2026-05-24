@@ -42,13 +42,13 @@ extern "C" {
  * 供事件系统、模块管理器等子系统统一表达 init/start/stop/shutdown 阶段。
  */
 typedef enum {
-    ZEP_STATE_UNINIT = 0,  /**< 未初始化 */
-    ZEP_STATE_INITED,      /**< 已初始化，尚未运行 */
-    ZEP_STATE_STARTING,    /**< 正在启动 */
-    ZEP_STATE_RUNNING,     /**< 正在运行 */
-    ZEP_STATE_STOPPING,    /**< 正在停止 */
-    ZEP_STATE_STOPPED,     /**< 已停止，可再次启动 */
-    ZEP_STATE_ERROR,       /**< 错误态，需显式恢复或复位 */
+    ZEP_STATE_UNINIT = 0, /**< 未初始化 */
+    ZEP_STATE_INITED,     /**< 已初始化，尚未运行 */
+    ZEP_STATE_STARTING,   /**< 正在启动 */
+    ZEP_STATE_RUNNING,    /**< 正在运行 */
+    ZEP_STATE_STOPPING,   /**< 正在停止 */
+    ZEP_STATE_STOPPED,    /**< 已停止，可再次启动 */
+    ZEP_STATE_ERROR,      /**< 错误态，需显式恢复或复位 */
 } zepl_state_t;
 
 /** 不透明前向声明；完整定义见下方 struct zepl_state_machine */

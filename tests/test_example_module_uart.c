@@ -12,13 +12,13 @@
  *
  */
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include <zephyr/kernel.h>
 #include <string.h>
 #include "event_system.h"
-#include "module_manager.h"
 #include "example_module_uart.h"
+#include "module_manager.h"
 
 LOG_MODULE_REGISTER(test_example_module_uart);
 
@@ -26,8 +26,7 @@ LOG_MODULE_REGISTER(test_example_module_uart);
  * 测试夹具
  * ============================================================================= */
 
-static void *test_suite_setup(void)
-{
+static void* test_suite_setup(void) {
     int ret;
 
     /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
@@ -43,9 +42,8 @@ static void *test_suite_setup(void)
     return NULL;
 }
 
-static void test_suite_teardown(void *fixture)
-{
-    (void)fixture;
+static void test_suite_teardown(void* fixture) {
+    (void) fixture;
     module_manager_shutdown();
     event_system_stop();
 }
@@ -57,8 +55,7 @@ static void test_suite_teardown(void *fixture)
 /**
  * @brief 测试模块初始化 - NULL 配置
  */
-ZTEST(example_module_uart, test_init_null_config)
-{
+ZTEST(example_module_uart, test_init_null_config) {
     example_module_uart_shutdown();
 
     int ret = example_module_uart_init(NULL);
@@ -71,14 +68,12 @@ ZTEST(example_module_uart, test_init_null_config)
 /**
  * @brief 测试模块初始化 - 有效配置
  */
-ZTEST(example_module_uart, test_init_valid_config)
-{
-    example_module_uart_config_t config = {
-        .device_name = "UART_0",
-        .baudrate = 115200,
-        .rx_buffer_size = 256,
-        .tx_buffer_size = 256,
-        .enable_interrupt = true};
+ZTEST(example_module_uart, test_init_valid_config) {
+    example_module_uart_config_t config = {.device_name = "UART_0",
+                                           .baudrate = 115200,
+                                           .rx_buffer_size = 256,
+                                           .tx_buffer_size = 256,
+                                           .enable_interrupt = true};
 
     int ret = example_module_uart_init(&config);
     zassert_equal(ret, 0, "有效配置初始化应返回 0");
@@ -90,14 +85,12 @@ ZTEST(example_module_uart, test_init_valid_config)
 /**
  * @brief 测试模块初始化 - 禁用中断模式
  */
-ZTEST(example_module_uart, test_init_no_interrupt)
-{
-    example_module_uart_config_t config = {
-        .device_name = "UART_1",
-        .baudrate = 9600,
-        .rx_buffer_size = 128,
-        .tx_buffer_size = 128,
-        .enable_interrupt = false};
+ZTEST(example_module_uart, test_init_no_interrupt) {
+    example_module_uart_config_t config = {.device_name = "UART_1",
+                                           .baudrate = 9600,
+                                           .rx_buffer_size = 128,
+                                           .tx_buffer_size = 128,
+                                           .enable_interrupt = false};
 
     int ret = example_module_uart_init(&config);
     zassert_equal(ret, 0, "禁用中断模式初始化应返回 0");
@@ -112,8 +105,7 @@ ZTEST(example_module_uart, test_init_no_interrupt)
 /**
  * @brief 测试模块启动
  */
-ZTEST(example_module_uart, test_start)
-{
+ZTEST(example_module_uart, test_start) {
     example_module_uart_init(NULL);
 
     int ret = example_module_uart_start();
@@ -129,8 +121,7 @@ ZTEST(example_module_uart, test_start)
 /**
  * @brief 测试模块停止
  */
-ZTEST(example_module_uart, test_stop)
-{
+ZTEST(example_module_uart, test_stop) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -146,8 +137,7 @@ ZTEST(example_module_uart, test_stop)
 /**
  * @brief 测试完整生命周期
  */
-ZTEST(example_module_uart, test_lifecycle)
-{
+ZTEST(example_module_uart, test_lifecycle) {
     module_status_t status;
 
     example_module_uart_init(NULL);
@@ -174,8 +164,7 @@ ZTEST(example_module_uart, test_lifecycle)
 /**
  * @brief 测试发送 - NULL 参数
  */
-ZTEST(example_module_uart, test_send_null)
-{
+ZTEST(example_module_uart, test_send_null) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -189,13 +178,12 @@ ZTEST(example_module_uart, test_send_null)
 /**
  * @brief 测试发送 - 零长度
  */
-ZTEST(example_module_uart, test_send_zero_length)
-{
+ZTEST(example_module_uart, test_send_zero_length) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
     char data[] = "test";
-    int ret = example_module_uart_send(data, 0);
+    int  ret = example_module_uart_send(data, 0);
     zassert_true(ret < 0, "零长度发送应返回错误");
 
     example_module_uart_stop();
@@ -205,8 +193,7 @@ ZTEST(example_module_uart, test_send_zero_length)
 /**
  * @brief 测试发送字符串
  */
-ZTEST(example_module_uart, test_send_string)
-{
+ZTEST(example_module_uart, test_send_string) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -223,13 +210,12 @@ ZTEST(example_module_uart, test_send_string)
 /**
  * @brief 测试发送二进制数据
  */
-ZTEST(example_module_uart, test_send_binary)
-{
+ZTEST(example_module_uart, test_send_binary) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
     uint8_t bin_data[] = {0x01, 0x02, 0x03, 0x04, 0xFF};
-    int ret = example_module_uart_send(bin_data, sizeof(bin_data));
+    int     ret = example_module_uart_send(bin_data, sizeof(bin_data));
     zassert_true(ret >= 0, "发送二进制数据应成功");
 
     example_module_uart_stop();
@@ -243,8 +229,7 @@ ZTEST(example_module_uart, test_send_binary)
 /**
  * @brief 测试接收 - NULL 参数
  */
-ZTEST(example_module_uart, test_receive_null)
-{
+ZTEST(example_module_uart, test_receive_null) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -258,8 +243,7 @@ ZTEST(example_module_uart, test_receive_null)
 /**
  * @brief 测试获取接收计数
  */
-ZTEST(example_module_uart, test_get_rx_count)
-{
+ZTEST(example_module_uart, test_get_rx_count) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -273,8 +257,7 @@ ZTEST(example_module_uart, test_get_rx_count)
 /**
  * @brief 测试清空接收缓冲区
  */
-ZTEST(example_module_uart, test_clear_rx_buffer)
-{
+ZTEST(example_module_uart, test_clear_rx_buffer) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -295,8 +278,7 @@ ZTEST(example_module_uart, test_clear_rx_buffer)
 /**
  * @brief 测试获取统计信息
  */
-ZTEST(example_module_uart, test_get_stats)
-{
+ZTEST(example_module_uart, test_get_stats) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -304,7 +286,7 @@ ZTEST(example_module_uart, test_get_stats)
     example_module_uart_get_stats(&tx_count, &rx_count, &errors);
 
     /* 发送一些数据 */
-    const char *test_data = "stats test";
+    const char* test_data = "stats test";
     example_module_uart_send(test_data, strlen(test_data));
 
     /* 再次获取统计 */
@@ -324,14 +306,11 @@ ZTEST(example_module_uart, test_get_stats)
 /**
  * @brief 测试控制命令 - 发送
  */
-ZTEST(example_module_uart, test_control_send)
-{
+ZTEST(example_module_uart, test_control_send) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
-    example_module_uart_tx_req_t req = {
-        .data = "AT\r\n",
-        .len = 5};
+    example_module_uart_tx_req_t req = {.data = "AT\r\n", .len = 5};
 
     int ret = example_module_uart_control(UART_CMD_SEND, &req);
     zassert_equal(ret, 0, "SEND 命令应返回 0");
@@ -343,13 +322,12 @@ ZTEST(example_module_uart, test_control_send)
 /**
  * @brief 测试控制命令 - 获取接收计数
  */
-ZTEST(example_module_uart, test_control_get_rx_count)
-{
+ZTEST(example_module_uart, test_control_get_rx_count) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
     size_t count = 0;
-    int ret = example_module_uart_control(UART_CMD_GET_RX_COUNT, &count);
+    int    ret = example_module_uart_control(UART_CMD_GET_RX_COUNT, &count);
     zassert_equal(ret, 0, "GET_RX_COUNT 命令应返回 0");
 
     example_module_uart_stop();
@@ -359,8 +337,7 @@ ZTEST(example_module_uart, test_control_get_rx_count)
 /**
  * @brief 测试控制命令 - 清空接收
  */
-ZTEST(example_module_uart, test_control_clear_rx)
-{
+ZTEST(example_module_uart, test_control_clear_rx) {
     example_module_uart_init(NULL);
     example_module_uart_start();
 
@@ -374,8 +351,7 @@ ZTEST(example_module_uart, test_control_clear_rx)
 /**
  * @brief 测试无效控制命令
  */
-ZTEST(example_module_uart, test_control_invalid)
-{
+ZTEST(example_module_uart, test_control_invalid) {
     example_module_uart_init(NULL);
 
     int ret = example_module_uart_control(9999, NULL);
@@ -391,8 +367,7 @@ ZTEST(example_module_uart, test_control_invalid)
 /**
  * @brief 测试事件处理 - NULL
  */
-ZTEST(example_module_uart, test_event_null)
-{
+ZTEST(example_module_uart, test_event_null) {
     example_module_uart_on_event(NULL, NULL);
     /* 不应崩溃 */
 
@@ -407,8 +382,7 @@ ZTEST(example_module_uart, test_event_null)
 /**
  * @brief 测试事件类型定义
  */
-ZTEST(example_module_uart, test_event_types)
-{
+ZTEST(example_module_uart, test_event_types) {
     zassert_true(EVENT_TYPE_UART_RX_DATA > 0, "RX 事件类型应 > 0");
     zassert_true(EVENT_TYPE_UART_TX_COMPLETE > 0, "TX 完成事件类型应 > 0");
     zassert_true(EVENT_TYPE_UART_ERROR > 0, "错误事件类型应 > 0");
@@ -425,9 +399,8 @@ ZTEST(example_module_uart, test_event_types)
 /**
  * @brief 测试获取接口
  */
-ZTEST(example_module_uart, test_get_interface)
-{
-    const module_interface_t *iface = example_module_uart_get_interface();
+ZTEST(example_module_uart, test_get_interface) {
+    const module_interface_t* iface = example_module_uart_get_interface();
 
     zassert_not_null(iface, "接口不应为 NULL");
     zassert_true(strcmp(iface->name, "example_module_uart") == 0, "接口名称应匹配");

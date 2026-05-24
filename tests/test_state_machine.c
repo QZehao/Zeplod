@@ -86,7 +86,7 @@ ZTEST(state_machine, test_state_machine_progression) {
 }
 
 ZTEST(state_machine, test_state_machine_backend_override) {
-    zepl_state_machine_t machine;
+    zepl_state_machine_t                  machine;
     static const custom_backend_context_t context = {
         .boot_name = "BOOT",
         .live_name = "LIVE",

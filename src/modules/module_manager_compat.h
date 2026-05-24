@@ -116,16 +116,16 @@ void module_compat_reset_stats(void);
 #include "module_manager.h"
 #include "module_manager_pro.h"
 
-int      module_compat_register(const module_interface_t* interface, void* config, uint32_t* module_id);
-int      module_compat_unregister(uint32_t module_id);
-int      module_compat_get_module_info(uint32_t module_id, module_info_t* out);
-int      module_compat_foreach(void (*callback)(module_info_t*, void*), void* user_data);
-int      module_compat_start_module(uint32_t module_id);
-int      module_compat_stop_module(uint32_t module_id);
-int      module_compat_start_all(void);
-int      module_compat_stop_all(void);
-int      module_compat_suspend_module(uint32_t module_id);
-int      module_compat_resume_module(uint32_t module_id);
+int module_compat_register(const module_interface_t* interface, void* config, uint32_t* module_id);
+int module_compat_unregister(uint32_t module_id);
+int module_compat_get_module_info(uint32_t module_id, module_info_t* out);
+int module_compat_foreach(void (*callback)(module_info_t*, void*), void* user_data);
+int module_compat_start_module(uint32_t module_id);
+int module_compat_stop_module(uint32_t module_id);
+int module_compat_start_all(void);
+int module_compat_stop_all(void);
+int module_compat_suspend_module(uint32_t module_id);
+int module_compat_resume_module(uint32_t module_id);
 /**
  * @brief PRO 模式下按名查 ID（桩实现）
  *
@@ -133,12 +133,12 @@ int      module_compat_resume_module(uint32_t module_id);
  */
 uint32_t module_compat_get_id_by_name(const char* name);
 
-int      module_compat_subscribe(uint32_t module_id, event_type_t event_type);
-int      module_compat_unsubscribe(uint32_t module_id, event_type_t event_type);
-int      module_compat_send_to_module(uint32_t module_id, const event_t* event);
-int      module_compat_broadcast(const event_t* event);
-void     module_compat_dump_info(void);
-int      module_compat_set_callback(module_mgr_callback_t callback, void* user_data);
+int  module_compat_subscribe(uint32_t module_id, event_type_t event_type);
+int  module_compat_unsubscribe(uint32_t module_id, event_type_t event_type);
+int  module_compat_send_to_module(uint32_t module_id, const event_t* event);
+int  module_compat_broadcast(const event_t* event);
+void module_compat_dump_info(void);
+int  module_compat_set_callback(module_mgr_callback_t callback, void* user_data);
 
 #endif /* MODULE_COMPAT_USE_PRO */
 

@@ -94,23 +94,23 @@ extern "C" {
 #endif
 
 /* 编译器信息 */
-#define COMPILER_NAME                         "GCC"
-#define COMPILER_VERSION                      __VERSION__
+#define COMPILER_NAME                       "GCC"
+#define COMPILER_VERSION                    __VERSION__
 
 /* =============================================================================
  * Version Encoding Macros
  * ============================================================================= */
 
-#define VERSION_ENCODE(major, minor, patch)   (((major) << 16) | ((minor) << 8) | (patch))
+#define VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 
-#define VERSION_MAJOR(version)                (((version) >> 16) & 0xFF)
+#define VERSION_MAJOR(version)              (((version) >> 16) & 0xFF)
 
-#define VERSION_MINOR(version)                (((version) >> 8) & 0xFF)
+#define VERSION_MINOR(version)              (((version) >> 8) & 0xFF)
 
-#define VERSION_PATCH(version)                ((version) & 0xFF)
+#define VERSION_PATCH(version)              ((version) & 0xFF)
 
 /* 当前版本编码值 */
-#define APP_VERSION_CODE                      VERSION_ENCODE(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH)
+#define APP_VERSION_CODE VERSION_ENCODE(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH)
 
 /* =============================================================================
  * Version Comparison Macros
