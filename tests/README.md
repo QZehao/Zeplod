@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `prj.conf` | **默认**：精简配置，**`CONFIG_THREAD_IPC_SERVICE=n`**，适合快速冒烟与 CI（Zephyr 3.6 容器仍使用 `native_posix`） |
+| `prj.conf` | **默认**：精简配置，**`CONFIG_THREAD_IPC_SERVICE=n`**，适合快速冒烟与 CI（Zephyr 4.3.0 容器使用 `native_sim`） |
 | `prj_native_sim.conf` | **完整覆盖**：较大堆、Slab、**`CONFIG_THREAD_IPC_SERVICE=y`**，适合 Zephyr 4.x 本机 `native_sim` 全量测试 |
 
 默认 **`tests/prj.conf` 不开启 IPC**，不链接 `test_ipc_service.c`。需要 IPC 烟测时：
@@ -24,8 +24,7 @@ west build -b native_sim tests/ --build-dir build_tests \
 
 | Zephyr 版本 | 推荐板型 | 说明 |
 |-------------|----------|------|
-| 4.x | **`native_sim`** | `native_posix` 已弃用；本机开发优先使用 |
-| 3.6（与 CI 容器一致） | **`native_posix`** | GitHub/GitLab CI 当前仍使用该板型 |
+| 4.3.0（与 CI 容器一致） | **`native_sim`** | GitHub/GitLab CI 与本机统一使用该板型 |
 
 可使用仓库脚本自动选择板型（见下方「运行测试」）。
 
@@ -91,10 +90,10 @@ west build -b native_sim tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 ```
 
-Zephyr 3.6 / CI 对齐：
+Zephyr 4.3.0 / CI 对齐：
 
 ```bash
-west build -b native_posix tests/ --build-dir build_tests
+west build -b native_sim tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 ```
 
@@ -153,7 +152,7 @@ gcovr -r .. --html --html-details coverage.html
 
 ## 持续集成
 
-`native_posix` 测试在 GitHub Actions 的 `build-tests` 任务中执行（Zephyr **3.6.0** 容器）；见 `.github/workflows/ci.yml`。本机 Zephyr 4.x 请使用 `native_sim` 与上文脚本。
+`native_sim` 测试在 GitHub Actions 的 `build-tests` 任务中执行（Zephyr **4.3.0** 容器）；见 `.github/workflows/ci.yml`。本机与 CI 统一使用 `native_sim`。
 
 ## 参考文档
 

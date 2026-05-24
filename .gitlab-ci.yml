@@ -9,7 +9,7 @@ stages:
   - docs
 
 variables:
-  ZEPHYR_VERSION: "3.6.0"
+  ZEPHYR_VERSION: "4.3.0"
   # west / 子模块若需完整历史，可改为 0（全量克隆，较慢）
   GIT_DEPTH: "20"
 
@@ -52,7 +52,7 @@ build_native:
   extends: .zephyr_prep
   needs: ["code_quality"]
   script:
-    - west build -b native_posix --build-dir build_native
+    - west build -b native_sim --build-dir build_native
   artifacts:
     paths:
       - build_native/zephyr/zephyr.elf
@@ -64,7 +64,7 @@ build_tests:
   extends: .zephyr_prep
   needs: ["code_quality"]
   script:
-    - west build -b native_posix tests/ --build-dir build_tests -p always
+    - west build -b native_sim tests/ --build-dir build_tests -p always
     - west build -t run --build-dir build_tests
 
 build_arm:

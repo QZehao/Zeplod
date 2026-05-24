@@ -30,7 +30,7 @@ on:
     - cron: "0 0 * * 0"
 
 env:
-  ZEPHYR_VERSION: 3.6.0
+  ZEPHYR_VERSION: 4.3.0
   BUILD_TYPE: release
   CORE_COVERAGE_MIN: 80
   EVENT_CORE_COVERAGE_MIN: 78
@@ -111,7 +111,7 @@ jobs:
           bash -n scripts/qa.sh
 
   build-native:
-    name: Build (Native POSIX)
+    name: Build (Native Sim)
     runs-on: ubuntu-22.04
     needs: [changes, preflight]
     if: needs.changes.outputs.run_heavy == 'true'
@@ -140,9 +140,9 @@ jobs:
       - name: Export Zephyr CMake package
         run: west zephyr-export
 
-      - name: Build (native_posix)
+      - name: Build (native_sim)
         run: |
-          west build -b native_posix --build-dir build_native
+          west build -b native_sim --build-dir build_native
           echo "Build succeeded."
 
       - name: Upload artifact
@@ -153,7 +153,7 @@ jobs:
           retention-days: 7
 
   build-tests:
-    name: Unit Tests (native_posix)
+    name: Unit Tests (native_sim)
     runs-on: ubuntu-22.04
     needs: [changes, preflight]
     if: needs.changes.outputs.run_heavy == 'true'
@@ -184,12 +184,12 @@ jobs:
 
       - name: Build and run unit tests
         run: |
-          west build -b native_posix tests/ --build-dir build_tests -p always
+          west build -b native_sim tests/ --build-dir build_tests -p always
           west build -t run --build-dir build_tests
 
       - name: Run core coverage gate
         run: |
-          west build -b native_posix tests/ --build-dir build_tests_cov -p always -- -DCMAKE_C_FLAGS="--coverage"
+          west build -b native_sim tests/ --build-dir build_tests_cov -p always -- -DCMAKE_C_FLAGS="--coverage"
           west build -t run --build-dir build_tests_cov
           gcovr -r . --filter "src/core/" --xml-pretty --output coverage-core.xml --html --html-details --output coverage-core.html --print-summary --fail-under-line ${{ env.CORE_COVERAGE_MIN }}
           gcovr -r . --filter "src/core/event_.*" --print-summary --fail-under-line ${{ env.EVENT_CORE_COVERAGE_MIN }}
@@ -226,7 +226,7 @@ jobs:
           retention-days: 7
 
   build-sanitizers:
-    name: Sanitizers (native_posix)
+    name: Sanitizers (native_sim)
     runs-on: ubuntu-22.04
     needs: [changes, preflight]
     if: needs.changes.outputs.run_heavy == 'true'
@@ -267,13 +267,13 @@ jobs:
           else
             SAN_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g"
           fi
-          west build -b native_posix tests/ --build-dir build_san_${{ matrix.sanitizer }} -p always -- \
+          west build -b native_sim tests/ --build-dir build_san_${{ matrix.sanitizer }} -p always -- \
             -DCMAKE_C_FLAGS="${SAN_FLAGS}" \
             -DCMAKE_EXE_LINKER_FLAGS="${SAN_FLAGS}"
           west build -t run --build-dir build_san_${{ matrix.sanitizer }}
 
   twister:
-    name: Twister (native_posix)
+    name: Twister (native_sim)
     runs-on: ubuntu-22.04
     needs: [changes, preflight]
     if: needs.changes.outputs.run_heavy == 'true'
@@ -303,7 +303,7 @@ jobs:
         run: west zephyr-export
 
       - name: Run twister
-        run: west twister -T tests -p native_posix -O twister-out --inline-logs
+        run: west twister -T tests -p native_sim -O twister-out --inline-logs
 
       - name: Upload twister artifacts
         uses: actions/upload-artifact@v4

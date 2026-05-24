@@ -126,7 +126,7 @@
 
 | 场景 | 说明 |
 |------|------|
-| **产品原型开发** | 快速验证概念，native_posix支持PC端仿真测试 |
+| **产品原型开发** | 快速验证概念，native_sim 支持PC端仿真测试 |
 | **技术方案评估** | 性能测试、资源评估、可行性分析 |
 | **驱动/协议开发** | 隔离硬件相关代码，便于移植和测试 |
 | **多平台产品线** | 统一架构、差异化模块，降低维护成本 |
@@ -198,7 +198,7 @@ zeplod/
 │   ├── proprietary_manage.{sh,bat,ps1} # 商业模块启用/禁用
 │   ├── bump_version.py               # 版本号同步
 │   └── module_config.py              # 模块配置工具
-├── tests/                            # ztest 单元测试（native_posix / native_sim）
+├── tests/                            # ztest 单元测试（native_sim）
 │   ├── CMakeLists.txt
 │   ├── Kconfig                       # rsource 复用根目录 Kconfig
 │   ├── prj.conf
@@ -371,8 +371,7 @@ export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk
 # 构建目标开发板
 west build -b <your_board> .
 
-# 构建 native POSIX 或 native_sim（用于测试）
-west build -b native_posix .
+# 构建 native_sim（用于主机测试）
 west build -b native_sim .
 
 # 使用特定配置文件（可合并多个）
@@ -702,8 +701,8 @@ if (leaks > 0) {
 使用 `tests/` 下的 ztest，与主应用共享 `src/` 实现（不链接 `app_main`、示例业务模块）；默认 **开启** `CONFIG_THREAD_IPC_SERVICE` 并编入 `ipc_service` 做烟测，堆大小已加大（见 `tests/prj.conf`）。
 
 ```bash
-# native_posix 平台
-west build -b native_posix tests/ --build-dir build_tests
+# native_sim 平台
+west build -b native_sim tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 
 # native_sim 平台

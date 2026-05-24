@@ -125,7 +125,7 @@ This framework, based on event-driven architecture and modular design, is partic
 
 | Scenario | Description |
 |----------|-------------|
-| **Product Prototype Development** | Rapid concept validation, native_posix supports PC simulation testing |
+| **Product Prototype Development** | Rapid concept validation, native_sim supports PC simulation testing |
 | **Technical Evaluation** | Performance testing, resource evaluation, feasibility analysis |
 | **Driver/Protocol Development** | Isolate hardware-related code for easy porting and testing |
 | **Multi-Platform Product Line** | Unified architecture, differentiated modules, reduced maintenance cost |
@@ -197,7 +197,7 @@ zeplod/
 │   ├── proprietary_manage.{sh,bat,ps1} # Enable/disable proprietary modules
 │   ├── bump_version.py               # Version sync
 │   └── module_config.py              # Module config tool
-├── tests/                            # ztest unit tests (native_posix / native_sim)
+├── tests/                            # ztest unit tests (native_sim)
 │   ├── CMakeLists.txt
 │   ├── Kconfig                       # rsource to reuse root Kconfig
 │   ├── prj.conf
@@ -370,8 +370,7 @@ export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk
 # Build for target board
 west build -b <your_board> .
 
-# Build for native POSIX or native_sim (for testing)
-west build -b native_posix .
+# Build for native_sim (for host testing)
 west build -b native_sim .
 
 # Use specific config files (can merge multiple)
@@ -704,8 +703,8 @@ if (leaks > 0) {
 Uses ztest under `tests/`, sharing `src/` implementation with main app (does not link `app_main` or example business modules); **enabled** `CONFIG_THREAD_IPC_SERVICE` by default and includes `ipc_service` for smoke testing; heap size increased (see `tests/prj.conf`).
 
 ```bash
-# native_posix platform
-west build -b native_posix tests/ --build-dir build_tests
+# native_sim platform
+west build -b native_sim tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 
 # native_sim platform
