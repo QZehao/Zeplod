@@ -296,29 +296,6 @@ static bool future_is_in_free_list(const ipc_service_t* service, const ipc_futur
     return false;
 }
 
-/**
- * @brief 判断服务是否可以接收新请求
- */
-static bool ipc_service_is_accepting_requests(ipc_service_t* service) {
-    if (service == NULL || !service->initialized) {
-        return false;
-    }
-
-    ipc_service_state_lock(service);
-    bool accepting = service->running && atomic_get(&service->shutdown) == 0;
-    ipc_service_state_unlock(service);
-
-    return accepting;
-}
-
-static zepl_state_t ipc_service_lifecycle_state_locked(const ipc_service_t* service) {
-    if (service == NULL) {
-        return ZEP_STATE_ERROR;
-    }
-
-    return zepl_state_machine_get(&service->lifecycle);
-}
-
 static void ipc_service_state_lock(ipc_service_t* service) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_STATE, (uintptr_t) &service->state_lock);
     k_mutex_lock(&service->state_lock, K_FOREVER);
@@ -337,6 +314,29 @@ static void ipc_service_pending_lock(ipc_service_t* service) {
 static void ipc_service_pending_unlock(ipc_service_t* service) {
     k_mutex_unlock(&service->pending_lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &service->pending_lock);
+}
+
+static zepl_state_t ipc_service_lifecycle_state_locked(const ipc_service_t* service) {
+    if (service == NULL) {
+        return ZEP_STATE_ERROR;
+    }
+
+    return zepl_state_machine_get(&service->lifecycle);
+}
+
+/**
+ * @brief 判断服务是否可以接收新请求
+ */
+static bool ipc_service_is_accepting_requests(ipc_service_t* service) {
+    if (service == NULL || !service->initialized) {
+        return false;
+    }
+
+    ipc_service_state_lock(service);
+    bool accepting = service->running && atomic_get(&service->shutdown) == 0;
+    ipc_service_state_unlock(service);
+
+    return accepting;
 }
 
 /**
