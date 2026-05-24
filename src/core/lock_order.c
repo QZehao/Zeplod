@@ -200,10 +200,13 @@ void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key) {
     }
 
     if (!is_push_order_valid(state, token)) {
+        const uint8_t           snapshot_depth = state->depth;
+        const zepl_lock_level_t snapshot_top_level = state->stack[state->depth - 1U].level;
+        const uintptr_t         snapshot_top_key = state->stack[state->depth - 1U].key;
+
         k_spin_unlock(&g_registry_lock, spin_key);
         LOG_ERR("lock-order violation: level=%u key=%p depth=%u top=(%u,%p)", (unsigned int) token.level,
-                (void*) token.key, state->depth, (unsigned int) state->stack[state->depth - 1U].level,
-                (void*) state->stack[state->depth - 1U].key);
+                (void*) token.key, snapshot_depth, (unsigned int) snapshot_top_level, (void*) snapshot_top_key);
         LOCK_ORDER_STRICT_ASSERT(false, "lock-order violation on enter");
         return;
     }

@@ -103,8 +103,8 @@ bool zepl_lock_order_is_valid(zepl_lock_level_t level, uintptr_t key);
 /**
  * @brief 记录一次加锁（入栈）
  *
- * 在调用方实际获取互斥锁/自旋锁之后调用；若检测到顺序违规或栈溢出，
- * 记录 LOG_ERR 且**不**入栈（调用方仍已持锁，需自行保证一致性）。
+ * 须在调用方实际获取互斥锁/自旋锁之前紧邻调用。
+ * 若检测到顺序违规或栈溢出，记录 LOG_ERR 且**不**入栈（调用方尚未持锁，不会扩大故障面）。
  *
  * @param level 已获取的锁层级
  * @param key 已获取的锁键
@@ -116,13 +116,12 @@ void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key);
 /**
  * @brief 记录一次解锁（出栈）
  *
+ * 须在调用方实际释放互斥锁/自旋锁之后紧邻调用。
  * 必须与最近一次 zepl_lock_enter 的 level/key 完全匹配（LIFO）。
  * 栈空时出栈视为违规。
  *
  * @param level 即将释放的锁层级
  * @param key 即将释放的锁键
- *
- * @note 应在调用方释放互斥锁/自旋锁之前或之后紧邻调用，与 enter 成对
  */
 void zepl_lock_exit(zepl_lock_level_t level, uintptr_t key);
 
@@ -142,6 +141,7 @@ void zepl_lock_exit_token(zepl_lock_token_t token);
  * @brief 清空当前线程的锁栈登记
  *
  * 用于错误恢复、测试收尾或线程即将退出且无法按序释放的场景。
+ * 若无法保证 lock enter/exit 成对平衡，可在线程销毁前调用。
  *
  * @note 不会释放任何真实内核锁，仅重置本模块的跟踪状态
  */
@@ -180,7 +180,7 @@ uint8_t zepl_lock_current_depth(void);
  * @param level zepl_lock_level_t 枚举值
  * @param lock_ptr 互斥锁或自旋锁对象指针
  */
-#define ZEPL_LOCK_TOKEN(level, lock_ptr) ((zepl_lock_token_t) { .level = (level), .key = (uintptr_t) (lock_ptr) })
+#define ZEPL_LOCK_TOKEN(level, lock_ptr) ((zepl_lock_token_t) {.level = (level), .key = (uintptr_t) (lock_ptr)})
 
 #ifdef __cplusplus
 }
