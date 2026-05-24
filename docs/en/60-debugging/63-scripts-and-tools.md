@@ -2,62 +2,99 @@
 
 # Scripts and Tools Guide
 
-This page documents the purpose and typical usage of scripts under the repository root **`scripts/`**, helping new members get started quickly. It does **not** constitute a complete tutorial for third-party tools (Zephyr SDK, West, OpenOCD, etc.).
+This page explains the purpose and usage of scripts under `scripts/`.
 
-**Related**: [Environment Setup Guide.md](../10-getting-started/11-environment-setup.md) · [Version Management.md](../70-release/71-version-management.md)
+## 1. Script Groups
 
----
+| Group | Scripts |
+|---|---|
+| Environment setup | `setup_env.ps1` / `setup_env.sh` / `setup_env.bat` |
+| Host tests | `run_tests.ps1` / `run_tests.sh` |
+| Host sanitizers | `run_sanitizers.ps1` / `run_sanitizers.sh` |
+| Twister | `run_twister.ps1` / `run_twister.sh` |
+| Preflight | `preflight_host_tests.py` |
+| Docs and checks | `generate_docs.ps1` / `generate_docs.sh` / `lint_docs.py` / `check_encoding.py` |
+| Version and release | `bump_version.py` / `package_release.ps1` / `package_release.sh` |
+| Build analysis | `build_all.bat` / `build_all.sh` / `analyze_map.ps1` / `analyze_map.sh` / `analyze_map.bat` |
+| Module/config management | `module_config.py` / `proprietary_manage.ps1` / `proprietary_manage.sh` / `proprietary_manage.bat` |
 
-## 1. Environment Variables (Before Build)
+## 2. Prerequisites
 
-| Script | Platform | Description |
-|--------|----------|-------------|
-| **`setup_env.ps1`** | Windows PowerShell | Reads from **`zephyr_config.env`** and sets **`ZEPHYR_BASE`**, **`ZEPHYR_SDK_INSTALL_DIR`**, etc. (if implemented) |
-| **`setup_env.bat`** | Windows CMD | Same as above, batch version |
-| **`setup_env.sh`** | Linux / macOS | `source scripts/setup_env.sh` |
+1. Prepare `zephyr_config.env` from `zephyr_config.env.template`.
+2. Install west/CMake/Python/Zephyr SDK.
+3. For `native_sim/native_posix`, run on Linux/WSL (native Windows is blocked by script checks).
 
-Ensure **`zephyr_config.env`** is prepared (copied from **`zephyr_config.env.template`**) before use.
+## 3. Usage
 
----
+### 3.1 Environment setup
 
-## 2. Version and Release
+```powershell
+.\scripts\setup_env.ps1
+```
 
-| Script | Description |
-|--------|-------------|
-| **`bump_version.py`** | Uniformly bumps **`APP_VERSION`** and version strings in README/Doxyfile etc. (usage: `python scripts/bump_version.py -h` or see repository docs) |
-| **`package_release.ps1` / `package_release.sh`** | Packages release artifacts (if enabled in project; follow comments inside the script) |
+```bash
+source scripts/setup_env.sh
+```
 
-See **[Version Management.md](../70-release/71-version-management.md)**, **[Release Checklist.md](../70-release/73-release-checklist.md)**.
+### 3.2 Host tests
 
----
+```powershell
+.\scripts\run_tests.ps1
+```
 
-## 3. Documentation (API)
+```bash
+./scripts/run_tests.sh
+```
 
-| Script | Description |
-|--------|-------------|
-| **`generate_docs.ps1`** | Windows: Calls **Doxygen** to generate **`docs/api/html`** |
-| **`generate_docs.sh`** | Linux / macOS: Same as above |
+Env overrides:
+- `ZEPHYR_TEST_BOARD`
+- `ZEPHYR_TEST_CONF`
+- `ZEPHYR_TEST_BUILD_DIR`
 
-Requires **Doxygen** (and optional **Graphviz**) installed locally. Open **`docs/api/html/index.html`** after generation.
+### 3.3 Sanitizers
 
----
+```powershell
+.\scripts\run_sanitizers.ps1
+```
 
-## 4. Build Utilities
+```bash
+./scripts/run_sanitizers.sh
+```
 
-| Script | Description |
-|--------|-------------|
-| **`build_all.bat` / `build_all.sh`** | Batch builds multiple targets (if specific board list is configured in repository; follow script content) |
-| **`analyze_map.ps1` / `.bat` / `.sh`** | Analyzes linker **`zephyr.map`**, assists viewing memory usage (usage in script comments) |
+Env overrides:
+- `ZEPHYR_SANITIZER=asan|ubsan|asan-ubsan`
+- `ZEPHYR_TEST_BOARD`
+- `ZEPHYR_TEST_CONF`
+- `ZEPHYR_SAN_BUILD_DIR`
 
----
+### 3.4 Twister
 
-## 5. Tools Not Provided with Repository
+```powershell
+.\scripts\run_twister.ps1 -Platform native_sim
+```
 
-Some documentation examples may reference commands like **serial monitoring** or **one-click flashing**; if no corresponding file exists under **`scripts/`**, use directly:
+```bash
+./scripts/run_twister.sh
+```
 
-- **`west flash`** / **`west debug`** (see **[Flash and Debug Quickstart.md](61-flash-debug-quickstart.md)**)  
-- Host-side tools like **pyserial miniterm**, **PuTTY**, etc.
+Env overrides:
+- `ZEPHYR_TWISTER_PLATFORM`
+- `ZEPHYR_TWISTER_OUT_DIR`
 
----
+### 3.5 Preflight
 
-*When adding new scripts, please add a line here and include in **[Documentation Index.md](../00-getting-started/02-docs-index.md)** under "All Manuals" or "Other" as appropriate.*
+```bash
+python scripts/preflight_host_tests.py
+```
+
+### 3.6 Encoding check
+
+```bash
+python scripts/check_encoding.py
+```
+
+## 4. Platform Notes
+
+- `native_sim/native_posix` are POSIX-host targets.
+- Use Linux/WSL for host tests.
+- CI includes preflight, encoding checks, coverage gates, sanitizers, and twister.
