@@ -1,0 +1,11 @@
+tests:
+  zeplod.tests:
+    type: unit
+    tags:
+      - zeplod
+      - unit
+      - ztest
+    harness: ztest
+    platform_allow:
+      - native_sim
+      - native_posix

@@ -159,3 +159,35 @@ gcovr -r .. --html --html-details coverage.html
 
 - [Zephyr 测试框架](https://docs.zephyrproject.org/latest/develop/test.html)
 - [ztest API 参考](https://docs.zephyrproject.org/latest/develop/test/test_api_reference.html)
+
+## Advanced Local Checks
+
+### Sanitizers (host-only)
+
+Run AddressSanitizer / UndefinedBehaviorSanitizer on host simulation boards:
+
+```bash
+./scripts/run_sanitizers.sh
+# PowerShell: .\scripts\run_sanitizers.ps1
+```
+
+Environment overrides:
+
+- `ZEPHYR_SANITIZER=asan|ubsan|asan-ubsan` (default: `asan-ubsan`)
+- `ZEPHYR_TEST_BOARD=native_sim|native_posix`
+- `ZEPHYR_TEST_CONF=<conf-file>`
+- `ZEPHYR_SAN_BUILD_DIR=<build-dir>`
+
+### Twister
+
+Run Zephyr Twister against this repository's `tests/` suite:
+
+```bash
+./scripts/run_twister.sh
+# PowerShell: .\scripts\run_twister.ps1
+```
+
+Environment overrides:
+
+- `ZEPHYR_TWISTER_PLATFORM=native_sim|native_posix` (default: `native_sim`)
+- `ZEPHYR_TWISTER_OUT_DIR=<output-dir>`
