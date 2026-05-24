@@ -91,35 +91,35 @@ endif()
 
 if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
 	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/example_module_a.c
+		${APP_SRC_DIR}/modules_examples/example_module_a.c
 		test_example_module_a.c
 	)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_B_ENABLE)
 	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/example_module_b.c
+		${APP_SRC_DIR}/modules_examples/example_module_b.c
 		test_example_module_b.c
 	)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_GPIO)
 	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/example_module_gpio.c
+		${APP_SRC_DIR}/modules_examples/example_module_gpio.c
 		test_example_module_gpio.c
 	)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_UART)
 	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/example_module_uart.c
+		${APP_SRC_DIR}/modules_examples/example_module_uart.c
 		test_example_module_uart.c
 	)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
 	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/example_module_multi_dep.c
+		${APP_SRC_DIR}/modules_examples/example_module_multi_dep.c
 		test_example_module_multi_dep.c
 	)
 endif()
@@ -167,6 +167,7 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/core
 	${APP_SRC_DIR}/services
 	${APP_SRC_DIR}/modules
+	${APP_SRC_DIR}/modules_examples
 	${APP_SRC_DIR}/app
 )
 

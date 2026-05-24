@@ -29,6 +29,19 @@
 
 LOG_MODULE_REGISTER(zepl_lock_order, LOG_LEVEL_WRN);
 
+#if defined(CONFIG_ZEPL_LOCK_ORDER_STRICT) && (CONFIG_ZEPL_LOCK_ORDER_STRICT == 1)
+#define LOCK_ORDER_STRICT_ENABLED 1
+#else
+#define LOCK_ORDER_STRICT_ENABLED 0
+#endif
+
+#define LOCK_ORDER_STRICT_ASSERT(cond, fmt, ...)                                                                       \
+    do {                                                                                                               \
+        if (LOCK_ORDER_STRICT_ENABLED) {                                                                               \
+            __ASSERT((cond), fmt, ##__VA_ARGS__);                                                                      \
+        }                                                                                                              \
+    } while (0)
+
 /* =============================================================================
  * 内部数据结构
  * ============================================================================= */
@@ -166,11 +179,13 @@ void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key) {
 
     if (k_is_in_isr()) {
         LOG_WRN("lock-order: enter from ISR is not supported");
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: enter from ISR");
         return;
     }
 
     if (!token_is_valid(token)) {
         LOG_WRN("lock-order: invalid token level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: invalid token");
         return;
     }
 
@@ -180,6 +195,7 @@ void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key) {
     if (state == NULL) {
         k_spin_unlock(&g_registry_lock, spin_key);
         LOG_ERR("lock-order: registry exhausted");
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: registry exhausted");
         return;
     }
 
@@ -188,12 +204,14 @@ void zepl_lock_enter(zepl_lock_level_t level, uintptr_t key) {
         LOG_ERR("lock-order violation: level=%u key=%p depth=%u top=(%u,%p)", (unsigned int) token.level,
                 (void*) token.key, state->depth, (unsigned int) state->stack[state->depth - 1U].level,
                 (void*) state->stack[state->depth - 1U].key);
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order violation on enter");
         return;
     }
 
     if (state->depth >= ZEP_LOCK_ORDER_MAX_DEPTH) {
         k_spin_unlock(&g_registry_lock, spin_key);
         LOG_ERR("lock-order: stack overflow");
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: stack overflow");
         return;
     }
 
@@ -209,11 +227,13 @@ void zepl_lock_exit(zepl_lock_level_t level, uintptr_t key) {
 
     if (k_is_in_isr()) {
         LOG_WRN("lock-order: exit from ISR is not supported");
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: exit from ISR");
         return;
     }
 
     if (!token_is_valid(token)) {
         LOG_WRN("lock-order: invalid token level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order: invalid token");
         return;
     }
 
@@ -223,6 +243,7 @@ void zepl_lock_exit(zepl_lock_level_t level, uintptr_t key) {
     if (!is_pop_order_valid(state, token)) {
         k_spin_unlock(&g_registry_lock, spin_key);
         LOG_ERR("lock-order violation on exit: level=%u key=%p", (unsigned int) token.level, (void*) token.key);
+        LOCK_ORDER_STRICT_ASSERT(false, "lock-order violation on exit");
         return;
     }
 

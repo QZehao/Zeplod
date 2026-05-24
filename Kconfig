@@ -124,6 +124,14 @@ config EVENT_DISPATCHER_AUTOINIT
 	  Register event_dispatcher_auto_init at APP_INIT_PRIO_DISPATCHER. Disable
 	  if the application initializes the dispatcher manually (e.g. unit tests).
 
+config ZEPL_LOCK_ORDER_STRICT
+	bool "Lock order strict mode (assert on violation)"
+	default n
+	help
+	  When enabled, lock order violations in lock_order.c trigger __ASSERT()
+	  to fail fast in debug/CI builds. When disabled, violations are logged
+	  and execution continues.
+
 	# =============================================================================
 	# Event Structure Size Configuration
 	# =============================================================================

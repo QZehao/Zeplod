@@ -13,6 +13,7 @@ on:
 env:
   ZEPHYR_VERSION: 3.6.0
   BUILD_TYPE: release
+  CORE_COVERAGE_MIN: 80
 
 jobs:
   # ===========================================================================
@@ -66,7 +67,7 @@ jobs:
           apt-get install -y cmake ninja-build python3-pip
 
       - name: 安装 West
-        run: pip3 install west
+        run: pip3 install west gcovr
 
       - name: 初始化 West
         run: west init -l .
@@ -123,6 +124,21 @@ jobs:
         run: |
           west build -b native_posix tests/ --build-dir build_tests -p always
           west build -t run --build-dir build_tests
+
+      - name: Run core coverage gate
+        run: |
+          west build -b native_posix tests/ --build-dir build_tests_cov -p always -- -DCMAKE_C_FLAGS="--coverage"
+          west build -t run --build-dir build_tests_cov
+          gcovr -r . --filter "src/core/" --xml-pretty --output coverage-core.xml --html --html-details --output coverage-core.html --print-summary --fail-under-line ${{ env.CORE_COVERAGE_MIN }}
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage-${{ github.sha }}
+          path: |
+            coverage-core.xml
+            coverage-core.html
+          retention-days: 7
 
   build-arm:
     name: Build (ARM Cortex-M)
