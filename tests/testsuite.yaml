@@ -5,6 +5,10 @@ tests:
       - zeplod
       - unit
       - ztest
+      - core
+      - ipc
+      - data_bus
+      - slow
     harness: ztest
     platform_allow:
       - native_sim

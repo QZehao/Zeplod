@@ -4,8 +4,28 @@ name: Zephyr Build CI
 on:
   push:
     branches: [main, develop]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+      - "Kconfig*"
+      - "prj*.conf"
+      - ".pre-commit-config.yaml"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+      - "Kconfig*"
+      - "prj*.conf"
+      - ".pre-commit-config.yaml"
   schedule:
     - cron: "0 0 * * 0"
 
@@ -17,6 +37,28 @@ env:
   DISPATCHER_COVERAGE_MIN: 75
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-22.04
+    outputs:
+      run_heavy: ${{ steps.filter.outputs.run_heavy }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect heavy-impact changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            run_heavy:
+              - 'src/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'CMakeLists.txt'
+              - 'Kconfig*'
+              - 'prj*.conf'
+              - '.github/workflows/**'
+
   code-quality:
     name: Code Quality
     runs-on: ubuntu-22.04
@@ -47,10 +89,13 @@ jobs:
       - name: Check UTF-8 encoding (no BOM)
         run: python3 scripts/check_encoding.py
 
+      - name: Check scripts docs consistency
+        run: python3 scripts/check_script_docs.py
+
   preflight:
     name: Preflight Checks
     runs-on: ubuntu-22.04
-    needs: code-quality
+    needs: [changes, code-quality]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,15 +104,17 @@ jobs:
         run: |
           test -f tests/testsuite.yaml
           test -f .pre-commit-config.yaml
-          python3 -m py_compile scripts/check_encoding.py scripts/preflight_host_tests.py
+          python3 -m py_compile scripts/check_encoding.py scripts/check_script_docs.py scripts/preflight_host_tests.py
           bash -n scripts/run_tests.sh
           bash -n scripts/run_sanitizers.sh
           bash -n scripts/run_twister.sh
+          bash -n scripts/qa.sh
 
   build-native:
     name: Build (Native POSIX)
     runs-on: ubuntu-22.04
-    needs: preflight
+    needs: [changes, preflight]
+    if: needs.changes.outputs.run_heavy == 'true'
     container:
       image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
       options: --user root
@@ -108,7 +155,8 @@ jobs:
   build-tests:
     name: Unit Tests (native_posix)
     runs-on: ubuntu-22.04
-    needs: preflight
+    needs: [changes, preflight]
+    if: needs.changes.outputs.run_heavy == 'true'
     container:
       image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
       options: --user root
@@ -146,6 +194,27 @@ jobs:
           gcovr -r . --filter "src/core/" --xml-pretty --output coverage-core.xml --html --html-details --output coverage-core.html --print-summary --fail-under-line ${{ env.CORE_COVERAGE_MIN }}
           gcovr -r . --filter "src/core/event_.*" --print-summary --fail-under-line ${{ env.EVENT_CORE_COVERAGE_MIN }}
           gcovr -r . --filter "src/core/event_dispatcher\\.c" --print-summary --fail-under-line ${{ env.DISPATCHER_COVERAGE_MIN }}
+          gcovr -r . --filter "src/core/" --json-summary-pretty --output coverage-core-summary.json
+
+      - name: Publish coverage summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          s = json.loads(Path("coverage-core-summary.json").read_text())
+          line = s["line_percent"]
+          print(f"Core line coverage: {line:.2f}%")
+          md = [
+              "## Coverage Summary",
+              "",
+              "| Scope | Threshold | Result |",
+              "|---|---:|---:|",
+              f"| src/core/* | ${{{{ env.CORE_COVERAGE_MIN }}}}% | {line:.2f}% |",
+              f"| src/core/event_* | ${{{{ env.EVENT_CORE_COVERAGE_MIN }}}}% | see gate log |",
+              f"| src/core/event_dispatcher.c | ${{{{ env.DISPATCHER_COVERAGE_MIN }}}}% | see gate log |",
+          ]
+          Path("${GITHUB_STEP_SUMMARY}").write_text("\n".join(md), encoding="utf-8")
+          PY
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
@@ -159,7 +228,8 @@ jobs:
   build-sanitizers:
     name: Sanitizers (native_posix)
     runs-on: ubuntu-22.04
-    needs: preflight
+    needs: [changes, preflight]
+    if: needs.changes.outputs.run_heavy == 'true'
     container:
       image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
       options: --user root
@@ -205,7 +275,8 @@ jobs:
   twister:
     name: Twister (native_posix)
     runs-on: ubuntu-22.04
-    needs: preflight
+    needs: [changes, preflight]
+    if: needs.changes.outputs.run_heavy == 'true'
     container:
       image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
       options: --user root
@@ -244,7 +315,8 @@ jobs:
   build-arm:
     name: Build (ARM Cortex-M)
     runs-on: ubuntu-22.04
-    needs: preflight
+    needs: [changes, preflight]
+    if: needs.changes.outputs.run_heavy == 'true'
     container:
       image: gcr.io/zephyr-project/zephyr-build:v${{ env.ZEPHYR_VERSION }}
       options: --user root

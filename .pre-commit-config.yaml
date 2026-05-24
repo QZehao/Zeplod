@@ -19,3 +19,8 @@ repos:
         entry: python scripts/check_encoding.py
         language: system
         pass_filenames: false
+      - id: check-script-docs
+        name: check script docs
+        entry: python scripts/check_script_docs.py
+        language: system
+        pass_filenames: false

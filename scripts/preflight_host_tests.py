@@ -33,17 +33,25 @@ def main() -> int:
     if is_windows() and not in_wsl():
         print("[preflight] ERROR: native_sim/native_posix require Linux POSIX host.")
         print("[preflight] Use WSL/Linux for host tests, or set a non-POSIX hardware board.")
+        print("[preflight] Suggested next steps:")
+        print("  1) Open WSL terminal in this repo")
+        print("  2) source scripts/setup_env.sh")
+        print("  3) ./scripts/run_tests.sh")
         return 2
 
     west = run(["west", "--version"])
     if west.returncode != 0:
         print("[preflight] ERROR: west not available in PATH.")
+        print("[preflight] Suggested fix:")
+        print("  - Activate your virtualenv and run setup_env first.")
+        print("  - Verify with: west --version")
         return 2
     print(f"[preflight] {west.stdout.strip()}")
 
     boards = run(["west", "boards"])
     if boards.returncode != 0:
         print("[preflight] WARN: failed to query boards via `west boards`.")
+        print("[preflight] Suggested fix: run `west update` then retry.")
         return 0
 
     available = boards.stdout.splitlines()
@@ -53,6 +61,7 @@ def main() -> int:
 
     if not has_native_sim and not has_native_posix:
         print("[preflight] WARN: no host simulation board found.")
+        print("[preflight] Suggested fix: ensure Zephyr modules are initialized (`west update`).")
     else:
         print("[preflight] OK")
     return 0
