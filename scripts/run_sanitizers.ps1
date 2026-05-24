@@ -9,6 +9,11 @@ $BuildDir = if ($env:ZEPHYR_SAN_BUILD_DIR) { $env:ZEPHYR_SAN_BUILD_DIR } else { 
 $ConfFile = if ($env:ZEPHYR_TEST_CONF) { $env:ZEPHYR_TEST_CONF } else { "prj.conf" }
 $Sanitizer = if ($env:ZEPHYR_SANITIZER) { $env:ZEPHYR_SANITIZER } else { "asan-ubsan" }
 
+python (Join-Path $Root "scripts\preflight_host_tests.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Host preflight failed. See output above."
+}
+
 function Get-TestBoard {
     if ($env:ZEPHYR_TEST_BOARD) {
         return $env:ZEPHYR_TEST_BOARD
@@ -33,6 +38,16 @@ function Get-SanitizerFlags {
 $Board = Get-TestBoard
 $BuildPath = Join-Path $Root $BuildDir
 $SanFlags = Get-SanitizerFlags -Name $Sanitizer
+
+$IsWindowsHost = $false
+if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+    $IsWindowsHost = [bool]$IsWindows
+} elseif ($env:OS -eq "Windows_NT") {
+    $IsWindowsHost = $true
+}
+if ($IsWindowsHost -and ($Board -eq "native_sim" -or $Board -eq "native_posix")) {
+    throw "Board '$Board' requires Linux/WSL host for sanitizers."
+}
 
 Write-Host "Board: $Board, CONF_FILE: $ConfFile, Sanitizer: $Sanitizer, build-dir: $BuildPath"
 Push-Location (Join-Path $Root "tests")

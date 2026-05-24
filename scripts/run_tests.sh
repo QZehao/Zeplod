@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/setup_env.sh"
+python "${ROOT}/scripts/preflight_host_tests.py"
 BUILD_DIR="${ZEPHYR_TEST_BUILD_DIR:-build_tests}"
 CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf}"
 

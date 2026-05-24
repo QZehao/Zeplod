@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/setup_env.sh"
+python "${ROOT}/scripts/preflight_host_tests.py"
 
 BUILD_DIR="${ZEPHYR_SAN_BUILD_DIR:-build_sanitizers}"
 CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf}"
@@ -43,6 +44,13 @@ pick_flags() {
 
 BOARD="$(pick_board)"
 SAN_FLAGS="$(pick_flags)"
+
+if [ "$(uname -s)" = "MINGW64_NT" ] || [ "$(uname -s)" = "MINGW32_NT" ] || [ "$(uname -s)" = "MSYS_NT" ]; then
+    if [ "${BOARD}" = "native_sim" ] || [ "${BOARD}" = "native_posix" ]; then
+        echo "Board '${BOARD}' requires Linux/WSL host for sanitizers." >&2
+        exit 2
+    fi
+fi
 
 cd "${ROOT}/tests"
 echo "Board: ${BOARD}, CONF_FILE: ${CONF_FILE}, Sanitizer: ${SANITIZER}, build-dir: ${BUILD_DIR}"

@@ -191,3 +191,15 @@ Environment overrides:
 
 - `ZEPHYR_TWISTER_PLATFORM=native_sim|native_posix` (default: `native_sim`)
 - `ZEPHYR_TWISTER_OUT_DIR=<output-dir>`
+
+### Host/Board Support Matrix
+
+| Host OS | `native_sim` / `native_posix` | Recommended path |
+|---|---|---|
+| Linux | Supported | Run `./scripts/run_tests.sh`, `./scripts/run_sanitizers.sh`, `./scripts/run_twister.sh` |
+| WSL (Linux kernel) | Supported | Same as Linux |
+| Windows (native) | Not supported for POSIX arch | Use WSL/Linux for host tests, or use hardware board tests |
+
+Notes:
+- `run_tests.ps1`, `run_sanitizers.ps1`, and `run_twister.ps1` now fail fast on native Windows when POSIX boards are selected.
+- Use `ZEPHYR_TEST_BOARD=<hardware_board>` for non-host board builds on Windows.

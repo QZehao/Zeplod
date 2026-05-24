@@ -8,6 +8,11 @@ $Root = Split-Path -Parent $PSScriptRoot
 $BuildDir = if ($env:ZEPHYR_TEST_BUILD_DIR) { $env:ZEPHYR_TEST_BUILD_DIR } else { 'build_tests' }
 $ConfFile = if ($env:ZEPHYR_TEST_CONF) { $env:ZEPHYR_TEST_CONF } else { 'prj.conf' }
 
+python (Join-Path $Root "scripts\preflight_host_tests.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Host preflight failed. See output above."
+}
+
 function Invoke-West {
     param(
         [Parameter(Mandatory = $true)]

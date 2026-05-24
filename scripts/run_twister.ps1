@@ -16,6 +16,21 @@ if (-not $OutDir) {
     $OutDir = if ($env:ZEPHYR_TWISTER_OUT_DIR) { $env:ZEPHYR_TWISTER_OUT_DIR } else { "twister-out" }
 }
 
+python (Join-Path $Root "scripts\preflight_host_tests.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Host preflight failed. See output above."
+}
+
+$IsWindowsHost = $false
+if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+    $IsWindowsHost = [bool]$IsWindows
+} elseif ($env:OS -eq "Windows_NT") {
+    $IsWindowsHost = $true
+}
+if ($IsWindowsHost -and ($Platform -eq "native_sim" -or $Platform -eq "native_posix")) {
+    throw "Platform '$Platform' requires Linux/WSL host for twister."
+}
+
 west twister -h | Out-Null
 Push-Location $Root
 try {
