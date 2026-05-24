@@ -92,6 +92,9 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
  * @note 调用前需先对该 queue 执行 event_queue_init()，否则返回 EVENT_ERR_INVALID_ARG
+ * @note ISR 路径为避免在中断上下文持互斥锁，会进行无锁控制块查询；因此要求
+ *       queue 仅在 event_queue_init() 完成后、event_queue_deinit() 开始前调用；
+ *       不得与 init/deinit 并发，推荐先停分发/发布再 deinit。
  * @note QUEUE_OVERFLOW_DROP_LOWEST：在队列满时排空并丢弃 priority 数值最大的一条（同值则丢弃 FIFO
  * 最旧）； 若新事件比队列中最差事件还低，则丢弃新事件。需线程上下文，不可在 ISR 中使用。
  *       启用时线程侧入队/出队由 reorder_lock 串行化，排空/回灌期间屏蔽 ISR 入队。

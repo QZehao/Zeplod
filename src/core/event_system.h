@@ -27,6 +27,7 @@
 #define EVENT_SYSTEM_H
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -133,6 +134,13 @@ extern "C" {
  * @note 取值范围：0-255
  */
 typedef uint8_t event_type_t;
+
+/* event_type_t is uint8_t, so runtime checks like type >= 256 are ineffective.
+ * Keep CONFIG_EVENT_MAX_TYPES within representable range.
+ */
+BUILD_ASSERT(CONFIG_EVENT_MAX_TYPES > 0U, "CONFIG_EVENT_MAX_TYPES must be > 0");
+BUILD_ASSERT(CONFIG_EVENT_MAX_TYPES <= UINT8_MAX + 1U,
+             "CONFIG_EVENT_MAX_TYPES must be <= 256 for uint8_t event_type_t");
 
 /**
  * @brief 预定义的事件类型 ID
@@ -301,6 +309,8 @@ event_status_t event_system_start(void);
  * @note 已排队但未处理的动态事件负载会被释放
  * @note 与 event_system_shutdown() 不同：stop 不释放队列与订阅表，可再次 start 恢复投递
  * @note 不得从事件回调（分发器线程）内部调用；否则返回 EVENT_ERR_INVALID_ARG
+ * @note 若返回 EVENT_ERR_TIMEOUT，dispatcher 线程可能仍存活且队列未 purge；后续重复 stop
+ *       可能因 running 已清零而返回 EVENT_OK，但不保证线程已终止。该状态应视为故障，建议系统复位。
  */
 event_status_t event_system_stop(void);
 

@@ -225,10 +225,12 @@ bool event_dispatcher_is_current_thread(void);
  * @brief 设置事件过滤器
  *
  * 过滤器用于决定哪些事件需要被处理。
- *
+ * @note stop->init 序列会保留 filter/user_data；须确保 user_data 在该序列期间
+ * 持续有效，或在重新 init 前调用 event_dispatcher_clear_filter()。
  * @param filter 过滤函数指针
  * @param user_data 用户数据，将传入过滤函数
  */
+
 void event_dispatcher_set_filter(event_filter_t filter, void* user_data);
 
 /**

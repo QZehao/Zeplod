@@ -40,6 +40,7 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 
 /** 最大支持的事件类型数量（从 Kconfig 获取） */
 #define MAX_EVENT_TYPES         CONFIG_EVENT_MAX_TYPES
+#define MAX_EVENT_TYPE_ID       (MAX_EVENT_TYPES - 1U)
 
 /** 魔术字，用于验证控制块有效性 ("EVNT") */
 #define EVENT_SYSTEM_MAGIC      0x45564E54
@@ -275,7 +276,7 @@ static event_status_t event_validate_for_publish(const event_t* event) {
 }
 
 static bool event_type_is_registered(event_type_t type) {
-    if (type >= MAX_EVENT_TYPES) {
+    if ((uint32_t) type > MAX_EVENT_TYPE_ID) {
         return false;
     }
 
@@ -661,9 +662,17 @@ event_status_t event_system_start(void) {
             return EVENT_ERR_INVALID_ARG;
         }
 
-        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STARTING) != 0 ||
-            zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_RUNNING) != 0) {
-            LOG_ERR("Failed to transition event system to RUNNING from %s", zepl_state_name(lc_state));
+        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STARTING) != 0) {
+            LOG_ERR("Failed to transition event system to STARTING from %s", zepl_state_name(lc_state));
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
+
+        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_RUNNING) != 0) {
+            /* STARTING cannot transition directly to INITED/STOPPED; use the valid stop path. */
+            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING);
+            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
+            LOG_ERR("Failed to transition event system to RUNNING from STARTING; rolled back to STOPPED");
             event_system_lifecycle_unlock();
             return EVENT_ERR_INVALID_ARG;
         }
@@ -712,6 +721,9 @@ event_status_t event_system_stop(void) {
     }
 
     if (atomic_get(&g_event_system.running) == 0) {
+        /* If a previous stop failed after clearing running, this remains idempotent.
+         * API docs call out that dispatcher termination is not guaranteed in that fault state.
+         */
         event_system_lifecycle_unlock();
         return EVENT_OK;
     }
@@ -860,7 +872,7 @@ event_status_t event_register_type(event_type_t type, const char* name) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (type >= MAX_EVENT_TYPES) {
+    if ((uint32_t) type > MAX_EVENT_TYPE_ID) {
         LOG_ERR("Invalid event type: %d", type);
         return EVENT_ERR_INVALID_ARG;
     }
@@ -914,7 +926,7 @@ event_status_t event_unregister_type(event_type_t type) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (type >= MAX_EVENT_TYPES) {
+    if ((uint32_t) type > MAX_EVENT_TYPE_ID) {
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -964,7 +976,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (type >= MAX_EVENT_TYPES || callback == NULL || subscriber_id == NULL) {
+    if ((uint32_t) type > MAX_EVENT_TYPE_ID || callback == NULL || subscriber_id == NULL) {
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -1032,7 +1044,7 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (type >= MAX_EVENT_TYPES || subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
+    if ((uint32_t) type > MAX_EVENT_TYPE_ID || subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -1124,10 +1136,10 @@ event_status_t event_publish(event_t* event) {
         return EVENT_ERR_NOT_RUNNING;
     }
 
-    if (event->type >= MAX_EVENT_TYPES) {
+    if ((uint32_t) event->type > MAX_EVENT_TYPE_ID) {
         atomic_dec(&g_publish_in_flight);
 #ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
-        LOG_WRN("Invalid event type id %u (max %d)", (unsigned int) event->type, MAX_EVENT_TYPES);
+        LOG_WRN("Invalid event type id %u (max %u)", (unsigned int) event->type, (unsigned int) MAX_EVENT_TYPE_ID);
 #endif
         return EVENT_ERR_INVALID_ARG;
     }
@@ -1176,7 +1188,7 @@ event_status_t event_publish_from_isr(event_t* event) {
         return EVENT_ERR_NOT_RUNNING;
     }
 
-    if (event->type >= MAX_EVENT_TYPES) {
+    if ((uint32_t) event->type > MAX_EVENT_TYPE_ID) {
         atomic_dec(&g_publish_in_flight);
         return EVENT_ERR_INVALID_ARG;
     }
@@ -1611,7 +1623,7 @@ const char* event_get_type_name(event_type_t type) {
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         return "CORRUPTED";
     }
-    if (!g_event_system.initialized || type >= MAX_EVENT_TYPES) {
+    if (!g_event_system.initialized || (uint32_t) type > MAX_EVENT_TYPE_ID) {
         return "UNKNOWN";
     }
 
@@ -1629,7 +1641,7 @@ uint32_t event_get_subscriber_count(event_type_t type) {
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         return 0;
     }
-    if (!g_event_system.initialized || type >= MAX_EVENT_TYPES) {
+    if (!g_event_system.initialized || (uint32_t) type > MAX_EVENT_TYPE_ID) {
         return 0;
     }
 
@@ -1742,7 +1754,7 @@ event_status_t event_notify_subscribers(const event_t* event) {
         LOG_ERR("Event system magic corruption detected");
         return EVENT_ERR_INVALID_ARG;
     }
-    if (event == NULL || event->type >= MAX_EVENT_TYPES) {
+    if (event == NULL || (uint32_t) event->type > MAX_EVENT_TYPE_ID) {
         return EVENT_ERR_INVALID_ARG;
     }
 
