@@ -456,7 +456,9 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         }
     }
 
-    if (event_queue_use_op_lock(cb)) {
+    const bool use_op_lock = event_queue_use_op_lock(cb);
+
+    if (use_op_lock) {
         k_mutex_lock(&cb->reorder_lock, K_FOREVER);
     }
 
@@ -465,21 +467,21 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
     if (ret == 0) {
         atomic_inc(&cb->enqueue_count);
         update_high_watermark(&cb->high_watermark, k_msgq_num_used_get(queue));
-        if (event_queue_use_op_lock(cb)) {
+        if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
         return EVENT_OK;
     }
 
     if (ret == -ECANCELED) {
-        if (event_queue_use_op_lock(cb)) {
+        if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
         return EVENT_ERR_NOT_RUNNING;
     }
 
     if (ret == -EAGAIN) {
-        if (event_queue_use_op_lock(cb)) {
+        if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
         return EVENT_ERR_TIMEOUT;
@@ -511,13 +513,13 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
             break;
         }
 
-        if (event_queue_use_op_lock(cb)) {
+        if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
         return st;
     }
 
-    if (event_queue_use_op_lock(cb)) {
+    if (use_op_lock) {
         k_mutex_unlock(&cb->reorder_lock);
     }
     return EVENT_ERR_INVALID_ARG;
@@ -576,8 +578,7 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     }
 
     if (cb == NULL) {
-        LOG_ERR("Queue not initialized via event_queue_init(); event lost, data freed");
-        event_free_queued_payload(event);
+        LOG_ERR("Queue not initialized via event_queue_init(); dequeue payload ownership is caller-managed");
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -672,7 +673,15 @@ void event_queue_purge(struct k_msgq* queue) {
      * 可能对裸 k_msgq_put 投递的事件错误地解释 EVENT_FLAG_DATA_DYNAMIC。
      * 此处仍执行清空避免内存泄漏，但记录警告便于诊断违反契约的调用。 */
     if (cb == NULL) {
-        LOG_WRN("Purge on queue %p without event_queue_init(); payload free may be unsafe", queue);
+        LOG_WRN("Purge on queue %p without event_queue_init(); payload free and concurrency safety are caller-managed",
+                queue);
+        unsigned int key = irq_lock();
+        while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
+            purged++;
+        }
+        irq_unlock(key);
+        LOG_DBG("Event queue purged, dropped=%u", purged);
+        return;
     }
 
     if (cb != NULL) {

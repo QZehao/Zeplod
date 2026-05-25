@@ -84,17 +84,21 @@ static int event_dispatcher_auto_init(void) {
         local_system_start = true;
     }
 
-    dispatcher_config_t dispatcher_config = {.stack_size = CONFIG_EVENT_DISPATCHER_STACK_SIZE,
-                                             .priority = CONFIG_EVENT_DISPATCHER_PRIORITY,
-                                             .thread_name = "event_disp",
-                                             .enable_stats = APP_CONFIG_ENABLE_STATS,
-                                             .max_events_per_cycle = CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE};
-    if (event_dispatcher_init(&dispatcher_config) != EVENT_OK) {
-        LOG_ERR("event_dispatcher_init failed");
-        event_dispatcher_autoinit_rollback(local_system_init, local_system_start, false);
-        return -EIO;
+    if (!event_dispatcher_is_initialized()) {
+        dispatcher_config_t dispatcher_config = {.stack_size = CONFIG_EVENT_DISPATCHER_STACK_SIZE,
+                                                 .priority = CONFIG_EVENT_DISPATCHER_PRIORITY,
+                                                 .thread_name = "event_disp",
+                                                 .enable_stats = APP_CONFIG_ENABLE_STATS,
+                                                 .max_events_per_cycle = CONFIG_EVENT_DISPATCHER_MAX_EVENTS_PER_CYCLE};
+        if (event_dispatcher_init(&dispatcher_config) != EVENT_OK) {
+            LOG_ERR("event_dispatcher_init failed");
+            event_dispatcher_autoinit_rollback(local_system_init, local_system_start, false);
+            return -EIO;
+        }
+        local_dispatcher_init = true;
+    } else {
+        LOG_DBG("Dispatcher already initialized, skipping auto-init");
     }
-    local_dispatcher_init = true;
 
     if (event_dispatcher_start() != EVENT_OK) {
         LOG_ERR("event_dispatcher_start failed");

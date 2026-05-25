@@ -162,6 +162,8 @@ static atomic_t g_event_dropped_count;
  * stop/shutdown 在 purge/deinit 前等待其归零，避免 running 检查后仍向队列投递。
  */
 static atomic_t g_publish_in_flight;
+/** stop/shutdown 等待 in-flight publish 归零的最大等待时间（毫秒） */
+#define EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS 5000U
 
 /** 串行化订阅者 ID 分配与全局唯一性检查，消除 subscriber_id_in_use 的 TOCTOU */
 static K_MUTEX_DEFINE(g_subscriber_id_lock);
@@ -215,8 +217,13 @@ static void event_system_entry_unlock(event_type_entry_t* entry) {
 }
 
 static void event_publish_in_flight_wait_zero(void) {
+    int64_t  deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
     uint32_t spins = 0;
     while (atomic_get(&g_publish_in_flight) != 0) {
+        if (k_uptime_get() >= deadline) {
+            LOG_ERR("Timeout waiting publish in-flight to drain: %d", (int) atomic_get(&g_publish_in_flight));
+            break;
+        }
         if (spins++ < 100U) {
             k_yield();
         } else {
@@ -504,15 +511,26 @@ static void event_system_reset_control_block(void) {
  * @brief 检查订阅者 ID 是否已被使用
  *
  * @note 调用方必须已持有 g_subscriber_id_lock（串行化所有 subscribe/unsubscribe）。
- *       遍历时未逐类型持有 entry->lock；勿在未持 g_subscriber_id_lock 时修改订阅表。
+ *       遍历时会逐类型短暂持有 entry->lock；若调用方已持有某个 entry->lock，
+ *       需通过 skip_locked_entry 跳过重复加锁以避免死锁。
  */
-static bool subscriber_id_in_use(uint32_t id) {
+static bool subscriber_id_in_use(uint32_t id, event_type_entry_t* skip_locked_entry) {
     for (int t = 0; t < MAX_EVENT_TYPES; t++) {
         event_type_entry_t* entry = &g_event_system.event_types[t];
+        bool                need_lock = (entry != skip_locked_entry);
+        if (need_lock) {
+            event_system_entry_lock(entry);
+        }
         for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
             if (entry->subscribers[i].is_active && entry->subscribers[i].subscriber_id == id) {
+                if (need_lock) {
+                    event_system_entry_unlock(entry);
+                }
                 return true;
             }
+        }
+        if (need_lock) {
+            event_system_entry_unlock(entry);
         }
     }
     return false;
@@ -1010,7 +1028,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
                     event_system_subscriber_id_unlock();
                     return EVENT_ERR_NO_MEM;
                 }
-            } while (subscriber_id_in_use(new_id));
+            } while (subscriber_id_in_use(new_id, entry));
 
             entry->subscribers[i].callback = callback;
             entry->subscribers[i].user_data = user_data;
