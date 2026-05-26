@@ -680,10 +680,6 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
         return -EINVAL;
     }
 
-    if (service->initialized && service->running) {
-        return -EBUSY;
-    }
-
     memset(service, 0, sizeof(ipc_service_t));
     zepl_state_machine_init(&service->lifecycle, ZEP_STATE_UNINIT);
 
@@ -868,22 +864,21 @@ int ipc_service_stop(ipc_service_t* service) {
         stop_err = -EIO;
     }
 
-    if (stop_err != 0) {
-        return stop_err;
-    }
 
     /* SIL-2: 清理队列残留消息，防止 stop 后再 start 时消费旧消息 */
     drain_queued_messages(service);
     k_msgq_purge(&service->request_queue);
     k_msgq_purge(&service->response_queue);
 
+    ipc_service_state_lock(service);
+    service->running = false;
     if (stop_err == 0) {
-        ipc_service_state_lock(service);
-        service->running = false;
         atomic_set(&service->shutdown, 0);
         (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
-        ipc_service_state_unlock(service);
+    } else {
+        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_ERROR);
     }
+    ipc_service_state_unlock(service);
 
     /* SIL-2: 清理所有 pending 请求，防止资源泄漏 */
     ipc_service_pending_lock(service);
