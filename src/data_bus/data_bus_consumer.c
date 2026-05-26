@@ -294,11 +294,13 @@ void data_bus_consumer_dispatch(data_bus_channel_t* ch, data_bus_block_t* block)
         data_bus_consume_fn_t callback = NULL;
         void*                 user_data = NULL;
         bool                  manual_release = false;
+        bool                  hold_acquired = false;
 
         k_spinlock_key_t     lk = k_spin_lock(&ch->lock);
         data_bus_consumer_t* target = snaps[i].consumer;
         if (target != NULL && atomic_get(&target->active) && target->generation == snaps[i].generation) {
             (void) atomic_inc(&target->callback_hold);
+            hold_acquired = true;
             callback = target->callback;
             user_data = target->user_data;
             manual_release = target->manual_release;
@@ -326,7 +328,9 @@ void data_bus_consumer_dispatch(data_bus_channel_t* ch, data_bus_block_t* block)
         if (target != NULL && atomic_get(&target->active) && target->generation == snaps[i].generation) {
             target->last_seq = block_seq;
         }
-        (void) atomic_dec(&snaps[i].consumer->callback_hold);
+        if (hold_acquired) {
+            (void) atomic_dec(&snaps[i].consumer->callback_hold);
+        }
         k_spin_unlock(&ch->lock, lk);
     }
 }
