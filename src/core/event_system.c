@@ -768,6 +768,7 @@ event_status_t event_system_stop(void) {
                 event_status_t dret = event_dispatcher_stop();
                 if (dret != EVENT_OK) {
                     LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+                    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
                     event_system_lifecycle_unlock();
                     return dret;
                 }
@@ -839,6 +840,7 @@ event_status_t event_system_shutdown(void) {
         event_status_t dret = event_dispatcher_deinit();
         if (dret != EVENT_OK) {
             LOG_ERR("Failed to deinit dispatcher during shutdown: %d", dret);
+            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
             /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
              * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
              * 不宜在无人工介入下反复 shutdown。 */
