@@ -217,18 +217,13 @@ static void event_system_entry_unlock(event_type_entry_t* entry) {
 }
 
 static void event_publish_in_flight_wait_zero(void) {
-    int64_t  deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
-    uint32_t spins = 0;
+    int64_t deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
     while (atomic_get(&g_publish_in_flight) != 0) {
         if (k_uptime_get() >= deadline) {
             LOG_ERR("Timeout waiting publish in-flight to drain: %d", (int) atomic_get(&g_publish_in_flight));
             break;
         }
-        if (spins++ < 100U) {
-            k_yield();
-        } else {
-            k_sleep(K_NO_WAIT);
-        }
+        k_sleep(K_MSEC(1));
     }
 }
 
@@ -702,6 +697,8 @@ event_status_t event_system_start(void) {
             if (dret != EVENT_OK) {
                 LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
                 atomic_set(&g_restart_dispatcher_on_start, 1);
+                (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING);
+                (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
                 event_system_lifecycle_unlock();
                 return dret;
             }

@@ -271,6 +271,7 @@ typedef void (*event_slab_exhausted_cb_t)(event_priority_t priority, const char*
  *
  * @note 同一时间只能有一个回调生效
  * @note 回调在分配失败时同步调用，应避免阻塞操作
+ * @note 若分配失败发生在 ISR/RT 路径，回调会在相同上下文同步执行，因此回调自身必须 ISR-safe。
  */
 void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb);
 

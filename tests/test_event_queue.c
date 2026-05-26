@@ -542,4 +542,22 @@ ZTEST(test_event_queue, test_multiple_queues) {
  * 测试套件
  * ============================================================================= */
 
+ZTEST(test_event_queue, test_dequeue_unregistered_queue_does_not_consume) {
+    struct k_msgq  raw_queue;
+    char           buffer[sizeof(event_t)];
+    event_t        event_in = {.type = 91, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        event_out = {0};
+    event_status_t status;
+
+    k_msgq_init(&raw_queue, buffer, sizeof(event_t), 1);
+    zassert_equal(k_msgq_put(&raw_queue, &event_in, K_NO_WAIT), 0, NULL);
+
+    status = event_queue_dequeue(&raw_queue, &event_out, K_NO_WAIT);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "unregistered queue must be rejected");
+    zassert_equal(k_msgq_num_used_get(&raw_queue), 1, "rejected dequeue must not consume data");
+
+    zassert_equal(k_msgq_get(&raw_queue, &event_out, K_NO_WAIT), 0, NULL);
+    zassert_equal(event_out.type, event_in.type, NULL);
+}
+
 ZTEST_SUITE(test_event_queue, NULL, NULL, NULL, NULL, NULL);

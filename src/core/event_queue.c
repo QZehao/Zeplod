@@ -539,6 +539,10 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     }
 
     event_queue_cb_t* cb = event_queue_find_cb(queue);
+    if (cb == NULL) {
+        LOG_ERR("Queue not initialized via event_queue_init(); refusing dequeue");
+        return EVENT_ERR_INVALID_ARG;
+    }
 
     if (event_queue_use_op_lock(cb)) {
         k_timepoint_t end = sys_timepoint_calc(timeout);
@@ -575,11 +579,6 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
             return EVENT_ERR_QUEUE_EMPTY;
         }
         return EVENT_ERR_TIMEOUT;
-    }
-
-    if (cb == NULL) {
-        LOG_ERR("Queue not initialized via event_queue_init(); dequeue payload ownership is caller-managed");
-        return EVENT_ERR_INVALID_ARG;
     }
 
     atomic_inc(&cb->dequeue_count);
