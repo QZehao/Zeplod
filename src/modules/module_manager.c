@@ -112,6 +112,7 @@ static module_manager_cb_t g_module_mgr;
 
 /** shutdown 进行中标志：防止 module_manager_shutdown 与 unregister 并发重复调用 shutdown */
 static atomic_t g_shutting_down = ATOMIC_INIT(0);
+static atomic_t g_initialized = ATOMIC_INIT(0);
 
 /* module_manager_foreach / dump_info 使用栈上快照；若超出典型线程栈（4KB）的一半，编译报错提示调整配置 */
 BUILD_ASSERT(
@@ -744,7 +745,7 @@ int module_manager_init(void) {
     LOG_DBG("Initializing module manager...");
 
     /* SIL-2: 检查是否已初始化 */
-    if (g_module_mgr.initialized) {
+    if (atomic_get(&g_initialized)) {
         LOG_WRN("Module manager already initialized");
         return MODULE_ERR_ALREADY_EXISTS;
     }
@@ -764,6 +765,7 @@ int module_manager_init(void) {
 
     (void) zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_INITED);
     g_module_mgr.initialized = true;
+    atomic_set(&g_initialized, 1);
 
     LOG_DBG("Module manager initialized");
     return MODULE_OK;
@@ -775,7 +777,7 @@ int module_manager_init(void) {
  * @return MODULE_OK 成功，MODULE_ERR_NOT_INITIALIZED 未初始化，MODULE_ERR_ALREADY_RUNNING 已启动
  */
 int module_manager_start(void) {
-    if (!g_module_mgr.initialized) {
+    if (!atomic_get(&g_initialized)) {
         LOG_ERR("Module manager not initialized");
         return MODULE_ERR_NOT_INITIALIZED;
     }
@@ -815,7 +817,7 @@ int module_manager_start(void) {
  * @return MODULE_OK 成功，MODULE_ERR_NOT_INITIALIZED 未初始化
  */
 int module_manager_stop(void) {
-    if (!g_module_mgr.initialized) {
+    if (!atomic_get(&g_initialized)) {
         LOG_ERR("Module manager not initialized");
         return MODULE_ERR_NOT_INITIALIZED;
     }
@@ -876,7 +878,7 @@ int module_manager_shutdown(void) {
     LOG_DBG("Shutting down module manager...");
 
     /* SIL-2: 验证初始化状态 */
-    if (!g_module_mgr.initialized) {
+    if (!atomic_get(&g_initialized)) {
         LOG_ERR("Module manager not initialized");
         return MODULE_ERR_NOT_INITIALIZED;
     }
@@ -966,6 +968,7 @@ int module_manager_shutdown(void) {
     (void) memset(&g_module_mgr.stats, 0, sizeof(g_module_mgr.stats));
     (void) zepl_state_machine_try_transition(&g_module_mgr.lifecycle, ZEP_STATE_UNINIT);
     g_module_mgr.initialized = false;
+    atomic_set(&g_initialized, 0);
     g_module_mgr.running = false;
 
     module_manager_unlock();
@@ -991,7 +994,7 @@ int module_manager_shutdown(void) {
  */
 int module_manager_register(const module_interface_t* interface, void* config, uint32_t* module_id) {
     /* SIL-2: 验证管理器状态和输入参数 */
-    if (!g_module_mgr.initialized) {
+    if (!atomic_get(&g_initialized)) {
         LOG_ERR("Module manager not initialized");
         return MODULE_ERR_NOT_INITIALIZED;
     }
@@ -1131,7 +1134,7 @@ int module_manager_register(const module_interface_t* interface, void* config, u
  * @return MODULE_OK 成功，MODULE_ERR_NOT_FOUND 模块未找到
  */
 int module_manager_unregister(uint32_t module_id) {
-    if (!g_module_mgr.initialized) {
+    if (!atomic_get(&g_initialized)) {
         return MODULE_ERR_NOT_INITIALIZED;
     }
     if (module_id == 0U) {
@@ -1150,19 +1153,30 @@ int module_manager_unregister(uint32_t module_id) {
     /* 如果模块正在运行，先停止 */
     if (info->status == MODULE_STATUS_RUNNING) {
         int (*stop_fn)(void) = NULL;
+        int stop_ret = MODULE_OK;
 
         if (info->interface != NULL) {
             stop_fn = info->interface->stop;
         }
         module_manager_unlock();
         if (stop_fn != NULL) {
-            stop_fn();
+            stop_ret = stop_fn();
         }
         module_manager_lock();
         info = find_module_by_id_locked(module_id);
         if (info == NULL) {
             module_manager_unlock();
             return MODULE_ERR_NOT_FOUND;
+        }
+        if (stop_ret != MODULE_OK) {
+            LOG_ERR("Module unregister aborted: stop failed (id=%u ret=%d)", (unsigned int) module_id, stop_ret);
+            if (info->status == MODULE_STATUS_RUNNING) {
+                info->status = MODULE_STATUS_ERROR;
+                g_module_mgr.stats.error_modules++;
+            }
+            module_manager_unlock();
+            module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_ERROR);
+            return stop_ret;
         }
         if (info->status == MODULE_STATUS_RUNNING) {
             info->status = MODULE_STATUS_STOPPED;
@@ -1226,7 +1240,7 @@ int module_manager_unregister(uint32_t module_id) {
  * @return MODULE_OK 成功，MODULE_ERR_NOT_FOUND 模块未找到
  */
 int module_manager_get_module_info(uint32_t module_id, module_info_t* out) {
-    if (!g_module_mgr.initialized || module_id == 0U || out == NULL) {
+    if (!atomic_get(&g_initialized) || module_id == 0U || out == NULL) {
         return MODULE_ERR_INVALID_ARG;
     }
 
@@ -1251,7 +1265,7 @@ int module_manager_get_module_info(uint32_t module_id, module_info_t* out) {
  * @return 模块 ID，0 表示未找到
  */
 uint32_t module_manager_get_id_by_name(const char* name) {
-    if (!g_module_mgr.initialized || name == NULL) {
+    if (!atomic_get(&g_initialized) || name == NULL) {
         return 0U;
     }
 
@@ -1270,7 +1284,7 @@ uint32_t module_manager_get_id_by_name(const char* name) {
  * @param user_data 用户数据
  */
 void module_manager_foreach(void (*callback)(module_info_t*, void*), void* user_data) {
-    if (!g_module_mgr.initialized || callback == NULL) {
+    if (!atomic_get(&g_initialized) || callback == NULL) {
         return;
     }
 
