@@ -864,7 +864,6 @@ int ipc_service_stop(ipc_service_t* service) {
         stop_err = -EIO;
     }
 
-
     /* SIL-2: 清理队列残留消息，防止 stop 后再 start 时消费旧消息 */
     drain_queued_messages(service);
     k_msgq_purge(&service->request_queue);

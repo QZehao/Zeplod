@@ -506,8 +506,10 @@ static void event_system_reset_control_block(void) {
  * @brief 检查订阅者 ID 是否已被使用
  *
  * @note 调用方必须已持有 g_subscriber_id_lock（串行化所有 subscribe/unsubscribe）。
- *       遍历时会逐类型短暂持有 entry->lock；若调用方已持有某个 entry->lock，
+ *       遍历时会逐类型短暂持有
+ * entry->lock；若调用方已持有某个 entry->lock，
  *       需通过 skip_locked_entry 跳过重复加锁以避免死锁。
+
  */
 static bool subscriber_id_in_use(uint32_t id, event_type_entry_t* skip_locked_entry) {
     for (int t = 0; t < MAX_EVENT_TYPES; t++) {
@@ -842,7 +844,9 @@ event_status_t event_system_shutdown(void) {
             LOG_ERR("Failed to deinit dispatcher during shutdown: %d", dret);
             (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
             /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
+             *
              * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
+             *
              * 不宜在无人工介入下反复 shutdown。 */
             event_system_lifecycle_unlock();
             return dret;
