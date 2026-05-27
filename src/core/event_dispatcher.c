@@ -408,6 +408,9 @@ event_status_t event_dispatcher_deinit(void) {
         return ret;
     }
 
+    /* deinit/shutdown should reset external callback context to avoid stale pointers on next init */
+    g_dispatcher.filter = NULL;
+    g_dispatcher.filter_user_data = NULL;
     g_event_queue = NULL;
     g_dispatcher_initialized = false;
 

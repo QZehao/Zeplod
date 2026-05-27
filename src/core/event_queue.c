@@ -224,6 +224,9 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
 
     /* 排空/回灌期间屏蔽 ISR 入队，避免与 scratch 算法并发修改 k_msgq */
     unsigned int irq_key = irq_lock();
+    uint32_t     restore_free_count = 0U;
+    bool         free_worst = false;
+    event_t      worst_ev = {0};
 
     for (uint32_t i = 0; i < n; i++) {
         if (k_msgq_get(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT) != 0) {
@@ -231,12 +234,15 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
             for (uint32_t j = 0; j < i; j++) {
                 if (k_msgq_put(queue, &cb->drop_lowest_scratch[j], K_NO_WAIT) != 0) {
                     LOG_ERR("DROP_LOWEST restore failed at %u during drain recovery", j);
-                    event_free_queued_payload(&cb->drop_lowest_scratch[j]);
+                    cb->drop_lowest_scratch[restore_free_count++] = cb->drop_lowest_scratch[j];
                     atomic_inc(&cb->drop_count);
                     event_system_inc_dropped_count();
                 }
             }
             irq_unlock(irq_key);
+            for (uint32_t k = 0U; k < restore_free_count; k++) {
+                event_free_queued_payload(&cb->drop_lowest_scratch[k]);
+            }
             return EVENT_ERR_QUEUE_FULL;
         }
     }
@@ -260,7 +266,8 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
         return EVENT_ERR_QUEUE_FULL;
     }
 
-    event_free_queued_payload(&cb->drop_lowest_scratch[worst]);
+    free_worst = true;
+    worst_ev = cb->drop_lowest_scratch[worst];
 
     atomic_inc(&cb->drop_count);
     event_system_inc_dropped_count();
@@ -274,6 +281,9 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
     int ret = k_msgq_put(queue, event, K_NO_WAIT);
 
     irq_unlock(irq_key);
+    if (free_worst) {
+        event_free_queued_payload(&worst_ev);
+    }
 
     if (ret != 0) {
         if (ret == -ENOMSG) {
@@ -687,23 +697,31 @@ void event_queue_purge(struct k_msgq* queue) {
         k_mutex_lock(&cb->reorder_lock, K_FOREVER);
     }
 
-    unsigned int irq_key = 0U;
-
-    if (event_queue_use_op_lock(cb)) {
-        irq_key = irq_lock();
-    }
-
-    while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
-        event_free_queued_payload(&ev);
-        purged++;
-        if (event_queue_use_op_lock(cb) && ((purged % EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH) == 0U)) {
-            irq_unlock(irq_key);
-            irq_key = irq_lock();
+    if (!event_queue_use_op_lock(cb)) {
+        while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
+            event_free_queued_payload(&ev);
+            purged++;
         }
-    }
+    } else {
+        while (true) {
+            uint32_t     batch = 0U;
+            unsigned int irq_key = irq_lock();
 
-    if (event_queue_use_op_lock(cb)) {
-        irq_unlock(irq_key);
+            while (batch < EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH &&
+                   k_msgq_get(queue, &cb->drop_lowest_scratch[batch], K_NO_WAIT) == 0) {
+                batch++;
+            }
+            irq_unlock(irq_key);
+
+            if (batch == 0U) {
+                break;
+            }
+
+            for (uint32_t i = 0U; i < batch; i++) {
+                event_free_queued_payload(&cb->drop_lowest_scratch[i]);
+                purged++;
+            }
+        }
     }
 
     if (cb != NULL) {
