@@ -189,6 +189,33 @@ ZTEST(test_event_queue, test_drop_lowest_no_spurious_overflow_count) {
     event_queue_deinit(&test_queue);
 }
 
+ZTEST(test_event_queue, test_drop_lowest_uses_nonblocking_full_probe) {
+    struct k_msgq  test_queue;
+    char           buffer[2 * sizeof(event_t)];
+    event_status_t status;
+    event_t        out;
+    event_t        e1 = {.type = 1, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        e2 = {.type = 2, .priority = EVENT_PRIORITY_NORMAL};
+    event_t        hi = {.type = 99, .priority = EVENT_PRIORITY_HIGH};
+
+    status = event_queue_init(&test_queue, buffer, 2);
+    zassert_equal(status, EVENT_OK, NULL);
+
+    zassert_equal(event_queue_enqueue(&test_queue, &e1, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT), EVENT_OK, NULL);
+    zassert_equal(event_queue_enqueue(&test_queue, &e2, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT), EVENT_OK, NULL);
+
+    status = event_queue_enqueue(&test_queue, &hi, QUEUE_OVERFLOW_DROP_LOWEST, K_MSEC(20));
+    zassert_equal(status, EVENT_OK, "DROP_LOWEST must not wait while holding reorder_lock");
+    zassert_equal(event_queue_depth(&test_queue), 2, NULL);
+
+    zassert_equal(event_queue_dequeue(&test_queue, &out, K_NO_WAIT), EVENT_OK, NULL);
+    zassert_equal(out.type, 2, NULL);
+    zassert_equal(event_queue_dequeue(&test_queue, &out, K_NO_WAIT), EVENT_OK, NULL);
+    zassert_equal(out.type, 99, NULL);
+
+    event_queue_deinit(&test_queue);
+}
+
 /**
  * @brief 测试 DROP_LOWEST：新事件比队列中最差事件还低时丢弃新事件
  */

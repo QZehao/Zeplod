@@ -837,8 +837,8 @@ event_status_t event_system_shutdown(void) {
             (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
             /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
              *
-             * EVENT_ERR_TIMEOUT：dispatcher join/abort 失败，线程可能仍存活；宜记录故障并系统复位，
-             *
+             * EVENT_ERR_TIMEOUT：dispatcher join 超时，线程可能仍存活；宜记录故障并系统复位，
+ *
              * 不宜在无人工介入下反复 shutdown。 */
             event_system_lifecycle_unlock();
             return dret;

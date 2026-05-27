@@ -472,7 +472,13 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         k_mutex_lock(&cb->reorder_lock, K_FOREVER);
     }
 
-    int ret = event_msgq_put(queue, event, timeout);
+    k_timeout_t put_timeout = timeout;
+    if (policy == QUEUE_OVERFLOW_DROP_LOWEST) {
+        /* Never block while holding reorder_lock: dequeue also takes the same lock. */
+        put_timeout = K_NO_WAIT;
+    }
+
+    int ret = event_msgq_put(queue, event, put_timeout);
 
     if (ret == 0) {
         atomic_inc(&cb->enqueue_count);
@@ -508,7 +514,7 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
             break;
 
         case QUEUE_OVERFLOW_DROP_LOWEST:
-            st = enqueue_drop_lowest_locked(queue, event, timeout, cb);
+            st = enqueue_drop_lowest_locked(queue, event, K_NO_WAIT, cb);
             break;
 
         case QUEUE_OVERFLOW_BLOCK:
@@ -684,11 +690,10 @@ void event_queue_purge(struct k_msgq* queue) {
     if (cb == NULL) {
         LOG_WRN("Purge on queue %p without event_queue_init(); payload free and concurrency safety are caller-managed",
                 queue);
-        unsigned int key = irq_lock();
         while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
             purged++;
+            event_free_queued_payload(&ev);
         }
-        irq_unlock(key);
         LOG_DBG("Event queue purged, dropped=%u", purged);
         return;
     }

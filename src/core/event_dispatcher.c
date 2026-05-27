@@ -334,9 +334,11 @@ event_status_t event_dispatcher_stop(void) {
 
     if (g_dispatcher.state == DISPATCHER_STOPPED) {
         if (g_dispatcher.thread_started) {
+            should_join = true;
+            join_gen = g_dispatcher.thread_gen;
             k_mutex_unlock(&g_dispatcher.lock);
-            LOG_WRN("Dispatcher stop/join already in progress");
-            return EVENT_ERR_TIMEOUT;
+            LOG_WRN("Dispatcher stop/join already in progress, retrying join");
+            goto join_thread;
         }
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_OK;
@@ -349,34 +351,23 @@ event_status_t event_dispatcher_stop(void) {
     k_mutex_unlock(&g_dispatcher.lock);
 
     /* SIL-2: 等待线程退出，使用有限超时 */
+join_thread:
     if (should_join) {
         int jret = k_thread_join(&g_dispatcher.thread, K_MSEC(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS));
 
         if (jret != 0) {
             LOG_ERR("Dispatcher thread join timeout/failed: %d (timeout=%u ms)", jret,
                     EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS);
-            /* SIL-2: join 超时后备方案：强制终止线程（IMP-3 修复）。
-             * 必须先 abort 再清理 thread_started，防止线程在 stop 返回后继续运行。 */
-            k_thread_abort(&g_dispatcher.thread);
-
-            /* SIL-2: 验证 abort 后线程确实终止（HIGH-2）。
-             * Zephyr 的 k_thread_abort 是同步的，此处再次 join 应立即返回 0；
-             * 若验证仍失败，说明线程异常，保留 thread_started=true 以防止
-             * 后续 start() 创建新线程时与残留线程产生队列竞争。
-             * MED-3: 此状态下 dispatcher 无法再重启成功，通常需要系统复位。
-             * 不建议在 abort 失败后再次调用 event_dispatcher_start()。 */
-            int jret2 = k_thread_join(&g_dispatcher.thread, K_MSEC(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS));
-            if (jret2 != 0) {
-                LOG_ERR("Dispatcher thread abort verification failed: %d; keeping thread_started=true", jret2);
-                return EVENT_ERR_TIMEOUT;
-            }
-            LOG_WRN("Dispatcher thread aborted after join timeout");
+            /* Keep thread_started=true so later stop/deinit can retry join and start() cannot create
+             * a second consumer while the original thread may still own an event payload.
+             */
+            return EVENT_ERR_TIMEOUT;
         } else {
             LOG_DBG("Dispatcher thread joined successfully");
         }
     }
 
-    /* SIL-2: join 成功或 abort 验证成功后清理状态；若 stop 期间另有 start 创建新线程则保留 thread_started */
+    /* SIL-2: join 成功后清理状态；若 stop 期间另有 start 创建新线程则保留 thread_started */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     if (g_dispatcher.thread_gen == join_gen) {
         g_dispatcher.thread_started = false;

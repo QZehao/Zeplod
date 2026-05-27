@@ -22,9 +22,12 @@
 LOG_MODULE_REGISTER(test_event_dispatcher);
 
 #define DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE 230U
+#define DISPATCHER_SLOW_CALLBACK_EVENT_TYPE      231U
 
 static atomic_t       g_dispatcher_stop_from_callback_seen;
 static event_status_t g_dispatcher_stop_from_callback_status;
+static atomic_t       g_dispatcher_slow_callback_started;
+static atomic_t       g_dispatcher_slow_callback_done;
 
 static void dispatcher_stop_from_callback_handler(const event_t* event, void* user_data) {
     ARG_UNUSED(event);
@@ -32,6 +35,15 @@ static void dispatcher_stop_from_callback_handler(const event_t* event, void* us
 
     g_dispatcher_stop_from_callback_status = event_dispatcher_stop();
     atomic_set(&g_dispatcher_stop_from_callback_seen, 1);
+}
+
+static void dispatcher_slow_callback_handler(const event_t* event, void* user_data) {
+    ARG_UNUSED(event);
+    ARG_UNUSED(user_data);
+
+    atomic_set(&g_dispatcher_slow_callback_started, 1);
+    k_msleep(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 300U);
+    atomic_set(&g_dispatcher_slow_callback_done, 1);
 }
 
 ZTEST(event_dispatcher, test_init_start_stop) {
@@ -533,6 +545,38 @@ ZTEST(event_dispatcher, test_dispatcher_stop_rejected_from_callback) {
 /**
  * @brief 测试 process_all 带上限
  */
+ZTEST(event_dispatcher, test_dispatcher_stop_timeout_does_not_abort_callback) {
+    uint32_t subscriber_id;
+
+    atomic_set(&g_dispatcher_slow_callback_started, 0);
+    atomic_set(&g_dispatcher_slow_callback_done, 0);
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(DISPATCHER_SLOW_CALLBACK_EVENT_TYPE, "disp_slow_cb"), EVENT_OK, NULL);
+    zassert_equal(
+        event_subscribe(DISPATCHER_SLOW_CALLBACK_EVENT_TYPE, dispatcher_slow_callback_handler, NULL, &subscriber_id),
+        EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_publish_copy(DISPATCHER_SLOW_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0), EVENT_OK,
+                  NULL);
+
+    for (uint32_t i = 0U; i < 100U && atomic_get(&g_dispatcher_slow_callback_started) == 0; i++) {
+        k_msleep(1);
+    }
+    zassert_equal(atomic_get(&g_dispatcher_slow_callback_started), 1, "slow callback should have started");
+
+    zassert_equal(event_dispatcher_stop(), EVENT_ERR_TIMEOUT, "stop should time out while callback is still running");
+    zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 0, "callback must not be aborted on stop timeout");
+
+    k_msleep(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 400U);
+    zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 1, "callback should complete naturally");
+    zassert_equal(event_dispatcher_stop(), EVENT_OK, "second stop should join completed dispatcher thread");
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
 ZTEST(event_dispatcher, test_process_all_with_limit) {
     uint32_t processed;
 
@@ -564,8 +608,8 @@ ZTEST(event_dispatcher, test_process_all_with_limit) {
 static void event_dispatcher_after_each(void* fixture) {
     (void) fixture;
     /* 完整 shutdown：清空已注册事件类型与分发器状态。仅 stop 不会清理类型表，
-     * 否则本套件注册的 type（如
-     * 100/101/210）会污染后续 test_event_system 等套件。 */
+     * 否则本套件注册的
+     * type（如 100/101/210）会污染后续 test_event_system 等套件。 */
     (void) event_system_shutdown();
 }
 

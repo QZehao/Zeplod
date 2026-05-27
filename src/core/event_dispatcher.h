@@ -159,7 +159,7 @@ event_status_t event_dispatcher_start(void);
 /**
  * @brief 停止分发器
  *
- * @return EVENT_OK 成功；join 正在进行、join 超时且终止验证仍失败时可能返回 EVENT_ERR_TIMEOUT
+ * @return EVENT_OK 成功；join 正在进行或超时时可能返回 EVENT_ERR_TIMEOUT
  *         （罕见，见实现注释）
  *
  * @note 不得从分发器线程自身调用；否则无法 join，返回 EVENT_ERR_INVALID_ARG
