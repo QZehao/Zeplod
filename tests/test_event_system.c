@@ -531,6 +531,38 @@ ZTEST(test_event_system, test_event_publish_when_stopped) {
 }
 
 /**
+ * @brief 发布失败路径后生命周期仍可正常 stop/shutdown
+ */
+ZTEST(test_event_system, test_event_publish_failure_lifecycle_ok) {
+    event_status_t status;
+    event_t        bad = {.type = 151,
+                          .priority = EVENT_PRIORITY_NORMAL,
+                          .data_len = 1U,
+                          .flags = EVENT_FLAG_DATA_INLINE | EVENT_FLAG_DATA_DYNAMIC,
+                          .data = {.inline_data = {0xAA}}};
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(151, "publish_fail"), EVENT_OK, NULL);
+
+    status = event_publish(&bad);
+    zassert_equal(status, EVENT_ERR_NOT_RUNNING, NULL);
+
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    status = event_publish(&bad);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, NULL);
+
+    {
+        event_t unreg = {.type = 152, .priority = EVENT_PRIORITY_NORMAL, .data_len = 0U};
+
+        status = event_publish(&unreg);
+        zassert_equal(status, EVENT_ERR_NOT_FOUND, NULL);
+    }
+
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+    zassert_equal(event_system_shutdown(), EVENT_OK, NULL);
+}
+
+/**
  * @brief 测试事件系统多次 shutdown
  */
 ZTEST(test_event_system, test_event_system_shutdown_multiple) {

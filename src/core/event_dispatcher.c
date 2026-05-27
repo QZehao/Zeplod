@@ -151,7 +151,25 @@ static event_status_t event_dispatcher_validate_config(const dispatcher_config_t
     return EVENT_OK;
 }
 
-static bool event_dispatcher_process_allowed_locked(dispatcher_state_t state, bool thread_started, bool ever_started) {
+static void dispatcher_set_state_locked(dispatcher_state_t state) {
+    g_dispatcher.state = state;
+}
+
+static void dispatcher_mark_thread_started_locked(void) {
+    g_dispatcher.thread_started = true;
+    g_dispatcher.ever_started = true;
+}
+
+static void dispatcher_apply_thread_stopped_locked(uint32_t join_gen) {
+    if (g_dispatcher.thread_gen == join_gen) {
+        g_dispatcher.thread_started = false;
+    } else {
+        LOG_WRN("Dispatcher generation changed during stop (join_gen=%u current=%u); preserving thread_started",
+                join_gen, g_dispatcher.thread_gen);
+    }
+}
+
+static bool dispatcher_can_process_locked(dispatcher_state_t state, bool thread_started, bool ever_started) {
     if (state == DISPATCHER_PAUSED) {
         return false;
     }
@@ -229,7 +247,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     /* 初始化同步原语 */
     k_mutex_init(&g_dispatcher.lock);
 
-    g_dispatcher.state = DISPATCHER_STOPPED;
+    dispatcher_set_state_locked(DISPATCHER_STOPPED);
     g_dispatcher.last_event_time = k_uptime_get();
     g_dispatcher.thread_started = false;
     g_dispatcher.ever_started = false;
@@ -265,7 +283,7 @@ event_status_t event_dispatcher_start(void) {
     }
 
     if (g_dispatcher.state == DISPATCHER_PAUSED) {
-        g_dispatcher.state = DISPATCHER_RUNNING;
+        dispatcher_set_state_locked(DISPATCHER_RUNNING);
         k_mutex_unlock(&g_dispatcher.lock);
         LOG_DBG("Event dispatcher resumed by start()");
         return EVENT_OK;
@@ -277,12 +295,12 @@ event_status_t event_dispatcher_start(void) {
             LOG_WRN("Cannot start dispatcher while stop/join is in progress");
             return EVENT_ERR_TIMEOUT;
         }
-        g_dispatcher.state = DISPATCHER_RUNNING;
+        dispatcher_set_state_locked(DISPATCHER_RUNNING);
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_OK;
     }
 
-    g_dispatcher.state = DISPATCHER_RUNNING;
+    dispatcher_set_state_locked(DISPATCHER_RUNNING);
     g_dispatcher.thread_gen = (uint32_t) atomic_inc(&g_dispatcher_next_gen);
 
     /* SIL-2: 创建分发器线程 */
@@ -291,7 +309,7 @@ event_status_t event_dispatcher_start(void) {
 
     /* SIL-2: 验证线程创建结果（IMP-7 修复） */
     if (tid == NULL) {
-        g_dispatcher.state = DISPATCHER_STOPPED;
+        dispatcher_set_state_locked(DISPATCHER_STOPPED);
         g_dispatcher.thread_started = false;
         k_mutex_unlock(&g_dispatcher.lock);
         LOG_ERR("Failed to create dispatcher thread");
@@ -303,8 +321,7 @@ event_status_t event_dispatcher_start(void) {
     }
 
     k_thread_start(&g_dispatcher.thread);
-    g_dispatcher.thread_started = true;
-    g_dispatcher.ever_started = true;
+    dispatcher_mark_thread_started_locked();
 
     k_mutex_unlock(&g_dispatcher.lock);
 
@@ -345,7 +362,7 @@ event_status_t event_dispatcher_stop(void) {
     }
 
     /* SIL-2: 设置停止状态，线程会在下次循环检查时退出 */
-    g_dispatcher.state = DISPATCHER_STOPPED;
+    dispatcher_set_state_locked(DISPATCHER_STOPPED);
     should_join = g_dispatcher.thread_started;
     join_gen = g_dispatcher.thread_gen;
     k_mutex_unlock(&g_dispatcher.lock);
@@ -369,12 +386,7 @@ join_thread:
 
     /* SIL-2: join 成功后清理状态；若 stop 期间另有 start 创建新线程则保留 thread_started */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    if (g_dispatcher.thread_gen == join_gen) {
-        g_dispatcher.thread_started = false;
-    } else {
-        LOG_WRN("Dispatcher generation changed during stop (join_gen=%u current=%u); preserving thread_started",
-                join_gen, g_dispatcher.thread_gen);
-    }
+    dispatcher_apply_thread_stopped_locked(join_gen);
     k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_DBG("Event dispatcher stopped");
@@ -426,7 +438,7 @@ event_status_t event_dispatcher_pause(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    g_dispatcher.state = DISPATCHER_PAUSED;
+    dispatcher_set_state_locked(DISPATCHER_PAUSED);
     k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_DBG("Event dispatcher paused");
@@ -450,7 +462,7 @@ event_status_t event_dispatcher_resume(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    g_dispatcher.state = DISPATCHER_RUNNING;
+    dispatcher_set_state_locked(DISPATCHER_RUNNING);
     k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_DBG("Event dispatcher resumed");
@@ -558,7 +570,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     thread_started = g_dispatcher.thread_started;
     ever_started = g_dispatcher.ever_started;
 
-    if (!event_dispatcher_process_allowed_locked(state, thread_started, ever_started)) {
+    if (!dispatcher_can_process_locked(state, thread_started, ever_started)) {
         k_mutex_unlock(&g_dispatcher.lock);
         if (ever_started && state == DISPATCHER_STOPPED) {
             LOG_WRN("process_one rejected: dispatcher was started and is now stopped");
@@ -581,7 +593,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     state = g_dispatcher.state;
     thread_started = g_dispatcher.thread_started;
     ever_started = g_dispatcher.ever_started;
-    if (!event_dispatcher_process_allowed_locked(state, thread_started, ever_started)) {
+    if (!dispatcher_can_process_locked(state, thread_started, ever_started)) {
         k_mutex_unlock(&g_dispatcher.lock);
         event_free_data(&event);
         return EVENT_ERR_INVALID_ARG;

@@ -122,6 +122,87 @@ void event_memory_notify_slab_exhausted(event_priority_t priority, const char* s
 
 #if EVENT_SLAB_ENABLED
 
+#if EVENT_SLAB_LARGE_AVAILABLE
+
+typedef struct {
+    struct k_mem_slab* slab;
+    size_t             block_size;
+    uint32_t           num_blocks;
+    uint8_t            flag;
+} event_data_slab_meta_t;
+
+static const event_data_slab_meta_t g_event_data_slab_meta[] = {
+#if EVENT_SLAB_256_AVAILABLE
+    {&event_slab_data_256, 256U, CONFIG_EVENT_SLAB_LARGE_256_COUNT, EVENT_FLAG_SLAB_256},
+#endif
+#if EVENT_SLAB_1K_AVAILABLE
+    {&event_slab_data_1k, 1024U, CONFIG_EVENT_SLAB_LARGE_1K_COUNT, EVENT_FLAG_SLAB_1K},
+#endif
+#if EVENT_SLAB_4K_AVAILABLE
+    {&event_slab_data_4k, 4096U, CONFIG_EVENT_SLAB_LARGE_4K_COUNT, EVENT_FLAG_SLAB_4K},
+#endif
+};
+
+static bool event_memory_slab_ptr_in_pool(const void* ptr, const event_data_slab_meta_t* meta) {
+    if (ptr == NULL || meta == NULL || meta->slab == NULL || meta->num_blocks == 0U || meta->block_size == 0U) {
+        return false;
+    }
+
+    uintptr_t block = (uintptr_t) ptr;
+    uintptr_t base = (uintptr_t) meta->slab->buffer;
+    size_t    total = meta->block_size * meta->num_blocks;
+
+    if (block < base || block >= (base + total)) {
+        return false;
+    }
+
+    return ((block - base) % meta->block_size) == 0U;
+}
+
+bool event_memory_data_slab_set_flag(event_t* event, struct k_mem_slab* slab) {
+    if (event == NULL || slab == NULL) {
+        return false;
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_data_slab_meta); i++) {
+        if (slab == g_event_data_slab_meta[i].slab) {
+            event->flags |= g_event_data_slab_meta[i].flag;
+            return true;
+        }
+    }
+
+    LOG_ERR("Unknown data slab pointer %p, cannot set marker", slab);
+    return false;
+}
+
+struct k_mem_slab* event_memory_data_slab_from_flag(uint8_t flag) {
+    const uint8_t masked = flag & EVENT_FLAG_SLAB_MASK;
+
+    if (masked == 0U) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_data_slab_meta); i++) {
+        if (g_event_data_slab_meta[i].flag == masked) {
+            return g_event_data_slab_meta[i].slab;
+        }
+    }
+
+    return NULL;
+}
+
+struct k_mem_slab* event_memory_resolve_data_slab_for_ptr(void* ptr) {
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_data_slab_meta); i++) {
+        if (event_memory_slab_ptr_in_pool(ptr, &g_event_data_slab_meta[i])) {
+            return g_event_data_slab_meta[i].slab;
+        }
+    }
+
+    return NULL;
+}
+
+#endif /* EVENT_SLAB_LARGE_AVAILABLE */
+
 struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
     switch (priority) {
 #if EVENT_SLAB_CRITICAL_AVAILABLE
@@ -148,25 +229,14 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len) {
         return NULL;
     }
 
-#if EVENT_SLAB_256_AVAILABLE
-    if (data_len <= 256) {
-        return &event_slab_data_256;
+#if EVENT_SLAB_LARGE_AVAILABLE
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_data_slab_meta); i++) {
+        if (data_len <= g_event_data_slab_meta[i].block_size) {
+            return g_event_data_slab_meta[i].slab;
+        }
     }
 #endif
 
-#if EVENT_SLAB_1K_AVAILABLE
-    if (data_len <= 1024) {
-        return &event_slab_data_1k;
-    }
-#endif
-
-#if EVENT_SLAB_4K_AVAILABLE
-    if (data_len <= 4096) {
-        return &event_slab_data_4k;
-    }
-#endif
-
-    /* 数据过大，需要使用 k_malloc */
     return NULL;
 }
 
@@ -175,22 +245,13 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len) 
         return NULL;
     }
 
-    /* MED-NEW-3: 级联策略 —— 首选最优大小，若满则尝试更大的池 */
-#if EVENT_SLAB_256_AVAILABLE
-    if (data_len <= 256 && k_mem_slab_num_free_get(&event_slab_data_256) > 0) {
-        return &event_slab_data_256;
-    }
-#endif
+#if EVENT_SLAB_LARGE_AVAILABLE
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_data_slab_meta); i++) {
+        const event_data_slab_meta_t* meta = &g_event_data_slab_meta[i];
 
-#if EVENT_SLAB_1K_AVAILABLE
-    if (data_len <= 1024 && k_mem_slab_num_free_get(&event_slab_data_1k) > 0) {
-        return &event_slab_data_1k;
-    }
-#endif
-
-#if EVENT_SLAB_4K_AVAILABLE
-    if (data_len <= 4096 && k_mem_slab_num_free_get(&event_slab_data_4k) > 0) {
-        return &event_slab_data_4k;
+        if (data_len <= meta->block_size && k_mem_slab_num_free_get(meta->slab) > 0) {
+            return meta->slab;
+        }
     }
 #endif
 

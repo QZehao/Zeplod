@@ -180,6 +180,30 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len);
  */
 struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len);
 
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+
+/**
+ * @brief 在 event 上记录数据 slab 来源标记（级联分配后释放须用实际池）
+ *
+ * @return true 已设置 EVENT_FLAG_SLAB_*，false slab 未知
+ */
+bool event_memory_data_slab_set_flag(event_t* event, struct k_mem_slab* slab);
+
+/**
+ * @brief 由 EVENT_FLAG_SLAB_MASK 查找对应数据 slab 池
+ *
+ * @param flag flags 中的 EVENT_FLAG_SLAB_* 值（已掩码）
+ * @return slab 指针，未知标记时返回 NULL
+ */
+struct k_mem_slab* event_memory_data_slab_from_flag(uint8_t flag);
+
+/**
+ * @brief 按指针地址反查数据 slab 池（标记损坏时的安全释放）
+ */
+struct k_mem_slab* event_memory_resolve_data_slab_for_ptr(void* ptr);
+
+#endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
+
 /**
  * @brief 记录一次回退到 k_malloc 的计数
  *

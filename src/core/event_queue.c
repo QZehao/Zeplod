@@ -312,25 +312,37 @@ static void msgq_get_attrs_const(const struct k_msgq* queue, struct k_msgq_attrs
     k_msgq_get_attrs((struct k_msgq*) queue, attrs);
 }
 
-static event_queue_cb_t* event_queue_find_cb(const struct k_msgq* queue) {
-    k_mutex_lock(&g_queue_cb_lock, K_FOREVER);
+/**
+ * @brief 在已持有 g_queue_cb_lock 时查找控制块
+ */
+static event_queue_cb_t* event_queue_cb_borrow_locked(const struct k_msgq* queue) {
     for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
         if (g_queue_cb[i].msgq == queue) {
-            k_mutex_unlock(&g_queue_cb_lock);
             return &g_queue_cb[i];
         }
     }
-    k_mutex_unlock(&g_queue_cb_lock);
     return NULL;
 }
 
-static event_queue_cb_t* event_queue_find_cb_nolock(const struct k_msgq* queue) {
-    for (size_t i = 0; i < MAX_QUEUE_CB_ENTRIES; i++) {
-        if (g_queue_cb[i].msgq == queue) {
-            return &g_queue_cb[i];
-        }
-    }
-    return NULL;
+/**
+ * @brief 线程上下文借用控制块（短暂持锁）
+ */
+static event_queue_cb_t* event_queue_cb_borrow(const struct k_msgq* queue) {
+    k_mutex_lock(&g_queue_cb_lock, K_FOREVER);
+    event_queue_cb_t* cb = event_queue_cb_borrow_locked(queue);
+    k_mutex_unlock(&g_queue_cb_lock);
+    return cb;
+}
+
+/**
+ * @brief ISR 借用控制块：无锁；调用方须保证 queue 已 init 且未与 deinit 并发
+ */
+static event_queue_cb_t* event_queue_cb_borrow_isr(const struct k_msgq* queue) {
+    return event_queue_cb_borrow_locked(queue);
+}
+
+static void event_queue_cb_release(event_queue_cb_t* cb) {
+    ARG_UNUSED(cb);
 }
 
 /* =============================================================================
@@ -430,11 +442,13 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
     }
 
     /* CRIT-NEW-2: ISR 路径不能持有互斥锁。
-     * event_queue_find_cb 内部使用 k_mutex_lock，在 ISR 中会触发内核断言。
+     * event_queue_cb_borrow 内部使用 k_mutex_lock，在 ISR 中会触发内核断言。
      * ISR 路径直接调用 k_msgq_put（Zephyr 原生支持），跳过 cb 统计。
      * 统计丢失可接受，安全优先。 */
     if (k_is_in_isr()) {
-        event_queue_cb_t* cb = event_queue_find_cb_nolock(queue);
+        event_queue_cb_t* cb = event_queue_cb_borrow_isr(queue);
+        event_status_t  st;
+
         if (cb == NULL) {
             return EVENT_ERR_INVALID_ARG;
         }
@@ -443,26 +457,31 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         if (ret == 0) {
             atomic_inc(&cb->enqueue_count);
             update_high_watermark(&cb->high_watermark, k_msgq_num_used_get(queue));
-            return EVENT_OK;
-        }
-        if (ret == -ENOMSG) {
+            st = EVENT_OK;
+        } else if (ret == -ENOMSG) {
             atomic_inc(&cb->overflow_count);
             event_system_inc_dropped_count();
-            return EVENT_ERR_QUEUE_FULL;
+            st = EVENT_ERR_QUEUE_FULL;
+        } else {
+            st = EVENT_ERR_TIMEOUT;
         }
-        return EVENT_ERR_TIMEOUT;
+
+        event_queue_cb_release(cb);
+        return st;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
+
     if (cb == NULL) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (policy == QUEUE_OVERFLOW_DROP_LOWEST) {
-        event_status_t scr = event_queue_ensure_drop_lowest_scratch(cb);
+    event_status_t st = EVENT_OK;
 
-        if (scr != EVENT_OK) {
-            return scr;
+    if (policy == QUEUE_OVERFLOW_DROP_LOWEST) {
+        st = event_queue_ensure_drop_lowest_scratch(cb);
+        if (st != EVENT_OK) {
+            goto out;
         }
     }
 
@@ -486,26 +505,26 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
-        return EVENT_OK;
+        goto out;
     }
 
     if (ret == -ECANCELED) {
         if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
-        return EVENT_ERR_NOT_RUNNING;
+        st = EVENT_ERR_NOT_RUNNING;
+        goto out;
     }
 
     if (ret == -EAGAIN) {
         if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
-        return EVENT_ERR_TIMEOUT;
+        st = EVENT_ERR_TIMEOUT;
+        goto out;
     }
 
     if (ret == -ENOMSG) {
-        event_status_t st;
-
         switch (policy) {
         case QUEUE_OVERFLOW_DROP_NEWEST:
             event_queue_record_drop(cb);
@@ -532,13 +551,17 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
         if (use_op_lock) {
             k_mutex_unlock(&cb->reorder_lock);
         }
-        return st;
+        goto out;
     }
 
     if (use_op_lock) {
         k_mutex_unlock(&cb->reorder_lock);
     }
-    return EVENT_ERR_INVALID_ARG;
+    st = EVENT_ERR_INVALID_ARG;
+
+out:
+    event_queue_cb_release(cb);
+    return st;
 }
 
 /**
@@ -554,11 +577,14 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
         return EVENT_ERR_INVALID_ARG;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
+
     if (cb == NULL) {
         LOG_ERR("Queue not initialized via event_queue_init(); refusing dequeue");
         return EVENT_ERR_INVALID_ARG;
     }
+
+    event_status_t st = EVENT_OK;
 
     if (event_queue_use_op_lock(cb)) {
         k_timepoint_t end = sys_timepoint_calc(timeout);
@@ -570,19 +596,22 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
 
             if (ret == 0) {
                 atomic_inc(&cb->dequeue_count);
-                return EVENT_OK;
+                goto out;
             }
 
             if (ret != -ENOMSG) {
-                return EVENT_ERR_TIMEOUT;
+                st = EVENT_ERR_TIMEOUT;
+                goto out;
             }
 
             if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-                return EVENT_ERR_QUEUE_EMPTY;
+                st = EVENT_ERR_QUEUE_EMPTY;
+                goto out;
             }
 
             if (!K_TIMEOUT_EQ(timeout, K_FOREVER) && sys_timepoint_expired(end)) {
-                return EVENT_ERR_TIMEOUT;
+                st = EVENT_ERR_TIMEOUT;
+                goto out;
             }
 
             k_sleep(K_MSEC(1));
@@ -592,14 +621,18 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     int ret = k_msgq_get(queue, event, timeout);
     if (ret != 0) {
         if (ret == -ENOMSG) {
-            return EVENT_ERR_QUEUE_EMPTY;
+            st = EVENT_ERR_QUEUE_EMPTY;
+        } else {
+            st = EVENT_ERR_TIMEOUT;
         }
-        return EVENT_ERR_TIMEOUT;
+        goto out;
     }
 
     atomic_inc(&cb->dequeue_count);
 
-    return EVENT_OK;
+out:
+    event_queue_cb_release(cb);
+    return st;
 }
 
 /**
@@ -680,7 +713,7 @@ void event_queue_purge(struct k_msgq* queue) {
         return;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
     event_t           ev;
     uint32_t          purged = 0U;
 
@@ -738,6 +771,7 @@ void event_queue_purge(struct k_msgq* queue) {
     }
 
     LOG_DBG("Event queue purged, dropped=%u", purged);
+    event_queue_cb_release(cb);
 }
 
 /**
@@ -751,7 +785,7 @@ void event_queue_get_stats(const struct k_msgq* queue, queue_stats_t* stats) {
         return;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
     if (cb == NULL) {
         *stats = (queue_stats_t) {0};
         return;
@@ -765,6 +799,7 @@ void event_queue_get_stats(const struct k_msgq* queue, queue_stats_t* stats) {
     stats->overflow_count = (uint32_t) atomic_get(&cb->overflow_count);
     stats->drop_count = (uint32_t) atomic_get(&cb->drop_count);
     stats->high_watermark = (uint32_t) atomic_get(&cb->high_watermark);
+    event_queue_cb_release(cb);
 }
 
 /**
@@ -777,7 +812,7 @@ void event_queue_reset_stats(struct k_msgq* queue) {
         return;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
     if (cb == NULL) {
         return;
     }
@@ -789,6 +824,7 @@ void event_queue_reset_stats(struct k_msgq* queue) {
     atomic_set(&cb->high_watermark, 0);
 
     LOG_DBG("Queue statistics reset");
+    event_queue_cb_release(cb);
 }
 
 /**
@@ -804,7 +840,7 @@ void event_queue_deinit(struct k_msgq* queue) {
         return;
     }
 
-    event_queue_cb_t* cb = event_queue_find_cb(queue);
+    event_queue_cb_t* cb = event_queue_cb_borrow(queue);
     if (cb == NULL) {
         return;
     }
@@ -828,4 +864,5 @@ void event_queue_deinit(struct k_msgq* queue) {
     atomic_set(&cb->high_watermark, 0);
 
     LOG_DBG("Event queue deinitialized");
+    event_queue_cb_release(cb);
 }

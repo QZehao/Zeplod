@@ -104,10 +104,13 @@ static atomic_t g_restart_dispatcher_on_start;
 
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_LOWEST
+#define EVENT_PUBLISH_ISR_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_NEWEST
 #elif defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_BLOCK
+#define EVENT_PUBLISH_ISR_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_BLOCK
 #else
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_NEWEST
+#define EVENT_PUBLISH_ISR_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_NEWEST
 #endif
 
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
@@ -314,6 +317,62 @@ static void event_publish_transfer_data_ownership(event_t* event) {
     event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
 }
 
+static event_status_t event_publish_common(event_t* event, queue_overflow_policy_t policy, k_timeout_t timeout,
+                                           bool log_failures) {
+    event_status_t status = EVENT_OK;
+
+    EVENT_SYSTEM_VALIDATE();
+    if (!g_event_system.initialized || event == NULL) {
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    (void) atomic_inc(&g_publish_in_flight);
+
+    if (atomic_get(&g_event_system.running) == 0) {
+        status = EVENT_ERR_NOT_RUNNING;
+#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
+        if (log_failures) {
+            LOG_WRN("Event system not running, event dropped");
+        }
+#endif
+        goto out;
+    }
+
+    if ((uint32_t) event->type > MAX_EVENT_TYPE_ID) {
+        status = EVENT_ERR_INVALID_ARG;
+#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
+        if (log_failures) {
+            LOG_WRN("Invalid event type id %u (max %u)", (unsigned int) event->type, (unsigned int) MAX_EVENT_TYPE_ID);
+        }
+#endif
+        goto out;
+    }
+
+    status = event_validate_for_publish(event);
+    if (status != EVENT_OK) {
+        goto out;
+    }
+
+    if (!event_type_is_registered(event->type)) {
+        status = EVENT_ERR_NOT_FOUND;
+#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
+        if (log_failures) {
+            LOG_WRN("Publishing to unregistered event type: %d", event->type);
+        }
+#endif
+        goto out;
+    }
+
+    status = event_queue_enqueue(g_event_system.event_queue, event, policy, timeout);
+    if (status == EVENT_OK) {
+        event_publish_transfer_data_ownership(event);
+    }
+
+out:
+    atomic_dec(&g_publish_in_flight);
+    return status;
+}
+
 /** 由 event_queue 溢出路径同步更新分发器统计（前向声明，避免与 dispatcher 头文件循环包含） */
 extern void event_dispatcher_stats_inc_dropped(void);
 
@@ -337,108 +396,7 @@ void event_system_inc_dropped_count(void) {
  */
 static subscriber_entry_t* find_subscriber(event_type_entry_t* entry, uint32_t subscriber_id);
 
-/**
- * @brief CRIT-NEW-1: 在 event flags 中记录实际使用的数据 slab 索引
- *
- * 级联 fallback 可能导致数据被分配到比 data_len 对应更大的 slab 池中。
- * 释放时必须使用实际分配的 slab，否则会造成内存损坏。
- *
- * 使用查找表简化标记逻辑，提高可维护性。
- *
- * @return true 已设置 EVENT_FLAG_SLAB_* 标记，false slab 指针未知
- */
-static bool event_set_slab_marker(event_t* event, struct k_mem_slab* slab) {
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-    /* 定义 slab 到标记的映射表 */
-    static const struct {
-        struct k_mem_slab* slab;
-        uint8_t            flag;
-    } slab_markers[] = {
-#if EVENT_SLAB_256_AVAILABLE
-        {&event_slab_data_256, EVENT_FLAG_SLAB_256},
-#endif
-#if EVENT_SLAB_1K_AVAILABLE
-        {&event_slab_data_1k, EVENT_FLAG_SLAB_1K},
-#endif
-#if EVENT_SLAB_4K_AVAILABLE
-        {&event_slab_data_4k, EVENT_FLAG_SLAB_4K},
-#endif
-    };
-
-    /* 查找匹配的 slab 并设置标记 */
-    for (size_t i = 0; i < ARRAY_SIZE(slab_markers); i++) {
-        if (slab == slab_markers[i].slab) {
-            event->flags |= slab_markers[i].flag;
-            return true;
-        }
-    }
-
-    /* 未找到匹配的 slab（不应该发生）*/
-    LOG_ERR("Unknown slab pointer %p, cannot set marker", slab);
-    return false;
-#else
-    ARG_UNUSED(event);
-    ARG_UNUSED(slab);
-    return false;
-#endif
-}
-
-#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-/**
- * @brief Slab 元数据（Zephyr 4.3+ 不再暴露 block_size/num_blocks，自行维护）
- */
-typedef struct {
-    struct k_mem_slab* slab;
-    size_t             block_size;
-    uint32_t           num_blocks;
-} event_slab_meta_t;
-
-/**
- * @brief 判断指针是否属于指定数据 slab 池（用于释放路径纠偏）
- *
- * @note 使用外部传入的 block_size/num_blocks，不依赖 struct k_mem_slab 内部布局。
- */
-static bool event_slab_ptr_in_pool(const void* ptr, const event_slab_meta_t* meta) {
-    if (ptr == NULL || meta == NULL || meta->slab == NULL || meta->num_blocks == 0U || meta->block_size == 0U) {
-        return false;
-    }
-
-    uintptr_t block = (uintptr_t) ptr;
-    uintptr_t base = (uintptr_t) meta->slab->buffer;
-    size_t    total = meta->block_size * meta->num_blocks;
-
-    if (block < base || block >= (base + total)) {
-        return false;
-    }
-
-    return ((block - base) % meta->block_size) == 0U;
-}
-
-/**
- * @brief 按指针地址反查数据 slab 池（标记损坏时的安全释放）
- */
-static struct k_mem_slab* event_resolve_data_slab_for_ptr(void* ptr) {
-    static const event_slab_meta_t data_slabs[] = {
-#if EVENT_SLAB_256_AVAILABLE
-        {&event_slab_data_256, 256U, CONFIG_EVENT_SLAB_LARGE_256_COUNT},
-#endif
-#if EVENT_SLAB_1K_AVAILABLE
-        {&event_slab_data_1k, 1024U, CONFIG_EVENT_SLAB_LARGE_1K_COUNT},
-#endif
-#if EVENT_SLAB_4K_AVAILABLE
-        {&event_slab_data_4k, 4096U, CONFIG_EVENT_SLAB_LARGE_4K_COUNT},
-#endif
-    };
-
-    for (size_t i = 0; i < ARRAY_SIZE(data_slabs); i++) {
-        if (event_slab_ptr_in_pool(ptr, &data_slabs[i])) {
-            return data_slabs[i].slab;
-        }
-    }
-
-    return NULL;
-}
-
 /**
  * @brief 从 slab 分配数据并绑定到事件（标记失败时回滚 slab 分配）
  */
@@ -452,7 +410,7 @@ static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, cons
     }
 
     event->flags |= EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB;
-    if (!event_set_slab_marker(event, slab)) {
+    if (!event_memory_data_slab_set_flag(event, slab)) {
         k_mem_slab_free(slab, event->data.ptr);
         event->data.ptr = NULL;
         event->flags &= ~(EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK);
@@ -1138,52 +1096,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
 event_status_t event_publish(event_t* event) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized || event == NULL) {
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    (void) atomic_inc(&g_publish_in_flight);
-
-    if (atomic_get(&g_event_system.running) == 0) {
-        atomic_dec(&g_publish_in_flight);
-#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
-        LOG_WRN("Event system not running, event dropped");
-#endif
-        return EVENT_ERR_NOT_RUNNING;
-    }
-
-    if ((uint32_t) event->type > MAX_EVENT_TYPE_ID) {
-        atomic_dec(&g_publish_in_flight);
-#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
-        LOG_WRN("Invalid event type id %u (max %u)", (unsigned int) event->type, (unsigned int) MAX_EVENT_TYPE_ID);
-#endif
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    {
-        event_status_t vret = event_validate_for_publish(event);
-        if (vret != EVENT_OK) {
-            atomic_dec(&g_publish_in_flight);
-            return vret;
-        }
-    }
-
-    if (!event_type_is_registered(event->type)) {
-        atomic_dec(&g_publish_in_flight);
-#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
-        LOG_WRN("Publishing to unregistered event type: %d", event->type);
-#endif
-        return EVENT_ERR_NOT_FOUND;
-    }
-
-    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY,
-                                            EVENT_PUBLISH_ENQUEUE_TIMEOUT);
-    if (st == EVENT_OK) {
-        event_publish_transfer_data_ownership(event);
-    }
-    atomic_dec(&g_publish_in_flight);
-    return st;
+    return event_publish_common(event, EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY, EVENT_PUBLISH_ENQUEUE_TIMEOUT, true);
 }
 
 /**
@@ -1193,48 +1106,8 @@ event_status_t event_publish(event_t* event) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 无效参数，EVENT_ERR_QUEUE_FULL 队列已满
  */
 event_status_t event_publish_from_isr(event_t* event) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized || event == NULL) {
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    (void) atomic_inc(&g_publish_in_flight);
-
-    if (atomic_get(&g_event_system.running) == 0) {
-        atomic_dec(&g_publish_in_flight);
-        return EVENT_ERR_NOT_RUNNING;
-    }
-
-    if ((uint32_t) event->type > MAX_EVENT_TYPE_ID) {
-        atomic_dec(&g_publish_in_flight);
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    {
-        event_status_t vret = event_validate_for_publish(event);
-        if (vret != EVENT_OK) {
-            atomic_dec(&g_publish_in_flight);
-            return vret;
-        }
-    }
-
-    if (!event_type_is_registered(event->type)) {
-        atomic_dec(&g_publish_in_flight);
-        return EVENT_ERR_NOT_FOUND;
-    }
-
     /* DROP_LOWEST 仅线程侧重排；ISR 满队列退化为 DROP_NEWEST（见 Kconfig help） */
-#if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
-    queue_overflow_policy_t isr_policy = QUEUE_OVERFLOW_DROP_NEWEST;
-#else
-    queue_overflow_policy_t isr_policy = EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY;
-#endif
-    event_status_t st = event_queue_enqueue(g_event_system.event_queue, event, isr_policy, K_NO_WAIT);
-    if (st == EVENT_OK) {
-        event_publish_transfer_data_ownership(event);
-    }
-    atomic_dec(&g_publish_in_flight);
-    return st;
+    return event_publish_common(event, EVENT_PUBLISH_ISR_QUEUE_OVERFLOW_POLICY, K_NO_WAIT, false);
 }
 
 /**
@@ -1548,32 +1421,15 @@ void event_free_data(event_t* event) {
         event_debug_untrack_alloc(event->data.ptr);
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
         if (event->flags & EVENT_FLAG_DATA_FROM_SLAB) {
-            /* CRIT-NEW-1: 使用 flags 中记录的 slab 标记，而非按 data_len 重新选择。
-             * 级联 fallback 可能导致数据实际来自比最优更大的 slab 池。 */
-            struct k_mem_slab* slab = NULL;
-            switch (event->flags & EVENT_FLAG_SLAB_MASK) {
-#if EVENT_SLAB_256_AVAILABLE
-            case EVENT_FLAG_SLAB_256:
-                slab = &event_slab_data_256;
-                break;
-#endif
-#if EVENT_SLAB_1K_AVAILABLE
-            case EVENT_FLAG_SLAB_1K:
-                slab = &event_slab_data_1k;
-                break;
-#endif
-#if EVENT_SLAB_4K_AVAILABLE
-            case EVENT_FLAG_SLAB_4K:
-                slab = &event_slab_data_4k;
-                break;
-#endif
-            default:
+            struct k_mem_slab* slab =
+                event_memory_data_slab_from_flag(event->flags & EVENT_FLAG_SLAB_MASK);
+
+            if (slab == NULL) {
                 LOG_ERR("Unknown slab marker for ptr %p (flags=0x%02x)", event->data.ptr, event->flags);
-                slab = event_resolve_data_slab_for_ptr(event->data.ptr);
+                slab = event_memory_resolve_data_slab_for_ptr(event->data.ptr);
                 if (slab == NULL) {
                     LOG_ERR("Cannot resolve slab pool for ptr %p; memory may leak", event->data.ptr);
                 }
-                break;
             }
             if (slab != NULL) {
                 k_mem_slab_free(slab, event->data.ptr);
