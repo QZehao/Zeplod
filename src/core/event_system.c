@@ -506,9 +506,8 @@ static void event_system_reset_control_block(void) {
  * @brief 检查订阅者 ID 是否已被使用
  *
  * @note 调用方必须已持有 g_subscriber_id_lock（串行化所有 subscribe/unsubscribe）。
- *       遍历时会逐类型短暂持有
- * entry->lock；若调用方已持有某个 entry->lock，
- *       遍历时按固定顺序获取并释放各 entry->lock，避免锁序冲突。
+ *       遍历时会逐类型短暂持有 entry->lock；调用方不得已持有任何 entry->lock，
+ *       以保持 TABLE -> ENTRY 且同层 entry 按表顺序获取的锁序。
 
  */
 static bool subscriber_id_in_use(uint32_t id) {
@@ -999,31 +998,6 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
 
     /* 固定锁顺序：g_subscriber_id_lock → entry->lock，与 unsubscribe 一致 */
     event_system_subscriber_id_lock();
-    event_system_entry_lock(entry);
-
-    if (entry->name == NULL) {
-        event_system_entry_unlock(entry);
-        event_system_subscriber_id_unlock();
-        return EVENT_ERR_NOT_FOUND;
-    }
-
-    /* 查找空闲槽位 */
-    uint32_t free_slot = CONFIG_EVENT_MAX_SUBSCRIBERS;
-    for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
-        if (!entry->subscribers[i].is_active) {
-            free_slot = i;
-            break;
-        }
-    }
-
-    if (free_slot == CONFIG_EVENT_MAX_SUBSCRIBERS) {
-        event_system_entry_unlock(entry);
-        event_system_subscriber_id_unlock();
-        LOG_ERR("No room for more subscribers on event type %d", type);
-        return EVENT_ERR_QUEUE_FULL;
-    }
-
-    event_system_entry_unlock(entry);
 
     uint32_t new_id;
     uint32_t attempts = 0;
@@ -1040,10 +1014,25 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
     } while (subscriber_id_in_use(new_id));
 
     event_system_entry_lock(entry);
-    if (entry->name == NULL || entry->subscribers[free_slot].is_active) {
+    if (entry->name == NULL) {
         event_system_entry_unlock(entry);
         event_system_subscriber_id_unlock();
-        return EVENT_ERR_INVALID_ARG;
+        return EVENT_ERR_NOT_FOUND;
+    }
+
+    uint32_t free_slot = CONFIG_EVENT_MAX_SUBSCRIBERS;
+    for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
+        if (!entry->subscribers[i].is_active) {
+            free_slot = i;
+            break;
+        }
+    }
+
+    if (free_slot == CONFIG_EVENT_MAX_SUBSCRIBERS) {
+        event_system_entry_unlock(entry);
+        event_system_subscriber_id_unlock();
+        LOG_ERR("No room for more subscribers on event type %d", type);
+        return EVENT_ERR_QUEUE_FULL;
     }
 
     entry->subscribers[free_slot].callback = callback;
