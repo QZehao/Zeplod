@@ -256,10 +256,10 @@ int module_manager_dependency_order_stop_batch(start_order_entry_t* entries, int
         return n;
     }
 
+    module_manager_lock();
+
     mm_adj_matrix_clear(adj);
     (void) memset(indegree, 0, sizeof(indegree));
-
-    module_manager_lock();
 
     for (int i = 0; i < n; i++) {
         if (entries[i].depends_on == NULL) {
