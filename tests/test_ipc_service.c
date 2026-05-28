@@ -16,15 +16,47 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
 #include <string.h>
 
 #include "example_module_uart.h"
 #include "ipc_service.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_ipc_service);
 
 static ipc_service_t g_ipc;
+
+static atomic_t g_delayed_handler_in_handler;
+static atomic_t g_async_callback_count;
+static atomic_t g_handler_call_count;
+
+static bool ipc_async_callback_done(void* ctx) {
+    ARG_UNUSED(ctx);
+    return atomic_get(&g_async_callback_count) >= 1;
+}
+
+static bool ipc_service_pending_zero(void* ctx) {
+    ipc_service_t* ipc = ctx;
+
+    return ipc_service_get_pending_count(ipc) == 0U;
+}
+
+static bool ipc_delayed_started_or_pending(void* ctx) {
+    ipc_service_t* ipc = ctx;
+
+    if (atomic_get(&g_delayed_handler_in_handler) != 0) {
+        return true;
+    }
+    return ipc_service_get_pending_count(ipc) > 0U;
+}
+
+static bool ipc_future_ready_ctx(void* ctx) {
+    ipc_future_t* future = ctx;
+
+    return ipc_future_is_ready(future);
+}
 
 /* =============================================================================
  * 测试辅助函数

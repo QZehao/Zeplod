@@ -197,28 +197,7 @@ message(STATUS "Build Target: ${BUILD_TARGET}")
 # =============================================================================
 
 # Core Event System
-target_sources(app PRIVATE
-    src/core/event_system.c
-    src/core/event_system_lifecycle.c
-    src/core/event_system_memory.c
-    src/core/event_system_pubsub.c
-    src/core/event_system_publish.c
-    src/core/event_system_stats.c
-    src/core/event_system.h
-    src/core/event_queue.c
-    src/core/event_queue.h
-    src/core/event_dispatcher.c
-    src/core/event_dispatcher.h
-    src/core/event_dispatcher_autoinit.c
-    src/core/event_system_compat.c
-    src/core/event_system_compat.h
-    src/core/event_memory.c
-    src/core/event_memory.h
-    src/core/lock_order.c
-    src/core/lock_order.h
-    src/core/state_machine.c
-    src/core/state_machine.h
-)
+add_subdirectory(src/core)
 
 # System Services
 if(CONFIG_SYS_LOG_ENABLE)
