@@ -25,6 +25,7 @@
 #include "data_bus.h"
 #include "data_bus_internal.h"
 #include "data_bus_memory.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_data_bus);
 
@@ -64,6 +65,27 @@ static void retain_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, 
 }
 
 static atomic_t g_manual_release_count;
+
+static bool data_bus_channel_quiescent(void* ctx) {
+    data_bus_channel_t* ch = ctx;
+    bool                queue_empty;
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+
+    queue_empty = (ch->queue_used == 0U);
+    k_spin_unlock(&ch->lock, key);
+
+    return atomic_get(&ch->publish_hold) == 0 && atomic_get(&ch->dispatch_hold) == 0 && queue_empty;
+}
+
+static void data_bus_test_wait_channel_quiescent(data_bus_channel_t* ch) {
+    zassert_true(ztest_wait_until(data_bus_channel_quiescent, ch, 2000U), "channel dispatch should become idle");
+}
+
+static void data_bus_test_destroy_channel(data_bus_channel_t* ch) {
+    data_bus_test_wait_channel_quiescent(ch);
+    zassert_equal(data_bus_channel_destroy(ch), 0, NULL);
+}
 
 static void manual_release_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
     ARG_UNUSED(ch);
@@ -424,8 +446,7 @@ ZTEST(test_data_bus, test_dispatch_drains_without_consumer) {
 
     const uint8_t p1[] = {0x01};
     zassert_equal(data_bus_publish(ch, p1, sizeof(p1)), 0, NULL);
-    k_msleep(150);
-    zassert_equal(data_bus_channel_destroy(ch), 0, "无消费者 publish 排空后应可销毁");
+    data_bus_test_destroy_channel(ch);
 
     /* 最后一个消费者注销后再次 publish，队列须在 consumer_count==0 时被排空 */
     ch = NULL;
@@ -444,8 +465,37 @@ ZTEST(test_data_bus, test_dispatch_drains_without_consumer) {
     zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
     const uint8_t p3[] = {0x03};
     zassert_equal(data_bus_publish(ch, p3, sizeof(p3)), 0, NULL);
-    k_msleep(150);
-    zassert_equal(data_bus_channel_destroy(ch), 0, "注销全部消费者后 publish 仍须可销毁");
+    data_bus_test_destroy_channel(ch);
+
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+/**
+ * @brief publish 后 destroy 在 -EAGAIN 上重试直至空闲，不应因 ready 竞态挂死
+ */
+ZTEST(test_data_bus, test_channel_destroy_retries_after_publish) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+
+    zassert_equal(data_bus_channel_create("destroy_retry", &ch), 0, NULL);
+
+    const uint8_t payload[] = {0xAA, 0xBB};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+
+    uint32_t start_ms = k_uptime_get_32();
+    int      ret        = -EAGAIN;
+
+    while ((k_uptime_get_32() - start_ms) < 2000U) {
+        ret = data_bus_channel_destroy(ch);
+        if (ret == 0) {
+            break;
+        }
+        zassert_equal(ret, -EAGAIN, "destroy should retry while dispatch idle");
+        k_sleep(K_MSEC(1));
+    }
+    zassert_equal(ret, 0, "destroy should succeed without hang");
 
     zassert_equal(data_bus_deinit(), 0, NULL);
 }
@@ -481,8 +531,7 @@ ZTEST(test_data_bus, test_consumer_unregister) {
     ret = data_bus_publish(ch, test_data, sizeof(test_data));
     zassert_equal(ret, 0, "发布失败");
 
-    /* 给分发线程足够时间：无消费者时仍应出队并释放块（不触发回调） */
-    k_sleep(K_MSEC(100));
+    data_bus_test_wait_channel_quiescent(ch);
     zassert_equal(atomic_get(&g_call_count), 0, "注销后回调不应触发");
 
     data_bus_channel_destroy(ch);

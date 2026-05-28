@@ -18,6 +18,7 @@
 #include <zephyr/ztest.h>
 #include "event_dispatcher.h"
 #include "event_system.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_event_dispatcher);
 
@@ -28,6 +29,20 @@ static atomic_t       g_dispatcher_stop_from_callback_seen;
 static event_status_t g_dispatcher_stop_from_callback_status;
 static atomic_t       g_dispatcher_slow_callback_started;
 static atomic_t       g_dispatcher_slow_callback_done;
+static atomic_t       g_filter_call_count;
+static atomic_t       g_filter_block_count;
+
+static bool dispatcher_stats_processed_all(void* ctx) {
+    dispatcher_stats_t* stats = ctx;
+
+    event_dispatcher_get_stats(stats);
+    return stats->events_processed >= 10ULL;
+}
+
+static bool filter_blocked_at_least_five(void* ctx) {
+    ARG_UNUSED(ctx);
+    return atomic_get(&g_filter_block_count) >= 5;
+}
 
 static void dispatcher_stop_from_callback_handler(const event_t* event, void* user_data) {
     ARG_UNUSED(event);
@@ -109,9 +124,7 @@ ZTEST(event_dispatcher, test_pause_resume) {
 }
 
 ZTEST(event_dispatcher, test_set_filter) {
-    static int filter_call_count;
-
-    filter_call_count = 0;
+    atomic_set(&g_filter_call_count, 0);
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -122,7 +135,7 @@ ZTEST(event_dispatcher, test_set_filter) {
     /* 定义过滤函数：只允许特定类型的事件 */
     bool test_filter(const event_t* event, void* user_data) {
         (void) user_data;
-        filter_call_count++;
+        atomic_inc(&g_filter_call_count);
         return event->type == 100; /* 只允许 type=100 的事件 */
     }
 
@@ -134,9 +147,8 @@ ZTEST(event_dispatcher, test_set_filter) {
     event_publish_copy(100, EVENT_PRIORITY_NORMAL, "allowed", 7);
     event_publish_copy(101, EVENT_PRIORITY_NORMAL, "blocked", 7);
 
-    k_msleep(100);
-
-    zassert_true(filter_call_count > 0, "过滤器应被调用");
+    zassert_true(ztest_wait_atomic_nonzero(&g_filter_call_count, 2000U), "过滤器应被调用");
+    zassert_true(atomic_get(&g_filter_call_count) > 0, "过滤器应被调用");
 
     event_dispatcher_clear_filter();
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
@@ -214,7 +226,7 @@ ZTEST(event_dispatcher, test_stats_comprehensive) {
         zassert_equal(event_publish_copy(50, EVENT_PRIORITY_NORMAL, "stats", 5), EVENT_OK, NULL);
     }
 
-    k_msleep(100);
+    zassert_true(ztest_wait_until(dispatcher_stats_processed_all, &stats, 2000U), "事件应已被分发处理");
 
     /* 获取统计 */
     event_dispatcher_get_stats(&stats);
@@ -457,9 +469,7 @@ ZTEST(event_dispatcher, test_process_one_rejected_while_dispatcher_running) {
  * @brief 测试过滤器阻止所有事件
  */
 ZTEST(event_dispatcher, test_filter_block_all) {
-    static uint32_t dropped_count;
-
-    dropped_count = 0;
+    atomic_set(&g_filter_block_count, 0);
 
     zassert_equal(event_system_init(), EVENT_OK, NULL);
     zassert_equal(event_system_start(), EVENT_OK, NULL);
@@ -470,7 +480,7 @@ ZTEST(event_dispatcher, test_filter_block_all) {
     bool block_all_filter(const event_t* event, void* user_data) {
         (void) event;
         (void) user_data;
-        dropped_count++;
+        atomic_inc(&g_filter_block_count);
         return false;
     }
 
@@ -482,10 +492,8 @@ ZTEST(event_dispatcher, test_filter_block_all) {
         event_publish_copy(210, EVENT_PRIORITY_NORMAL, "test", 4);
     }
 
-    k_msleep(100);
-
-    /* 验证事件被过滤 */
-    zassert_true(dropped_count >= 5, "事件应被过滤器阻止");
+    zassert_true(ztest_wait_until(filter_blocked_at_least_five, NULL, 2000U), "事件应被过滤器阻止");
+    zassert_true(atomic_get(&g_filter_block_count) >= 5, "事件应被过滤器阻止");
 
     event_dispatcher_clear_filter();
     zassert_equal(event_dispatcher_stop(), EVENT_OK, NULL);
@@ -550,7 +558,7 @@ ZTEST(event_dispatcher, test_dispatcher_stop_rejected_from_callback) {
 
     zassert_equal(event_publish_copy(DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0),
                   EVENT_OK, NULL);
-    k_msleep(100);
+    zassert_true(ztest_wait_atomic_nonzero(&g_dispatcher_stop_from_callback_seen, 2000U), "回调应已执行");
 
     zassert_equal(atomic_get(&g_dispatcher_stop_from_callback_seen), 1, "回调应已执行");
     zassert_equal(g_dispatcher_stop_from_callback_status, EVENT_ERR_INVALID_ARG, "回调内 stop 应被拒绝");
@@ -581,15 +589,16 @@ ZTEST(event_dispatcher, test_dispatcher_stop_timeout_does_not_abort_callback) {
     zassert_equal(event_publish_copy(DISPATCHER_SLOW_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0), EVENT_OK,
                   NULL);
 
-    for (uint32_t i = 0U; i < 100U && atomic_get(&g_dispatcher_slow_callback_started) == 0; i++) {
-        k_msleep(1);
-    }
+    zassert_true(ztest_wait_atomic_nonzero(&g_dispatcher_slow_callback_started, 2000U),
+                 "slow callback should have started");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_started), 1, "slow callback should have started");
 
     zassert_equal(event_dispatcher_stop(), EVENT_ERR_TIMEOUT, "stop should time out while callback is still running");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 0, "callback must not be aborted on stop timeout");
 
-    k_msleep(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 400U);
+    zassert_true(ztest_wait_atomic_nonzero(&g_dispatcher_slow_callback_done,
+                                           EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 500U),
+                 "callback should complete naturally");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 1, "callback should complete naturally");
     zassert_equal(event_dispatcher_stop(), EVENT_OK, "second stop should join completed dispatcher thread");
     zassert_equal(event_system_stop(), EVENT_OK, NULL);

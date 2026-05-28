@@ -246,10 +246,7 @@ ZTEST(test_event_system, test_event_notify_subscribers) {
     status = event_publish_copy(60, EVENT_PRIORITY_NORMAL, &test_data, sizeof(test_data));
     zassert_equal(status, EVENT_OK, "发布失败");
 
-    /* 等待事件处理 */
-    k_msleep(50);
-
-    /* 验证事件已发布（由于回调地址是假的，无法验证回调计数）*/
+    /* 验证事件已发布（本套件无分发器线程，事件留在队列）*/
     zassert_true(subscriber_id > 0, "订阅者 ID 应大于 0");
 
     event_unsubscribe(60, subscriber_id);
@@ -505,10 +502,7 @@ ZTEST(test_event_system, test_event_publish_copy_rt) {
     /* 测试发布 */
     status = event_publish_copy_rt(140, EVENT_PRIORITY_NORMAL, &test_data, sizeof(test_data));
     /* 可能成功或失败，取决于 Slab 配置 */
-    if (status == EVENT_OK) {
-        /* 等待事件处理 */
-        k_msleep(50);
-    }
+    ARG_UNUSED(status);
 
     event_system_stop();
 }
@@ -693,6 +687,7 @@ ZTEST(test_event_system, test_event_system_stop_rejected_from_callback) {
 
 static K_THREAD_STACK_DEFINE(block_pub_stack, 2048);
 static struct k_thread block_pub_thread;
+static atomic_t        block_pub_started;
 static atomic_t        block_pub_done;
 static event_status_t  block_pub_result;
 
@@ -703,6 +698,7 @@ static void block_publish_thread_entry(void* p1, void* p2, void* p3) {
 
     event_t ev = {.type = BLOCK_TEST_EVENT_TYPE, .priority = EVENT_PRIORITY_NORMAL};
 
+    atomic_set(&block_pub_started, 1);
     block_pub_result = event_publish(&ev);
     atomic_set(&block_pub_done, 1);
 }
@@ -727,18 +723,19 @@ ZTEST(test_event_system, test_block_publish_unblocks_on_stop) {
         zassert_equal(event_publish(&filler), EVENT_OK, NULL);
     }
 
+    atomic_set(&block_pub_started, 0);
     atomic_set(&block_pub_done, 0);
     k_tid_t tid = k_thread_create(&block_pub_thread, block_pub_stack, K_THREAD_STACK_SIZEOF(block_pub_stack),
                                   block_publish_thread_entry, NULL, NULL, NULL, 7, 0, K_NO_WAIT);
     zassert_not_null(tid, NULL);
     k_thread_start(tid);
 
-    k_msleep(100);
+    zassert_true(ztest_wait_atomic_nonzero(&block_pub_started, 2000U), "发布线程应已启动");
     zassert_equal(atomic_get(&block_pub_done), 0, "publish 应在满队列上阻塞");
 
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 
-    k_msleep(300);
+    zassert_true(ztest_wait_atomic_eq(&block_pub_done, 1, 2000U), "stop 后阻塞 publish 应返回");
     zassert_equal(atomic_get(&block_pub_done), 1, NULL);
     zassert_equal(block_pub_result, EVENT_ERR_NOT_RUNNING, NULL);
 

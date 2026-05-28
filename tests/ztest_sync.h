@@ -14,6 +14,30 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief 有界轮询谓词（返回 true 表示条件满足） */
+typedef bool (*ztest_predicate_fn)(void* ctx);
+
+/**
+ * @brief 等待谓词为真（轮询间隔 1ms）
+ *
+ * @param pred 谓词；在超时前返回 true 则成功
+ * @param ctx 传给 pred 的上下文
+ * @param timeout_ms 超时（毫秒）
+ * @return true 在超时前谓词为真；false 超时且谓词仍为假
+ */
+static inline bool ztest_wait_until(ztest_predicate_fn pred, void* ctx, uint32_t timeout_ms) {
+    uint32_t elapsed = 0U;
+
+    while (elapsed < timeout_ms) {
+        if (pred(ctx)) {
+            return true;
+        }
+        k_sleep(K_MSEC(1));
+        elapsed++;
+    }
+    return pred(ctx);
+}
+
 /**
  * @brief 等待原子变量等于期望值（轮询间隔 1ms）
  *
