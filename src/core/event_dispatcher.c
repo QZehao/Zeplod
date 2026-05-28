@@ -18,6 +18,7 @@
  *    Date         Version        Author          Description
  * 2026-04-01       1.0            zeh            正式发布
  * 2026-05-09       1.0            zeh            文档注释修订
+ * 2026-05-28       1.1            zeh            热路径：state 原子化，config 快照无锁读（P3.3）
  *
  */
 
@@ -52,8 +53,10 @@ LOG_MODULE_REGISTER(event_dispatcher, CONFIG_SYS_LOG_LEVEL);
  * 包含分发器的所有状态和配置信息。
  */
 typedef struct {
-    dispatcher_state_t  state;                        /**< 分发器当前状态 */
-    dispatcher_config_t config;                       /**< 分发器配置 */
+    atomic_t            state;                        /**< 分发器当前状态（dispatcher_state_t） */
+    dispatcher_config_t config;                       /**< 分发器配置（init 后不变） */
+    uint32_t            hot_max_events_per_cycle;     /**< init 快照，热路径无锁读 */
+    bool                hot_enable_stats;             /**< init 快照，热路径无锁读 */
     dispatcher_stats_t  stats;                        /**< 分发器统计信息 */
     struct k_thread     thread;                       /**< 分发器线程控制块 */
     K_KERNEL_STACK_MEMBER(stack, DEFAULT_STACK_SIZE); /**< 分发器线程栈 */
@@ -154,8 +157,21 @@ static event_status_t event_dispatcher_validate_config(const dispatcher_config_t
     return EVENT_OK;
 }
 
+static inline dispatcher_state_t dispatcher_state_load(void) {
+    return (dispatcher_state_t) atomic_get(&g_dispatcher.state);
+}
+
+static inline void dispatcher_state_store(dispatcher_state_t state) {
+    atomic_set(&g_dispatcher.state, (atomic_val_t) state);
+}
+
+static void dispatcher_refresh_hot_config(void) {
+    g_dispatcher.hot_max_events_per_cycle = g_dispatcher.config.max_events_per_cycle;
+    g_dispatcher.hot_enable_stats = g_dispatcher.config.enable_stats;
+}
+
 static void dispatcher_set_state_locked(dispatcher_state_t state) {
-    g_dispatcher.state = state;
+    dispatcher_state_store(state);
 }
 
 static void dispatcher_mark_thread_started_locked(void) {
@@ -254,7 +270,8 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     /* 初始化同步原语 */
     k_mutex_init(&g_dispatcher.lock);
 
-    dispatcher_set_state_locked(DISPATCHER_STOPPED);
+    dispatcher_state_store(DISPATCHER_STOPPED);
+    dispatcher_refresh_hot_config();
     g_dispatcher.last_event_time = k_uptime_get();
     g_dispatcher.thread_started = false;
     g_dispatcher.ever_started = false;
@@ -287,12 +304,12 @@ event_status_t event_dispatcher_start(void) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
-    if (g_dispatcher.state == DISPATCHER_RUNNING) {
+    if (dispatcher_state_load() == DISPATCHER_RUNNING) {
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_OK;
     }
 
-    if (g_dispatcher.state == DISPATCHER_PAUSED) {
+    if (dispatcher_state_load() == DISPATCHER_PAUSED) {
         dispatcher_set_state_locked(DISPATCHER_RUNNING);
         k_mutex_unlock(&g_dispatcher.lock);
         LOG_DBG("Event dispatcher resumed by start()");
@@ -300,7 +317,7 @@ event_status_t event_dispatcher_start(void) {
     }
 
     if (g_dispatcher.thread_started) {
-        if (g_dispatcher.state == DISPATCHER_STOPPED) {
+        if (dispatcher_state_load() == DISPATCHER_STOPPED) {
             k_mutex_unlock(&g_dispatcher.lock);
             LOG_WRN("Cannot start dispatcher while stop/join is in progress");
             return EVENT_ERR_TIMEOUT;
@@ -359,7 +376,7 @@ event_status_t event_dispatcher_stop(void) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
-    if (g_dispatcher.state == DISPATCHER_STOPPED) {
+    if (dispatcher_state_load() == DISPATCHER_STOPPED) {
         if (g_dispatcher.thread_started) {
             should_join = true;
             join_gen = g_dispatcher.thread_gen;
@@ -445,7 +462,7 @@ event_status_t event_dispatcher_pause(void) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
-    if (g_dispatcher.state != DISPATCHER_RUNNING) {
+    if (dispatcher_state_load() != DISPATCHER_RUNNING) {
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_ERR_INVALID_ARG;
     }
@@ -469,7 +486,7 @@ event_status_t event_dispatcher_resume(void) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
-    if (g_dispatcher.state != DISPATCHER_PAUSED) {
+    if (dispatcher_state_load() != DISPATCHER_PAUSED) {
         k_mutex_unlock(&g_dispatcher.lock);
         return EVENT_ERR_INVALID_ARG;
     }
@@ -491,17 +508,11 @@ bool event_dispatcher_is_initialized(void) {
 }
 
 dispatcher_state_t event_dispatcher_get_state(void) {
-    dispatcher_state_t state;
-
     if (!g_dispatcher_initialized) {
         return DISPATCHER_STOPPED;
     }
 
-    k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    state = g_dispatcher.state;
-    k_mutex_unlock(&g_dispatcher.lock);
-
-    return state;
+    return dispatcher_state_load();
 }
 
 /**
@@ -586,7 +597,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
 
     /* SIL-2: 在持有锁的情况下读取所有需要的状态并检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    state = g_dispatcher.state;
+    state = dispatcher_state_load();
     thread_started = g_dispatcher.thread_started;
     ever_started = g_dispatcher.ever_started;
 
@@ -610,7 +621,7 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
 
     /* SIL-2: 阻塞期间状态可能已改变（如 stop() 被调用），重新检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-    state = g_dispatcher.state;
+    state = dispatcher_state_load();
     thread_started = g_dispatcher.thread_started;
     ever_started = g_dispatcher.ever_started;
     if (!dispatcher_can_process_locked(state, thread_started, ever_started)) {
@@ -620,8 +631,9 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     }
     filter = g_dispatcher.filter;
     filter_user_data = g_dispatcher.filter_user_data;
-    enable_stats = g_dispatcher.config.enable_stats;
     k_mutex_unlock(&g_dispatcher.lock);
+
+    enable_stats = g_dispatcher.hot_enable_stats;
 
     /* 应用过滤器（如果已设置） */
     if (filter != NULL) {
@@ -666,7 +678,7 @@ uint32_t event_dispatcher_process_all(uint32_t max_events) {
     /* SIL-2: config 在 event_dispatcher_init 后不再改变，
      * 无需加锁；若未来支持运行时重配置，需改为原子读取或加锁。 */
     if (max_events == 0) {
-        max_events = g_dispatcher.config.max_events_per_cycle;
+        max_events = g_dispatcher.hot_max_events_per_cycle;
     }
 
     uint32_t processed = 0;
@@ -678,7 +690,7 @@ uint32_t event_dispatcher_process_all(uint32_t max_events) {
     }
 
     /* SIL-2: 更新批处理统计 */
-    if (g_dispatcher.config.enable_stats && processed > 0) {
+    if (g_dispatcher.hot_enable_stats && processed > 0) {
         k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
         g_dispatcher.events_in_batch = processed;
         k_mutex_unlock(&g_dispatcher.lock);
@@ -786,14 +798,8 @@ static void dispatcher_thread_func(void* p1, void* p2, void* p3) {
             break;
         }
 
-        dispatcher_state_t st;
-        uint32_t           max_events;
-
-        /* SIL-2: 读取状态和配置，使用锁保护 */
-        k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
-        st = g_dispatcher.state;
-        max_events = g_dispatcher.config.max_events_per_cycle;
-        k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_state_t st = dispatcher_state_load();
+        uint32_t           max_events = g_dispatcher.hot_max_events_per_cycle;
 
         /* SIL-2: 优先检查停止状态，确保快速退出 */
         if (st == DISPATCHER_STOPPED) {
@@ -855,7 +861,7 @@ static void process_event(const event_t* event) {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     g_dispatcher.last_event_time = k_uptime_get();
 
-    if (g_dispatcher.config.enable_stats) {
+    if (g_dispatcher.hot_enable_stats) {
         g_dispatcher.stats.events_processed++;
 
         if (status != EVENT_OK) {

@@ -198,7 +198,7 @@ event_status_t event_dispatcher_resume(void);
 /**
  * @brief 获取分发器当前状态
  *
- * @return 当前分发器状态；未初始化时返回 DISPATCHER_STOPPED
+ * @return 当前分发器状态（原子读）；未初始化时返回 DISPATCHER_STOPPED
  */
 dispatcher_state_t event_dispatcher_get_state(void);
 
