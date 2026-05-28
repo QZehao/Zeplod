@@ -55,7 +55,7 @@
 | 重复 `data_bus_init` | `0` |
 | 未 init 时 `data_bus_channel_create` 等 | `-ENODEV` |
 | 重复 `data_bus_deinit` | `0` |
-| 从 dispatcher 线程 `data_bus_deinit` | `-EINVAL` |
+| 从 dispatcher 线程 `data_bus_deinit` | `-EINVAL`（见 `test_deinit_rejected_from_dispatcher_thread`） |
 | 分发线程 join 超时 | `-EIO`（`g_initialized` / `g_shutting_down` 仍为 1，**勿**再 `init`，应重试 `deinit`） |
 | `shutting_down` 期间 publish | `-ESHUTDOWN`（经 `data_bus_require_initialized`） |
 
@@ -65,3 +65,12 @@
 - 禁止将 `(event_callback_t)0x1000` 等不可调用地址作为有效订阅回调。
 - 生命周期循环测试至少覆盖：`init → start → stop → (可选再次 start) → shutdown/deinit`。
 - IPC/Data Bus 边界用例命名与本文档表格场景一一对应，便于回归。
+
+## 相关测试套件（按配置）
+
+| 配置 | 套件 |
+| --- | --- |
+| `prj.conf` | 核心 event、module_manager、data_bus（默认 CI） |
+| `prj.conf;prj_block_overflow.conf` | 上列 + `test_block_publish_unblocks_on_stop` |
+| `prj.conf;prj_native_sim.conf` | 上列 + `test_ipc_service` |
+| `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | 上列 + `test_example_module_*` |

@@ -15,6 +15,7 @@
  * 2026-05-15       2.0            zeh            重构：删除 COPY 模式测试，添加 retain 测试
  * 2026-05-15       2.1            zeh            无消费者时队列排空回归测试
  * 2026-05-20       2.2            zeh            消费者固定槽位：交错注销不使 out_consumer 指针错位
+ * 2026-05-28       2.3            zeh            deinit 分发线程拒绝路径（P2 契约）
  *
  */
 
@@ -156,6 +157,55 @@ ZTEST(test_data_bus, test_repeat_deinit_idempotent) {
     zassert_equal(data_bus_init(), 0, NULL);
     zassert_equal(data_bus_deinit(), 0, NULL);
     zassert_equal(data_bus_deinit(), 0, "重复 deinit 应返回 0");
+}
+
+static atomic_t g_deinit_from_dispatcher_result;
+static struct k_sem g_deinit_from_dispatcher_sem;
+static bool     g_deinit_from_dispatcher_tried;
+
+static void deinit_from_dispatcher_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
+    ARG_UNUSED(ch);
+    ARG_UNUSED(block);
+    ARG_UNUSED(user_data);
+
+    if (!g_deinit_from_dispatcher_tried) {
+        g_deinit_from_dispatcher_tried = true;
+        atomic_set(&g_deinit_from_dispatcher_result, data_bus_deinit());
+    }
+    k_sem_give(&g_deinit_from_dispatcher_sem);
+}
+
+/**
+ * @brief 分发线程内调用 deinit 应被拒绝（P2 生命周期契约）
+ */
+ZTEST(test_data_bus, test_deinit_rejected_from_dispatcher_thread) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_t*    cons = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "deinit_cb",
+        .manual_release = false,
+        .callback = deinit_from_dispatcher_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    k_sem_init(&g_deinit_from_dispatcher_sem, 0, 1);
+    g_deinit_from_dispatcher_tried = false;
+    atomic_set(&g_deinit_from_dispatcher_result, 0);
+
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("deinit_cb_ch", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+
+    const uint8_t payload[] = {0x01};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+
+    zassert_true(ztest_wait_sem(&g_deinit_from_dispatcher_sem, K_MSEC(2000U)), "consumer should run on dispatcher");
+    zassert_equal(atomic_get(&g_deinit_from_dispatcher_result), -EINVAL, "dispatcher 线程 deinit 应返回 -EINVAL");
+
+    zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
 }
 
 /**

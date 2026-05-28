@@ -51,7 +51,7 @@ west build -b native_posix tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 
 # 全量 IPC + Slab（native_sim）
-west build -b native_sim tests/ --build-dir build_tests -- -DCONF_FILE="prj_native_sim.conf"
+west build -b native_sim tests/ --build-dir build_tests -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
 west build -t run --build-dir build_tests
 
 # 带覆盖率运行（将板型换为当前环境可用项）

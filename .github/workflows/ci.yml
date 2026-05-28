@@ -193,6 +193,18 @@ jobs:
             -- -DCONF_FILE="prj.conf;prj_block_overflow.conf"
           west build -t run --build-dir build_tests_block
 
+      - name: Run IPC tests (prj.conf + prj_native_sim)
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_ipc -p always \
+            -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
+          west build -t run --build-dir build_tests_ipc
+
+      - name: Run example module tests (full overlay)
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_full -p always \
+            -- -DCONF_FILE="prj.conf;prj_native_sim.conf;prj_ci_examples.conf"
+          west build -t run --build-dir build_tests_full
+
       - name: Run core coverage gate
         run: |
           west build -b native_sim tests/ --build-dir build_tests_cov -p always -- -DCMAKE_C_FLAGS="--coverage"

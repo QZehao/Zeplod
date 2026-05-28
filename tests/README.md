@@ -9,13 +9,15 @@
 | 文件 | 用途 |
 |------|------|
 | `prj.conf` | **默认**：精简配置，**`CONFIG_THREAD_IPC_SERVICE=n`**，适合快速冒烟与 CI（Zephyr 4.3.0 容器使用 `native_sim`） |
-| `prj_native_sim.conf` | **完整覆盖**：较大堆、Slab、**`CONFIG_THREAD_IPC_SERVICE=y`**，适合 Zephyr 4.x 本机 `native_sim` 全量测试 |
+| `prj_native_sim.conf` | **叠加层**：较大堆、Slab、**`CONFIG_THREAD_IPC_SERVICE=y`**（须与 `prj.conf` 联用） |
+| `prj_ci_examples.conf` | 启用示例模块 A/B/GPIO/Multi（与上两文件联用） |
 
 默认 **`tests/prj.conf` 不开启 IPC**，不链接 `test_ipc_service.c`。需要 IPC 烟测时：
 
 ```bash
 west build -b native_sim tests/ --build-dir build_tests \
-  -- -DCONF_FILE="prj_native_sim.conf"
+  -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
+# 或: ./scripts/run_tests_ipc.sh
 ```
 
 或在 `prj.conf` 中将 `CONFIG_THREAD_IPC_SERVICE` 改为 `y`（并确保 `tests/CMakeLists.txt` 中 IPC 源文件条件编译已满足）。
@@ -101,16 +103,25 @@ west build -t run --build-dir build_tests
 
 ```bash
 west build -b native_sim tests/ --build-dir build_tests \
-  -- -DCONF_FILE="prj_native_sim.conf"
+  -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
 west build -t run --build-dir build_tests
+```
+
+快捷脚本（Linux/macOS/WSL）：
+
+```bash
+./scripts/run_tests.sh              # 默认 prj.conf（核心 + data_bus）
+./scripts/run_tests_ipc.sh          # + IPC
+./scripts/run_tests_full.sh         # + IPC + 示例模块
 ```
 
 ### 配置矩阵（叠加 `prj.conf`）
 
 | 叠加文件 | 用途 |
 | --- | --- |
-| `prj_native_sim.conf` | 单机全量：IPC、Data Bus、示例模块、较大堆 |
-| `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop`（CI `build_tests_block` 已覆盖） |
+| `prj.conf;prj_native_sim.conf` | IPC + 大堆 Slab（CI `build_tests_ipc`；脚本 `./scripts/run_tests_ipc.sh`） |
+| `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | 再上示例模块 A/B/GPIO/Multi（CI `build_tests_full`；`./scripts/run_tests_full.sh`） |
+| `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop`（CI `build_tests_block`） |
 | `prj_test_watchdog.conf` | 看门狗相关套件 |
 
 示例（BLOCK 溢出策略）：
