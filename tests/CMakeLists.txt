@@ -71,80 +71,42 @@ endif()
 # 示例模块测试（按配置条件包含）
 # =============================================================================
 
+add_subdirectory(${APP_SRC_DIR}/modules_examples ${CMAKE_CURRENT_BINARY_DIR}/modules_examples)
+
 if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules_examples/example_module_a.c
-		test_example_module_a.c
-	)
+	target_sources(app PRIVATE test_example_module_a.c)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_B_ENABLE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules_examples/example_module_b.c
-		test_example_module_b.c
-	)
+	target_sources(app PRIVATE test_example_module_b.c)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_GPIO)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules_examples/example_module_gpio.c
-		test_example_module_gpio.c
-	)
+	target_sources(app PRIVATE test_example_module_gpio.c)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_UART)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules_examples/example_module_uart.c
-		test_example_module_uart.c
-	)
+	target_sources(app PRIVATE test_example_module_uart.c)
 endif()
 
 if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules_examples/example_module_multi_dep.c
-		test_example_module_multi_dep.c
-	)
+	target_sources(app PRIVATE test_example_module_multi_dep.c)
 endif()
 
 # =============================================================================
 # IPC 服务测试
 # =============================================================================
 if(CONFIG_THREAD_IPC_SERVICE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service_call.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service_dispatcher.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service_lifecycle.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_pending_table.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service_worker.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_shared_mem.c
-		test_ipc_service.c
-	)
-	target_include_directories(app PRIVATE
-		${APP_SRC_DIR}/modules/ipc_service
-	)
+	add_subdirectory(${APP_SRC_DIR}/modules/ipc_service ${CMAKE_CURRENT_BINARY_DIR}/ipc_service)
+	target_sources(app PRIVATE test_ipc_service.c)
 endif()
 
 # =============================================================================
 # Data Bus 测试
 # =============================================================================
 if(CONFIG_DATA_BUS)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/data_bus/data_bus.c
-		${APP_SRC_DIR}/data_bus/data_bus_channel.c
-		${APP_SRC_DIR}/data_bus/data_bus_memory.c
-		${APP_SRC_DIR}/data_bus/data_bus_consumer.c
-		${APP_SRC_DIR}/data_bus/data_bus_ready.c
-		test_data_bus.c
-	)
-	if(CONFIG_DATA_BUS_EVENT_BRIDGE)
-		target_sources(app PRIVATE
-			${APP_SRC_DIR}/data_bus/data_bus_event_bridge.c
-		)
-	endif()
-	target_include_directories(app PRIVATE
-		${APP_SRC_DIR}/data_bus
-	)
+	add_subdirectory(${APP_SRC_DIR}/data_bus ${CMAKE_CURRENT_BINARY_DIR}/data_bus)
+	target_sources(app PRIVATE test_data_bus.c)
 endif()
 
 # =============================================================================

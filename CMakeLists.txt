@@ -219,47 +219,7 @@ if(CONFIG_DATA_BUS)
 endif()
 
 # Example modules (conditionally compiled)
-if(CONFIG_EXAMPLE_MODULE_A_ENABLE)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_a.c
-        src/modules_examples/example_module_a.h
-    )
-endif()
-
-if(CONFIG_EXAMPLE_MODULE_B_ENABLE)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_b.c
-        src/modules_examples/example_module_b.h
-    )
-endif()
-
-if(CONFIG_EXAMPLE_MODULE_THREAD_IPC)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_ipc.c
-        src/modules_examples/example_module_ipc.h
-    )
-endif()
-
-if(CONFIG_EXAMPLE_MODULE_MULTI_DEP)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_multi_dep.c
-        src/modules_examples/example_module_multi_dep.h
-    )
-endif()
-
-if(CONFIG_EXAMPLE_MODULE_GPIO)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_gpio.c
-        src/modules_examples/example_module_gpio.h
-    )
-endif()
-
-if(CONFIG_EXAMPLE_MODULE_UART)
-    target_sources(app PRIVATE
-        src/modules_examples/example_module_uart.c
-        src/modules_examples/example_module_uart.h
-    )
-endif()
+add_subdirectory(src/modules_examples)
 
 # =============================================================================
 # Proprietary Modules (商业闭源模块)

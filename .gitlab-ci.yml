@@ -66,6 +66,8 @@ build_tests:
   script:
     - west build -b native_sim tests/ --build-dir build_tests -p always
     - west build -t run --build-dir build_tests
+    - west build -b native_sim tests/ --build-dir build_tests_block -p always -- -DCONF_FILE="prj.conf;prj_block_overflow.conf"
+    - west build -t run --build-dir build_tests_block
 
 build_arm:
   stage: build

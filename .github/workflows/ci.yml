@@ -187,6 +187,12 @@ jobs:
           west build -b native_sim tests/ --build-dir build_tests -p always
           west build -t run --build-dir build_tests
 
+      - name: Run BLOCK overflow config tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_block -p always \
+            -- -DCONF_FILE="prj.conf;prj_block_overflow.conf"
+          west build -t run --build-dir build_tests_block
+
       - name: Run core coverage gate
         run: |
           west build -b native_sim tests/ --build-dir build_tests_cov -p always -- -DCMAKE_C_FLAGS="--coverage"
