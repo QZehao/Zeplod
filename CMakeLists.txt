@@ -200,33 +200,7 @@ message(STATUS "Build Target: ${BUILD_TARGET}")
 add_subdirectory(src/core)
 
 # System Services
-if(CONFIG_SYS_LOG_ENABLE)
-    target_sources(app PRIVATE
-        src/services/sys_log.c
-        src/services/sys_log.h
-    )
-endif()
-
-if(CONFIG_SYS_MEMORY_ENABLE)
-    target_sources(app PRIVATE
-        src/services/sys_memory.c
-        src/services/sys_memory.h
-    )
-endif()
-
-if(CONFIG_SYS_WATCHDOG_ENABLE)
-    target_sources(app PRIVATE
-        src/services/sys_watchdog.c
-        src/services/sys_watchdog.h
-    )
-endif()
-
-if(CONFIG_SYS_TIMER_ENABLE)
-    target_sources(app PRIVATE
-        src/services/sys_timer.c
-        src/services/sys_timer.h
-    )
-endif()
+add_subdirectory(src/services)
 
 # Application Layer - Base
 target_sources(app PRIVATE
@@ -244,20 +218,7 @@ if(CONFIG_SHELL)
 endif()
 
 # Business Modules (Example - Extendable)
-if(CONFIG_MODULE_MANAGER)
-    target_sources(app PRIVATE
-        src/modules/module_manager.c
-        src/modules/module_manager_dependency.c
-        src/modules/module_manager_event.c
-        src/modules/module_manager_lifecycle.c
-        src/modules/module_manager_registry.c
-        src/modules/module_manager_stats.c
-        src/modules/module_manager.h
-        src/modules/module_base.h
-        src/modules/module_manager_compat.c
-        src/modules/module_manager_compat.h
-    )
-endif()
+add_subdirectory(src/modules)
 
 # Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
 if(CONFIG_THREAD_IPC_SERVICE)

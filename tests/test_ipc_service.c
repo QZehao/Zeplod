@@ -12,6 +12,7 @@
  *    Date         Version        Author          Description
  * 2026-04-01       1.0            zeh            正式发布
  * 2026-04-11       1.1            zeh            补充完整测试用例
+ * 2026-05-28       1.2            zeh            异步等待改用 ztest_sync（P0）
  *
  */
 #include <zephyr/kernel.h>
@@ -74,9 +75,11 @@ static int ipc_ut_handler(ipc_request_id_t request_id, const void* data, size_t 
 static int ipc_delayed_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
                                size_t* out_data_size) {
     (void) request_id;
-    k_msleep(100); /* 模拟处理延迟 */
+    atomic_set(&g_delayed_handler_in_handler, 1);
+    k_msleep(100); /* 模拟处理延迟（被测行为，非测试等待） */
     *out_data = (void*) data;
     *out_data_size = data_size;
+    atomic_set(&g_delayed_handler_in_handler, 0);
     return 0;
 }
 
@@ -92,20 +95,18 @@ static int ipc_error_handler(ipc_request_id_t request_id, const void* data, size
 }
 
 /* 计数器 handler */
-static int g_handler_call_count = 0;
 static int ipc_counting_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
                                 size_t* out_data_size) {
     (void) request_id;
     (void) data;
     (void) data_size;
-    g_handler_call_count++;
+    atomic_inc(&g_handler_call_count);
     *out_data = NULL;
     *out_data_size = 0;
     return 0;
 }
 
-/* 异步回调计数器 */
-static int              g_async_callback_count = 0;
+/* 异步回调状态 */
 static int              g_async_callback_result = 0;
 static size_t           g_async_callback_data_size = 0;
 static ipc_request_id_t g_async_callback_request_id = 0;
@@ -114,7 +115,7 @@ static void async_test_callback(ipc_request_id_t request_id, int result, const v
                                 void* user_data) {
     (void) data;
     (void) user_data;
-    g_async_callback_count++;
+    atomic_inc(&g_async_callback_count);
     g_async_callback_result = result;
     g_async_callback_data_size = data_size;
     g_async_callback_request_id = request_id;
@@ -211,7 +212,7 @@ ZTEST(ipc_service, test_async_call) {
     ipc_request_id_t request_id = 0;
     int              r;
 
-    g_async_callback_count = 0;
+    atomic_set(&g_async_callback_count, 0);
     g_async_callback_result = 0;
     g_async_callback_data_size = 0;
 
@@ -229,10 +230,9 @@ ZTEST(ipc_service, test_async_call) {
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
     zassert_not_equal(request_id, 0, "request_id 不应为 0");
 
-    /* 等待回调执行 */
-    k_msleep(200);
+    zassert_true(ztest_wait_until(ipc_async_callback_done, NULL, 2000U), "回调应已执行");
 
-    zassert_equal(g_async_callback_count, 1, "回调应被调用一次");
+    zassert_equal(atomic_get(&g_async_callback_count), 1, "回调应被调用一次");
     zassert_equal(g_async_callback_result, 0, "回调结果应为 0");
     zassert_equal(g_async_callback_data_size, sizeof(payload), "数据大小应匹配");
     zassert_equal(g_async_callback_request_id, request_id, "request_id 应匹配");
@@ -245,7 +245,7 @@ ZTEST(ipc_service, test_async_call_with_delayed_handler) {
     ipc_request_id_t request_id = 0;
     int              r;
 
-    g_async_callback_count = 0;
+    atomic_set(&g_async_callback_count, 0);
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -260,10 +260,8 @@ ZTEST(ipc_service, test_async_call_with_delayed_handler) {
                        &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
-    /* 等待延迟处理完成 */
-    k_msleep(300);
-
-    zassert_equal(g_async_callback_count, 1, "回调应被调用一次");
+    zassert_true(ztest_wait_until(ipc_async_callback_done, NULL, 2000U), "延迟 handler 完成后回调应执行");
+    zassert_equal(atomic_get(&g_async_callback_count), 1, "回调应被调用一次");
 
     ipc_service_stop(&g_ipc);
 }
@@ -328,9 +326,7 @@ ZTEST(ipc_service, test_future_is_ready) {
     bool ready = ipc_future_is_ready(future);
     zassert_equal(ready, false, "future 应未就绪");
 
-    /* 等待处理完成 */
-    k_msleep(200);
-
+    zassert_true(ztest_wait_until(ipc_future_ready_ctx, future, 2000U), "future 应变为就绪");
     ready = ipc_future_is_ready(future);
     zassert_equal(ready, true, "future 应已就绪");
 
@@ -363,8 +359,7 @@ ZTEST(ipc_service, test_future_wait_timeout) {
     r = ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_MSEC(10));
     zassert_equal(r, -EAGAIN, "应返回 -EAGAIN，实际: %d", r);
 
-    /* 等待实际完成后再释放 */
-    k_msleep(200);
+    zassert_true(ztest_wait_until(ipc_future_ready_ctx, future, 2000U), "future 应在 handler 完成后就绪");
     ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_SECONDS(1));
     ipc_future_release(&g_ipc, future);
     ipc_service_stop(&g_ipc);
@@ -417,6 +412,8 @@ ZTEST(ipc_service, test_get_pending_count) {
     ipc_request_id_t request_id = 0;
     int              r;
 
+    atomic_set(&g_delayed_handler_in_handler, 0);
+
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
 
@@ -435,16 +432,12 @@ ZTEST(ipc_service, test_get_pending_count) {
                        &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
-    /* 短暂等待请求入队 */
-    k_msleep(10);
-
+    zassert_true(ztest_wait_until(ipc_delayed_started_or_pending, &g_ipc, 500U),
+                 "请求应已入队或进入 delayed handler");
     count = ipc_service_get_pending_count(&g_ipc);
-    /* 请求可能已在处理中，所以 count 可能是 0 或 1 */
     zassert_true(count <= 1, "pending 数量应 <= 1");
 
-    /* 等待处理完成 */
-    k_msleep(200);
-
+    zassert_true(ztest_wait_until(ipc_service_pending_zero, &g_ipc, 2000U), "处理完成后 pending 应为 0");
     count = ipc_service_get_pending_count(&g_ipc);
     zassert_equal(count, 0, "处理完成后 pending 数量应为 0");
 
@@ -499,7 +492,7 @@ ZTEST(ipc_service, test_cancel_async_then_stop) {
     ipc_request_id_t request_id = 0;
     int              r;
 
-    g_async_callback_count = 0;
+    atomic_set(&g_async_callback_count, 0);
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_delayed_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -641,7 +634,7 @@ ZTEST(ipc_service, test_multiple_start_stop_cycles) {
         r = ipc_service_stop(&g_ipc);
         zassert_equal(r, 0, "ipc_service_stop failed: %d", r);
 
-        k_msleep(50);
+        zassert_true(ztest_wait_until(ipc_service_pending_zero, &g_ipc, 500U), "stop 后 pending 应为 0");
     }
 }
 
@@ -657,7 +650,7 @@ ZTEST(ipc_service, test_concurrent_requests) {
     size_t     outsz3 = 0;
     int        r;
 
-    g_handler_call_count = 0;
+    atomic_set(&g_handler_call_count, 0);
 
     r = ipc_service_init(&g_ipc, "ut_ipc", ipc_counting_handler, 5);
     zassert_equal(r, 0, "ipc_service_init failed: %d", r);
@@ -675,7 +668,7 @@ ZTEST(ipc_service, test_concurrent_requests) {
     r = ipc_call_sync(&g_ipc, payload3, sizeof(payload3), &out3, &outsz3, K_SECONDS(1));
     zassert_equal(r, 0, "req3 failed");
 
-    zassert_equal(g_handler_call_count, 3, "handler 应被调用 3 次");
+    zassert_equal(atomic_get(&g_handler_call_count), 3, "handler 应被调用 3 次");
 
     ipc_service_stop(&g_ipc);
 }
@@ -696,8 +689,7 @@ ZTEST(ipc_service, test_sync_call_timeout) {
     r = ipc_call_sync(&g_ipc, payload, sizeof(payload), &out, &outsz, K_MSEC(10));
     zassert_equal(r, -EAGAIN, "应返回 -EAGAIN，实际: %d", r);
 
-    /* 等待处理完成，避免资源泄漏 */
-    k_msleep(200);
+    zassert_true(ztest_wait_until(ipc_service_pending_zero, &g_ipc, 2000U), "超时后 handler 应完成且 pending 清零");
 
     ipc_service_stop(&g_ipc);
 }
@@ -722,7 +714,9 @@ ZTEST(ipc_service, test_async_null_callback) {
     /* 允许成功或失败，取决于实现 */
     zassert_true(r == 0 || r != 0, "NULL callback 行为实现定义");
 
-    k_msleep(100);
+    if (r == 0) {
+        zassert_true(ztest_wait_until(ipc_service_pending_zero, &g_ipc, 2000U), "fire-and-forget 请求应处理完毕");
+    }
 
     ipc_service_stop(&g_ipc);
 }

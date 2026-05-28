@@ -31,17 +31,8 @@ set(APP_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 # 核心源码（始终包含）
 # =============================================================================
 add_subdirectory(${APP_SRC_DIR}/core ${CMAKE_CURRENT_BINARY_DIR}/core)
-
-target_sources(app PRIVATE
-	${APP_SRC_DIR}/services/sys_log.c
-	${APP_SRC_DIR}/modules/module_manager.c
-	${APP_SRC_DIR}/modules/module_manager_dependency.c
-	${APP_SRC_DIR}/modules/module_manager_event.c
-	${APP_SRC_DIR}/modules/module_manager_lifecycle.c
-	${APP_SRC_DIR}/modules/module_manager_registry.c
-	${APP_SRC_DIR}/modules/module_manager_stats.c
-	${APP_SRC_DIR}/modules/module_manager_compat.c
-)
+add_subdirectory(${APP_SRC_DIR}/services ${CMAKE_CURRENT_BINARY_DIR}/services)
+add_subdirectory(${APP_SRC_DIR}/modules ${CMAKE_CURRENT_BINARY_DIR}/modules)
 
 # =============================================================================
 # 核心测试（始终包含）
@@ -59,10 +50,7 @@ target_sources(app PRIVATE
 
 # 系统内存管理器（可选）
 if(CONFIG_SYS_MEMORY_ENABLE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/services/sys_memory.c
-		test_sys_memory.c
-	)
+	target_sources(app PRIVATE test_sys_memory.c)
 endif()
 
 # =============================================================================
@@ -71,18 +59,12 @@ endif()
 
 # 看门狗测试
 if(CONFIG_SYS_WATCHDOG_ENABLE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/services/sys_watchdog.c
-		test_sys_watchdog.c
-	)
+	target_sources(app PRIVATE test_sys_watchdog.c)
 endif()
 
 # 定时器测试
 if(CONFIG_SYS_TIMER_ENABLE)
-	target_sources(app PRIVATE
-		${APP_SRC_DIR}/services/sys_timer.c
-		test_sys_timer.c
-	)
+	target_sources(app PRIVATE test_sys_timer.c)
 endif()
 
 # =============================================================================
