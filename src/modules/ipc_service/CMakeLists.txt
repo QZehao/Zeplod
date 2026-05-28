@@ -6,6 +6,11 @@
 
 target_sources(app PRIVATE
     ipc_service.c
+    ipc_service_call.c
+    ipc_service_dispatcher.c
+    ipc_service_lifecycle.c
+    ipc_service_pending.c
+    ipc_service_worker.c
 )
 
 target_sources_ifdef(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM app PRIVATE

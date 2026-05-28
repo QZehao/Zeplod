@@ -140,6 +140,11 @@ endif()
 if(CONFIG_THREAD_IPC_SERVICE)
 	target_sources(app PRIVATE
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_service_call.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_service_dispatcher.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_service_lifecycle.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_service_pending.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_service_worker.c
 		${APP_SRC_DIR}/modules/ipc_service/ipc_shared_mem.c
 		test_ipc_service.c
 	)

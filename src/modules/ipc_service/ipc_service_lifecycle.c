@@ -1,0 +1,288 @@
+/**
+ * @file ipc_service_lifecycle.c
+ * @brief IPC 服务生命周期（init/start/stop）
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-05-28
+ */
+
+#include "ipc_service_internal.h"
+
+#include <zephyr/logging/log.h>
+#include <string.h>
+
+LOG_MODULE_DECLARE(thread_ipc_svc, CONFIG_THREAD_IPC_SERVICE_LOG_LEVEL);
+
+bool ipc_service_is_accepting_requests(ipc_service_t* service) {
+    if (service == NULL || !service->initialized) {
+        return false;
+    }
+
+    ipc_service_state_lock(service);
+    bool accepting = service->running && atomic_get(&service->shutdown) == 0;
+    ipc_service_state_unlock(service);
+
+    return accepting;
+}
+
+int ipc_put_msgq_until_shutdown(struct k_msgq* queue, const void* msg, const atomic_t* shutdown) {
+    while (atomic_get(shutdown) == 0) {
+        int ret = k_msgq_put(queue, msg, K_MSEC(IPC_SERVICE_MSGQ_TIMEOUT_MS));
+
+        if (ret == 0) {
+            return 0;
+        }
+
+        if (ret != -EAGAIN) {
+            return ret;
+        }
+    }
+
+    return -ECANCELED;
+}
+
+void ipc_drain_queued_messages(ipc_service_t* service) {
+    ipc_request_msg_t request_msg;
+    while (k_msgq_get(&service->request_queue, &request_msg, K_NO_WAIT) == 0) {
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+        if (request_msg.shm_handle != 0) {
+            ipc_shm_release(service, request_msg.shm_handle);
+        }
+#endif
+    }
+
+    ipc_response_msg_t response_msg;
+    while (k_msgq_get(&service->response_queue, &response_msg, K_NO_WAIT) == 0) {
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+        if (response_msg.shm_handle != 0) {
+            ipc_shm_release(service, response_msg.shm_handle);
+        }
+#endif
+    }
+}
+
+int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_t service_func, int priority) {
+    if (service == NULL || name == NULL || service_func == NULL) {
+        return -EINVAL;
+    }
+
+    memset(service, 0, sizeof(ipc_service_t));
+    zepl_state_machine_init(&service->lifecycle, ZEP_STATE_UNINIT);
+
+    service->name = name;
+    service->service_func = service_func;
+    service->priority = priority;
+    service->initialized = true;
+    service->running = false;
+    atomic_set(&service->shutdown, 0);
+    k_mutex_init(&service->state_lock);
+
+    k_msgq_init(&service->request_queue, (char*) service->request_queue_buf, sizeof(ipc_request_msg_t),
+                CONFIG_THREAD_IPC_SERVICE_REQUEST_QUEUE_SIZE);
+
+    k_msgq_init(&service->response_queue, (char*) service->response_queue_buf, sizeof(ipc_response_msg_t),
+                CONFIG_THREAD_IPC_SERVICE_RESPONSE_QUEUE_SIZE);
+
+    k_mutex_init(&service->pending_lock);
+
+    for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
+        service->pending_requests[i].in_use = false;
+    }
+
+    service->free_futures = NULL;
+    for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
+        service->futures[i].request_id = 0;
+        atomic_set(&service->futures[i].completed, 0);
+        service->futures[i].next = service->free_futures;
+        k_sem_init(&service->futures[i].semaphore, 0, 1);
+        service->free_futures = &service->futures[i];
+    }
+
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    int shm_ret = ipc_shm_init(service);
+    if (shm_ret != 0) {
+        LOG_ERR("Failed to init shared memory pool: %d", shm_ret);
+        service->initialized = false;
+        return shm_ret;
+    }
+#endif
+
+    (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_INITED);
+
+    LOG_DBG("IPC service '%s' initialized", name);
+
+    return 0;
+}
+
+int ipc_service_start(ipc_service_t* service) {
+    if (service == NULL || !service->initialized || !service->service_func) {
+        return -EINVAL;
+    }
+
+    ipc_service_state_lock(service);
+
+    zepl_state_t state = ipc_service_lifecycle_state_locked(service);
+
+    if (state == ZEP_STATE_RUNNING) {
+        ipc_service_state_unlock(service);
+        return -EALREADY;
+    }
+
+    if (state == ZEP_STATE_UNINIT || state == ZEP_STATE_ERROR || state == ZEP_STATE_STOPPING) {
+        ipc_service_state_unlock(service);
+        return -EINVAL;
+    }
+
+    if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STARTING) != 0) {
+        ipc_service_state_unlock(service);
+        return -EINVAL;
+    }
+
+    atomic_set(&service->shutdown, 0);
+
+    k_thread_create(&service->thread, service->worker_stack, K_KERNEL_STACK_SIZEOF(service->worker_stack),
+                    ipc_service_worker_thread, service, NULL, NULL, service->priority, 0, K_NO_WAIT);
+#if IS_ENABLED(CONFIG_THREAD_NAME)
+    k_thread_name_set(&service->thread, service->name);
+#endif
+
+    k_thread_create(&service->response_thread, service->dispatcher_stack,
+                    K_KERNEL_STACK_SIZEOF(service->dispatcher_stack), ipc_service_dispatcher_thread, service, NULL,
+                    NULL, service->priority, 0, K_NO_WAIT);
+#if IS_ENABLED(CONFIG_THREAD_NAME)
+    k_thread_name_set(&service->response_thread, "ipc_disp");
+#endif
+
+    service->running = true;
+    (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_RUNNING);
+    ipc_service_state_unlock(service);
+
+    LOG_DBG("IPC service '%s' started", service->name);
+
+    return 0;
+}
+
+int ipc_service_stop(ipc_service_t* service) {
+    if (service == NULL) {
+        return -EINVAL;
+    }
+
+    ipc_service_state_lock(service);
+    zepl_state_t state = ipc_service_lifecycle_state_locked(service);
+
+    if (state == ZEP_STATE_UNINIT) {
+        ipc_service_state_unlock(service);
+        return -EINVAL;
+    }
+
+    if (!service->running || state == ZEP_STATE_INITED || state == ZEP_STATE_STOPPED) {
+        ipc_service_state_unlock(service);
+        return 0;
+    }
+
+    if (state == ZEP_STATE_ERROR) {
+        ipc_service_state_unlock(service);
+        return -EINVAL;
+    }
+
+    if (k_current_get() == &service->thread || k_current_get() == &service->response_thread) {
+        ipc_service_state_unlock(service);
+        return -EDEADLK;
+    }
+
+    if (state != ZEP_STATE_STOPPING) {
+        if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPING) != 0) {
+            ipc_service_state_unlock(service);
+            return -EINVAL;
+        }
+    }
+
+    atomic_set(&service->shutdown, 1);
+    ipc_service_state_unlock(service);
+
+    ipc_request_msg_t dummy_request;
+    memset(&dummy_request, 0, sizeof(dummy_request));
+    (void) k_msgq_put(&service->request_queue, &dummy_request, K_NO_WAIT);
+
+    ipc_response_msg_t dummy_response;
+    memset(&dummy_response, 0, sizeof(dummy_response));
+    (void) k_msgq_put(&service->response_queue, &dummy_response, K_NO_WAIT);
+
+    int ret1 = k_thread_join(&service->thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+    if (ret1 != 0) {
+        LOG_ERR("Worker thread join failed: %d, aborting", ret1);
+        k_thread_abort(&service->thread);
+        ret1 = k_thread_join(&service->thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+    }
+
+    int ret2 = k_thread_join(&service->response_thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+    if (ret2 != 0) {
+        LOG_ERR("Dispatcher thread join failed: %d, aborting", ret2);
+        k_thread_abort(&service->response_thread);
+        ret2 = k_thread_join(&service->response_thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+    }
+
+    int stop_err = 0;
+    if (ret1 != 0 || ret2 != 0) {
+        LOG_ERR("IPC service '%s': thread did not terminate after abort (worker_ret=%d, disp_ret=%d)", service->name,
+                ret1, ret2);
+        stop_err = -EIO;
+    }
+
+    ipc_drain_queued_messages(service);
+    k_msgq_purge(&service->request_queue);
+    k_msgq_purge(&service->response_queue);
+
+    ipc_service_state_lock(service);
+    service->running = false;
+    if (stop_err == 0) {
+        atomic_set(&service->shutdown, 0);
+        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
+    } else {
+        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_ERROR);
+    }
+    ipc_service_state_unlock(service);
+
+    ipc_service_pending_lock(service);
+    for (int i = 0; i < CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS; i++) {
+        ipc_pending_request_t* entry = &service->pending_requests[i];
+
+        if (!entry->in_use) {
+            continue;
+        }
+
+        if (entry->future != NULL) {
+            entry->future->result = -ECANCELED;
+            entry->future->data = NULL;
+            entry->future->data_size = 0;
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+            ipc_release_pending_shm_handle(service, entry);
+#endif
+            atomic_set(&entry->future->completed, 1);
+            k_sem_give(&entry->future->semaphore);
+            entry->future = NULL;
+            ipc_release_pending_entry(service, entry);
+        } else if (entry->callback != NULL) {
+            ipc_release_pending_entry(service, entry);
+        } else if (!entry->completed) {
+            entry->canceled = true;
+            entry->result = -ECANCELED;
+            entry->response_data = NULL;
+            entry->response_data_size = 0;
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+            ipc_release_pending_shm_handle(service, entry);
+#endif
+            k_sem_give(&entry->response_sem);
+        }
+    }
+    ipc_service_pending_unlock(service);
+
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    ipc_shm_deinit(service);
+#endif
+
+    LOG_DBG("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2,
+            stop_err);
+
+    return stop_err;
+}
