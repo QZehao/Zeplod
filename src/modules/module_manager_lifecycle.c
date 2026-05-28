@@ -169,9 +169,9 @@ int module_manager_shutdown(void) {
     module_manager_unlock();
 
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
-    n = module_manager_dependency_order_stop_batch(entries, n);
+    n = mm_dep_planner_build_stop_order(entries, n);
 #else
-    module_manager_sort_start_entries(entries, n);
+    mm_dep_planner_sort_priority_asc(entries, n);
     for (int i = 0; i < n / 2; i++) {
         const int           j = n - 1 - i;
         start_order_entry_t t = entries[i];
@@ -370,9 +370,9 @@ int module_manager_start_all(void) {
     module_manager_unlock();
 
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
-    n = module_manager_dependency_order_start_batch(entries, n);
+    n = mm_dep_planner_build_start_order(entries, n);
 #else
-    module_manager_sort_start_entries(entries, n);
+    mm_dep_planner_sort_priority_asc(entries, n);
 #endif
 
     int started = 0;
@@ -422,7 +422,7 @@ int module_manager_stop_all(void) {
     module_manager_unlock();
 
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
-    (void) module_manager_dependency_order_stop_batch(entries, n);
+    (void) mm_dep_planner_build_stop_order(entries, n);
 #endif
 
     int stopped = 0;

@@ -1,22 +1,24 @@
 /**
  * @file module_manager_dependency.c
- * @brief 模块启动/停止依赖拓扑排序
+ * @brief 模块依赖规划器实现（委托 module_dependency_planner API）
  * @author zeh (china_qzh@163.com)
- * @version 1.0
+ * @version 1.1
  * @date 2026-05-28
  */
 
+#include "module_dependency_planner.h"
 #include "module_manager_internal.h"
+
 #include <zephyr/logging/log.h>
 #include <string.h>
 
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
 
-void module_manager_sort_start_entries(start_order_entry_t* entries, int n) {
+void mm_dep_planner_sort_priority_asc(mm_dep_order_entry_t* entries, int n) {
     for (int i = 0; i < n - 1; i++) {
         for (int j = i + 1; j < n; j++) {
             if ((int) entries[j].priority < (int) entries[i].priority) {
-                start_order_entry_t t = entries[i];
+                mm_dep_order_entry_t t = entries[i];
 
                 entries[i] = entries[j];
                 entries[j] = t;
@@ -31,11 +33,11 @@ void module_manager_sort_start_entries(start_order_entry_t* entries, int n) {
 #define CONFIG_MODULE_MANAGER_DEPENDS_LIST_MAX 16
 #endif
 
-void module_manager_sort_stop_entries_reverse_priority(start_order_entry_t* entries, int n) {
+void mm_dep_planner_sort_priority_desc(mm_dep_order_entry_t* entries, int n) {
     for (int i = 0; i < n - 1; i++) {
         for (int j = i + 1; j < n; j++) {
             if ((int) entries[j].priority > (int) entries[i].priority) {
-                start_order_entry_t t = entries[i];
+                mm_dep_order_entry_t t = entries[i];
 
                 entries[i] = entries[j];
                 entries[j] = t;
@@ -61,7 +63,7 @@ static bool mm_adj_matrix_test(const uint32_t adj[][MM_ADJ_ROW_WORDS], int row, 
     return (adj[row][(unsigned int) col / 32U] & (1U << ((unsigned int) col % 32U))) != 0U;
 }
 
-int module_manager_dependency_order_start_batch(start_order_entry_t* entries, int n) {
+int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
     bool valid[CONFIG_MAX_MODULES];
     uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
@@ -169,7 +171,7 @@ int module_manager_dependency_order_start_batch(start_order_entry_t* entries, in
             if (di >= (unsigned int) CONFIG_MODULE_MANAGER_DEPENDS_LIST_MAX) {
                 LOG_ERR("Module id=%u: depends_on exceeds max or not NULL-terminated", (unsigned int) entries[i].id);
                 module_manager_unlock();
-                module_manager_sort_start_entries(entries, n_work);
+                mm_dep_planner_sort_priority_asc(entries, n_work);
                 return n_work;
             }
             const char* const depn = entries[i].depends_on[di];
@@ -194,7 +196,7 @@ int module_manager_dependency_order_start_batch(start_order_entry_t* entries, in
             if (j < 0) {
                 LOG_ERR("Module id=%u: internal: missing edge for dependency '%s'", (unsigned int) entries[i].id, depn);
                 module_manager_unlock();
-                module_manager_sort_start_entries(entries, n_work);
+                mm_dep_planner_sort_priority_asc(entries, n_work);
                 return n_work;
             }
             if (!mm_adj_matrix_test(adj, j, i)) {
@@ -224,7 +226,7 @@ int module_manager_dependency_order_start_batch(start_order_entry_t* entries, in
         if (best < 0) {
             LOG_ERR("Dependency cycle; using priority order for start");
             module_manager_unlock();
-            module_manager_sort_start_entries(entries, n_work);
+            mm_dep_planner_sort_priority_asc(entries, n_work);
             return n_work;
         }
         pick_order[out] = (uint32_t) best;
@@ -238,7 +240,7 @@ int module_manager_dependency_order_start_batch(start_order_entry_t* entries, in
 
     module_manager_unlock();
 
-    start_order_entry_t tmp[CONFIG_MAX_MODULES];
+    mm_dep_order_entry_t tmp[CONFIG_MAX_MODULES];
 
     for (int i = 0; i < n_work; i++) {
         tmp[i] = entries[(int) pick_order[i]];
@@ -247,7 +249,7 @@ int module_manager_dependency_order_start_batch(start_order_entry_t* entries, in
     return n_work;
 }
 
-int module_manager_dependency_order_stop_batch(start_order_entry_t* entries, int n) {
+int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
     uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
@@ -321,7 +323,7 @@ int module_manager_dependency_order_stop_batch(start_order_entry_t* entries, int
         if (best < 0) {
             LOG_ERR("Dependency cycle; using reverse priority order for stop");
             module_manager_unlock();
-            module_manager_sort_stop_entries_reverse_priority(entries, n);
+            mm_dep_planner_sort_priority_desc(entries, n);
             return n;
         }
         pick_order[out] = (uint32_t) best;
@@ -335,14 +337,14 @@ int module_manager_dependency_order_stop_batch(start_order_entry_t* entries, int
 
     module_manager_unlock();
 
-    start_order_entry_t tmp[CONFIG_MAX_MODULES];
+    mm_dep_order_entry_t tmp[CONFIG_MAX_MODULES];
 
     for (int i = 0; i < n; i++) {
         tmp[i] = entries[(int) pick_order[i]];
     }
     for (int i = 0; i < n / 2; i++) {
-        const int           j = n - 1 - i;
-        start_order_entry_t t = tmp[i];
+        const int            j = n - 1 - i;
+        mm_dep_order_entry_t t = tmp[i];
 
         tmp[i] = tmp[j];
         tmp[j] = t;

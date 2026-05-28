@@ -5,7 +5,7 @@
  * 实现按职责拆分至：
  * - module_manager_lifecycle.c   管理器/模块生命周期
  * - module_manager_registry.c      注册表与查询
- * - module_manager_dependency.c  依赖拓扑排序
+ * - module_manager_dependency.c  依赖规划器（mm_dep_planner_*）
  * - module_manager_event.c       事件订阅与分发
  * - module_manager_stats.c       统计与回调
  *
