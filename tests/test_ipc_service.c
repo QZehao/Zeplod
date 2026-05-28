@@ -559,6 +559,25 @@ ZTEST(ipc_service, test_stop_without_start) {
     zassert_equal(r, 0, "未启动直接停止应返回 0");
 }
 
+ZTEST(ipc_service, test_repeat_stop_idempotent) {
+    int r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
+
+    zassert_equal(r, 0, NULL);
+    zassert_equal(ipc_service_start(&g_ipc), 0, NULL);
+    zassert_equal(ipc_service_stop(&g_ipc), 0, NULL);
+    zassert_equal(ipc_service_stop(&g_ipc), 0, "重复 stop 应幂等返回 0");
+}
+
+ZTEST(ipc_service, test_duplicate_start_ealready) {
+    int r = ipc_service_init(&g_ipc, "ut_ipc", ipc_ut_handler, 5);
+
+    zassert_equal(r, 0, NULL);
+    zassert_equal(ipc_service_start(&g_ipc), 0, NULL);
+    r = ipc_service_start(&g_ipc);
+    zassert_equal(r, -EALREADY, "重复 start 应返回 -EALREADY");
+    zassert_equal(ipc_service_stop(&g_ipc), 0, NULL);
+}
+
 ZTEST(ipc_service, test_sync_call_before_start) {
     const char payload[] = "test";
     void*      out = NULL;

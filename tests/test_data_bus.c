@@ -126,6 +126,17 @@ ZTEST(test_data_bus, test_init_deinit) {
 }
 
 /**
+ * @brief 重复 deinit 幂等（P2 生命周期契约）
+ */
+ZTEST(test_data_bus, test_repeat_deinit_idempotent) {
+    data_bus_test_setup();
+
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+    zassert_equal(data_bus_deinit(), 0, "重复 deinit 应返回 0");
+}
+
+/**
  * @brief 测试通道创建、查找与销毁
  */
 ZTEST(test_data_bus, test_channel_create_destroy) {

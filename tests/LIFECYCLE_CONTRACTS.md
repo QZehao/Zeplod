@@ -1,6 +1,7 @@
 # 核心模块生命周期与并发边界契约
 
-> 与 [84-核心架构重构路线图](../docs/zh-CN/80-贡献与维护/84-核心架构重构路线图.md) P0 对齐。  
+> 与 [84-核心架构重构路线图](../docs/zh-CN/80-贡献与维护/84-核心架构重构路线图.md) P0/P2 对齐。  
+> 线程服务对照表见 [85-线程服务生命周期约定](../docs/zh-CN/80-贡献与维护/85-线程服务生命周期约定.md)。  
 > 日期：2026-05-28
 
 本文档固化 **测试应断言的返回值语义**；实现变更须先更新本文档与对应用例。
@@ -26,21 +27,40 @@
 | --- | --- |
 | 未 `init` 时 `start` | `EVENT_ERR_INVALID_ARG` |
 | 重复 `start`（已 RUNNING） | `EVENT_OK` |
-| 重复 `stop` | `EVENT_OK` |
+| 重复 `stop`（已 STOPPED 且 join 完成） | `EVENT_OK` |
 | `ever_started` 后手动 `process_one` | `EVENT_ERR_INVALID_ARG` |
 | 从 dispatcher 线程 `stop` / `deinit` | `EVENT_ERR_INVALID_ARG` |
-| join 超时 | `EVENT_ERR_TIMEOUT`（线程可能仍存活，见实现注释） |
+| join 超时 | `EVENT_ERR_TIMEOUT`（`thread_started` 仍为 true，可重试 stop） |
 
 ## ipc_service
 
 | 场景 | 预期 |
 | --- | --- |
-| 未 `start` 时 `ipc_call_sync` | 非 0 失败 |
-| 重复 `start` / `stop` | 0（幂等） |
-| `cancel` 后 `stop` 交叠 | 见 `test_cancel_*` 用例 |
+| `init` 参数非法（NULL service/name/func） | `-EINVAL` |
+| 未 `start` 时 `ipc_call_sync` / `ipc_call_async` | `-EINVAL`（`ipc_service_is_accepting_requests` 为 false） |
+| 未 `start` 时 `ipc_service_stop` | `0`（幂等） |
+| 重复 `start`（已 RUNNING） | `-EALREADY` |
+| 重复 `stop`（已停止） | `0` |
+| `stop` 后再次 `start` | `0`（见 `test_multiple_start_stop_cycles`） |
+| 从 worker 或 dispatcher 线程 `stop` | `-EDEADLK` |
+| `stop` 时未完成 future | future 完成，结果 `-ECANCELED` |
+| `cancel` 已完成 SYNC 请求 | `-EALREADY` |
+| `cancel` 不存在的 request_id | `-ENOENT` |
+| join 失败（abort 后仍无法 join） | `-EIO`，状态机 `ZEP_STATE_ERROR` |
+
+## data_bus
+
+| 场景 | 预期 |
+| --- | --- |
+| 重复 `data_bus_init` | `0` |
+| 未 init 时 `data_bus_channel_create` 等 | `-ENODEV` |
+| 重复 `data_bus_deinit` | `0` |
+| 从 dispatcher 线程 `data_bus_deinit` | `-EINVAL` |
+| `shutting_down` 期间 publish | `-ESHUTDOWN`（经 `data_bus_require_initialized`） |
 
 ## 测试编写约定
 
 - 异步完成优先使用 `ztest_sync.h` 中的 `ztest_wait_atomic_*` 或 `k_sem` / `k_event`。
 - 禁止将 `(event_callback_t)0x1000` 等不可调用地址作为有效订阅回调。
-- 生命周期循环测试至少覆盖：`init → start → stop → (可选再次 start) → shutdown`。
+- 生命周期循环测试至少覆盖：`init → start → stop → (可选再次 start) → shutdown/deinit`。
+- IPC/Data Bus 边界用例命名与本文档表格场景一一对应，便于回归。

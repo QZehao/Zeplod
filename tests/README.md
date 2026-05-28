@@ -114,6 +114,7 @@ west build -t run --build-dir build_tests
 ## 生命周期与异步测试约定
 
 - **边界契约表**：见 [LIFECYCLE_CONTRACTS.md](LIFECYCLE_CONTRACTS.md)（cancel、timeout、重复 stop 等返回值）。
+- **线程服务对照**：见 [85-线程服务生命周期约定.md](../docs/zh-CN/80-贡献与维护/85-线程服务生命周期约定.md)（dispatcher / IPC / Data Bus）。
 - **异步等待**：优先使用 [ztest_sync.h](ztest_sync.h)（`ztest_wait_atomic_*`）或 `k_sem` / `k_event`；避免仅用裸 `k_msleep()` 判断异步完成。
 - **订阅回调**：使用 [test_event_stubs.h](test_event_stubs.h) 中的 `test_event_noop_callback`，勿使用 `0x1000` 等不可调用地址。
 
