@@ -16,6 +16,7 @@
  * 2026-05-19       2.2            zeh            init 校验分发线程；排空快照释放全局锁
  * 2026-05-20       2.3            zeh            init/deinit 互斥锁消除并发初始化竞态
  * 2026-05-28       2.4            zeh            deinit：有界 join，失败保留状态供重试（P2 生命周期对齐）
+ * 2026-05-28       2.5            zeh            dispatcher 仅处理就绪队列中的 channel（P3.1）
  *
  */
 
@@ -28,6 +29,7 @@
 #include "data_bus_consumer.h"
 #include "data_bus_internal.h"
 #include "data_bus_memory.h"
+#include "data_bus_ready.h"
 
 LOG_MODULE_REGISTER(data_bus, CONFIG_DATA_BUS_LOG_LEVEL);
 
@@ -102,27 +104,21 @@ static void data_bus_dispatcher_thread(void* arg1, void* arg2, void* arg3) {
             break;
         }
 
-        /* 快照通道指针并固定每个（防止 destroy 释放 slab 与 UAF 竞争） */
-        data_bus_channel_t* snap[CONFIG_DATA_BUS_MAX_CHANNELS];
+        while (true) {
+            data_bus_channel_t* ch = data_bus_ready_pop();
 
-        k_mutex_lock(&g_channels_lock, K_FOREVER);
-        uint32_t n = g_channel_count;
-        for (uint32_t i = 0; i < n; i++) {
-            snap[i] = g_channels[i];
-            if (snap[i] != NULL) {
-                (void) atomic_inc(&snap[i]->dispatch_hold);
+            if (ch == NULL) {
+                break;
             }
-        }
-        k_mutex_unlock(&g_channels_lock);
 
-        for (uint32_t i = 0; i < n; i++) {
-            data_bus_channel_t* ch = snap[i];
-
-            if (ch != NULL) {
-                data_bus_channel_drain_pending(ch, true);
-                (void) atomic_dec(&ch->dispatch_hold);
+            if (!data_bus_ready_claim(ch)) {
+                continue;
             }
+
+            data_bus_ready_finish(ch);
         }
+
+        (void) data_bus_ready_consume_fallback();
 
         /* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
         while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
@@ -147,6 +143,7 @@ int data_bus_init(void) {
 
     /* 初始化全局信号量 */
     k_sem_init(&g_dispatcher_sem, 0, K_SEM_MAX_LIMIT);
+    data_bus_ready_init();
 
     /* 初始化通道表锁 */
     k_mutex_init(&g_channels_lock);
@@ -204,6 +201,8 @@ int data_bus_deinit(void) {
         k_mutex_unlock(&g_init_lock);
         return -EIO;
     }
+
+    data_bus_ready_reset();
 
     while (true) {
         bool busy = false;

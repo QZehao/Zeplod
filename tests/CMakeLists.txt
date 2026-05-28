@@ -162,6 +162,7 @@ if(CONFIG_DATA_BUS)
 		${APP_SRC_DIR}/data_bus/data_bus_channel.c
 		${APP_SRC_DIR}/data_bus/data_bus_memory.c
 		${APP_SRC_DIR}/data_bus/data_bus_consumer.c
+		${APP_SRC_DIR}/data_bus/data_bus_ready.c
 		test_data_bus.c
 	)
 	if(CONFIG_DATA_BUS_EVENT_BRIDGE)

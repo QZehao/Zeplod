@@ -28,6 +28,7 @@
 #include "data_bus_consumer.h"
 #include "data_bus_internal.h"
 #include "data_bus_memory.h"
+#include "data_bus_ready.h"
 
 LOG_MODULE_REGISTER(data_bus_channel, CONFIG_DATA_BUS_LOG_LEVEL);
 
@@ -145,6 +146,7 @@ int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
     ch->next_seq = 0;
     atomic_set(&ch->publish_hold, 0);
     atomic_set(&ch->dispatch_hold, 0);
+    atomic_set(&ch->dispatch_ready, 0);
 
     return 0;
 }
@@ -199,6 +201,7 @@ void data_bus_channel_obj_reset(data_bus_channel_t* ch) {
     ch->consumer_count = 0;
 
     atomic_set(&ch->active, 0);
+    atomic_set(&ch->dispatch_ready, 0);
 }
 /* ============================================================================
  * 公共 API: 通道管理
@@ -323,15 +326,21 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
 
     if (!queue_empty) {
         atomic_set(&ch->active, 1);
+        data_bus_ready_resync(ch);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
     }
 
     if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0) {
         atomic_set(&ch->active, 1);
+        data_bus_ready_resync(ch);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
     }
+
+    key = k_spin_lock(&ch->lock);
+    atomic_set(&ch->dispatch_ready, 0);
+    k_spin_unlock(&ch->lock, key);
 
     /* 从表中移除 */
     for (uint32_t i = 0; i < g_channel_count; i++) {
@@ -519,8 +528,8 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
 
     LOG_DBG("Published to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 
-    /* 通知分发线程 */
-    k_sem_give(&g_dispatcher_sem);
+    /* 通知分发线程（就绪队列 + 信号量） */
+    data_bus_ready_signal(ch);
 
     /* 事件桥接（仅线程路径） */
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
@@ -584,8 +593,8 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
 
     LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 
-    /* 通知分发器 */
-    k_sem_give(&g_dispatcher_sem);
+    /* 通知分发器（就绪队列 + 信号量） */
+    data_bus_ready_signal(ch);
 
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
     if (!in_isr) {

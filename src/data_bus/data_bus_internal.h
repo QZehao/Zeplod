@@ -76,6 +76,7 @@ struct data_bus_channel {
     uint32_t queue_used;
     atomic_t publish_hold;
     atomic_t dispatch_hold;
+    atomic_t dispatch_ready;
 };
 
 /* ============================================================================
