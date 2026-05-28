@@ -264,6 +264,11 @@ target_sources(app PRIVATE
 if(CONFIG_MODULE_MANAGER)
     target_sources(app PRIVATE
         src/modules/module_manager.c
+        src/modules/module_manager_dependency.c
+        src/modules/module_manager_event.c
+        src/modules/module_manager_lifecycle.c
+        src/modules/module_manager_registry.c
+        src/modules/module_manager_stats.c
         src/modules/module_manager.h
         src/modules/module_base.h
         src/modules/module_manager_compat.c

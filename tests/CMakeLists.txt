@@ -45,6 +45,11 @@ target_sources(app PRIVATE
 	${APP_SRC_DIR}/core/state_machine.c
 	${APP_SRC_DIR}/services/sys_log.c
 	${APP_SRC_DIR}/modules/module_manager.c
+	${APP_SRC_DIR}/modules/module_manager_dependency.c
+	${APP_SRC_DIR}/modules/module_manager_event.c
+	${APP_SRC_DIR}/modules/module_manager_lifecycle.c
+	${APP_SRC_DIR}/modules/module_manager_registry.c
+	${APP_SRC_DIR}/modules/module_manager_stats.c
 	${APP_SRC_DIR}/modules/module_manager_compat.c
 )
 
