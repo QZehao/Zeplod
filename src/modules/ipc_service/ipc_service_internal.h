@@ -13,6 +13,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
 #include "state_machine.h"
+#include "zepl_thread_service.h"
 
 #ifndef IPC_SERVICE_MAX_QUEUE_SIZE
 #define IPC_SERVICE_MAX_QUEUE_SIZE 1024U
@@ -23,11 +24,11 @@
 #endif
 
 #ifndef IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS
-#define IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS 500U
+#define IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS ZEPL_THREAD_SERVICE_JOIN_TIMEOUT_MS
 #endif
 
 #ifndef IPC_SERVICE_MSGQ_TIMEOUT_MS
-#define IPC_SERVICE_MSGQ_TIMEOUT_MS 100U
+#define IPC_SERVICE_MSGQ_TIMEOUT_MS ZEPL_THREAD_SERVICE_POLL_TIMEOUT_MS
 #endif
 
 static inline bool ipc_timeout_is_zero(k_timeout_t timeout) {

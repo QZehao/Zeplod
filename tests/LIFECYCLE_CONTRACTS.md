@@ -56,6 +56,7 @@
 | 未 init 时 `data_bus_channel_create` 等 | `-ENODEV` |
 | 重复 `data_bus_deinit` | `0` |
 | 从 dispatcher 线程 `data_bus_deinit` | `-EINVAL` |
+| 分发线程 join 超时 | `-EIO`（`g_initialized` / `g_shutting_down` 仍为 1，**勿**再 `init`，应重试 `deinit`） |
 | `shutting_down` 期间 publish | `-ESHUTDOWN`（经 `data_bus_require_initialized`） |
 
 ## 测试编写约定

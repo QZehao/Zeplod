@@ -29,6 +29,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "event_system.h"
+#include "zepl_thread_service.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,7 +66,7 @@ extern "C" {
 
 /** 线程超时退出的最大等待时间 (毫秒) */
 #ifndef EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS
-#define EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS 500U
+#define EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS ZEPL_THREAD_SERVICE_JOIN_TIMEOUT_MS
 #endif
 
 /** PAUSED 状态下休眠时间 (毫秒) */

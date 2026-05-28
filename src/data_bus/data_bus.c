@@ -15,6 +15,7 @@
  * 2026-05-15       2.1            zeh            分发线程：queue 非空时无消费者也出队并 release，避免块泄漏
  * 2026-05-19       2.2            zeh            init 校验分发线程；排空快照释放全局锁
  * 2026-05-20       2.3            zeh            init/deinit 互斥锁消除并发初始化竞态
+ * 2026-05-28       2.4            zeh            deinit：有界 join，失败保留状态供重试（P2 生命周期对齐）
  *
  */
 
@@ -196,8 +197,13 @@ int data_bus_deinit(void) {
     /* 唤醒分发线程使其退出 */
     k_sem_give(&g_dispatcher_sem);
 
-    /* 等待分发线程完成 */
-    k_thread_join(&g_dispatcher_thread_data, K_FOREVER);
+    int jret = k_thread_join(&g_dispatcher_thread_data, K_MSEC(DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS));
+
+    if (jret != 0) {
+        LOG_ERR("Data bus dispatcher join timed out: %d", jret);
+        k_mutex_unlock(&g_init_lock);
+        return -EIO;
+    }
 
     while (true) {
         bool busy = false;

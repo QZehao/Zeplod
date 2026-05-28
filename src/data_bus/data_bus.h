@@ -112,7 +112,8 @@ int data_bus_init(void);
  * @warning 无法回收应用线程通过 retain() 持有的数据块。
  *          调用者必须确保所有异步消费者已 release。
  *
- * @return 成功返回 0；从分发线程调用返回 -EINVAL
+ * @return 成功返回 0；从分发线程调用返回 -EINVAL；
+ *         分发线程 join 超时返回 -EIO（`g_initialized` / `g_shutting_down` 保持为 1，可重试 deinit）
  */
 int data_bus_deinit(void);
 
