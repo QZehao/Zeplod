@@ -48,19 +48,6 @@ void ipc_drain_queued_messages(ipc_service_t* service);
 void ipc_service_worker_thread(void* p1, void* p2, void* p3);
 void ipc_service_dispatcher_thread(void* p1, void* p2, void* p3);
 
-ipc_pending_request_t* ipc_find_pending_entry(ipc_service_t* service, ipc_request_id_t request_id);
-ipc_pending_request_t* ipc_allocate_pending_entry(ipc_service_t* service);
-void ipc_init_pending_entry(ipc_service_t* service, ipc_pending_request_t* entry, ipc_request_id_t request_id,
-                            struct k_thread* caller_thread, ipc_async_callback_t callback, void* callback_user_data,
-                            ipc_future_t* future);
-void ipc_release_pending_entry(ipc_service_t* service, ipc_pending_request_t* entry);
-#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-void ipc_release_pending_shm_handle(ipc_service_t* service, ipc_pending_request_t* entry);
-#endif
-
-ipc_future_t* ipc_allocate_future(ipc_service_t* service);
-void          ipc_release_future(ipc_service_t* service, ipc_future_t* future);
-bool          ipc_future_belongs_to_service(const ipc_service_t* service, const ipc_future_t* future);
-bool          ipc_future_is_in_free_list(const ipc_service_t* service, const ipc_future_t* future);
+#include "ipc_pending_table.h"
 
 #endif /* IPC_SERVICE_INTERNAL_H */

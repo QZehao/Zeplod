@@ -9,7 +9,7 @@ target_sources(app PRIVATE
     ipc_service_call.c
     ipc_service_dispatcher.c
     ipc_service_lifecycle.c
-    ipc_service_pending.c
+    ipc_pending_table.c
     ipc_service_worker.c
 )
 

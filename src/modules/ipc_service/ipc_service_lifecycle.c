@@ -256,21 +256,21 @@ int ipc_service_stop(ipc_service_t* service) {
             entry->future->data = NULL;
             entry->future->data_size = 0;
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-            ipc_release_pending_shm_handle(service, entry);
+            ipc_pending_table_release_shm(service, entry);
 #endif
             atomic_set(&entry->future->completed, 1);
             k_sem_give(&entry->future->semaphore);
             entry->future = NULL;
-            ipc_release_pending_entry(service, entry);
+            ipc_pending_table_release(service, entry);
         } else if (entry->callback != NULL) {
-            ipc_release_pending_entry(service, entry);
+            ipc_pending_table_release(service, entry);
         } else if (!entry->completed) {
             entry->canceled = true;
             entry->result = -ECANCELED;
             entry->response_data = NULL;
             entry->response_data_size = 0;
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-            ipc_release_pending_shm_handle(service, entry);
+            ipc_pending_table_release_shm(service, entry);
 #endif
             k_sem_give(&entry->response_sem);
         }

@@ -59,7 +59,7 @@ void ipc_service_worker_thread(void* p1, void* p2, void* p3) {
         }
 
         ipc_service_pending_lock(service);
-        ipc_pending_request_t* tracked = ipc_find_pending_entry(service, request_msg.request_id);
+        ipc_pending_request_t* tracked = ipc_pending_table_find(service, request_msg.request_id);
         bool                   still_tracked = (tracked != NULL && tracked->in_use && !tracked->canceled);
         ipc_service_pending_unlock(service);
 

@@ -49,7 +49,7 @@ void ipc_service_dispatcher_thread(void* p1, void* p2, void* p3) {
 
         ipc_service_pending_lock(service);
 
-        ipc_pending_request_t* entry = ipc_find_pending_entry(service, response_msg.request_id);
+        ipc_pending_request_t* entry = ipc_pending_table_find(service, response_msg.request_id);
 
         if (entry != NULL) {
             if (entry->canceled) {
@@ -82,7 +82,7 @@ void ipc_service_dispatcher_thread(void* p1, void* p2, void* p3) {
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
                 entry->shm_handle = 0;
 #endif
-                ipc_release_pending_entry(service, entry);
+                ipc_pending_table_release(service, entry);
                 ipc_service_pending_unlock(service);
 
                 if (cb != NULL) {
@@ -111,7 +111,7 @@ void ipc_service_dispatcher_thread(void* p1, void* p2, void* p3) {
                 atomic_set(&entry->future->completed, 1);
                 k_sem_give(&entry->future->semaphore);
                 entry->future = NULL;
-                ipc_release_pending_entry(service, entry);
+                ipc_pending_table_release(service, entry);
             } else {
                 entry->completed = true;
                 k_sem_give(&entry->response_sem);

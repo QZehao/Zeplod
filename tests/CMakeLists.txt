@@ -143,7 +143,7 @@ if(CONFIG_THREAD_IPC_SERVICE)
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service_call.c
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service_dispatcher.c
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service_lifecycle.c
-		${APP_SRC_DIR}/modules/ipc_service/ipc_service_pending.c
+		${APP_SRC_DIR}/modules/ipc_service/ipc_pending_table.c
 		${APP_SRC_DIR}/modules/ipc_service/ipc_service_worker.c
 		${APP_SRC_DIR}/modules/ipc_service/ipc_shared_mem.c
 		test_ipc_service.c
