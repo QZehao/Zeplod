@@ -86,6 +86,9 @@ static atomic_t g_dispatcher_events_dropped = ATOMIC_INIT(0);
 /** 单调递增世代号；每次 k_thread_create 成功前递增并写入 thread_gen */
 static atomic_t g_dispatcher_next_gen = ATOMIC_INIT(0);
 
+/** Serializes init-time control-block reset with filter updates. */
+static K_MUTEX_DEFINE(g_dispatcher_api_lock);
+
 /* =============================================================================
  * 前置声明
  * ============================================================================= */
@@ -202,17 +205,21 @@ static bool dispatcher_can_process_locked(dispatcher_state_t state, bool thread_
 event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     LOG_DBG("Initializing event dispatcher...");
 
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
     /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
      * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
      * thread_started 在 stop 后会被清零，因此正常重启序列不受限制。 */
     if (g_dispatcher.thread_started) {
         LOG_WRN("Dispatcher thread already running, refusing re-init");
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return EVENT_ERR_INVALID_ARG;
     }
 
     if (config != NULL) {
         event_status_t vret = event_dispatcher_validate_config(config);
         if (vret != EVENT_OK) {
+            k_mutex_unlock(&g_dispatcher_api_lock);
             return vret;
         }
     }
@@ -255,11 +262,14 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     g_event_queue = event_system_get_queue();
     if (g_event_queue == NULL) {
         LOG_ERR("Call event_system_init() before event_dispatcher_init()");
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return EVENT_ERR_INVALID_ARG;
     }
 
     atomic_set(&g_dispatcher_events_dropped, 0);
     g_dispatcher_initialized = true;
+
+    k_mutex_unlock(&g_dispatcher_api_lock);
 
     LOG_DBG("Event dispatcher initialized");
     return EVENT_OK;
@@ -411,11 +421,13 @@ event_status_t event_dispatcher_deinit(void) {
         return ret;
     }
 
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
     /* deinit/shutdown should reset external callback context to avoid stale pointers on next init */
     g_dispatcher.filter = NULL;
     g_dispatcher.filter_user_data = NULL;
     g_event_queue = NULL;
     g_dispatcher_initialized = false;
+    k_mutex_unlock(&g_dispatcher_api_lock);
 
     LOG_DBG("Event dispatcher deinitialized");
     return EVENT_OK;
@@ -517,9 +529,12 @@ void event_dispatcher_set_filter(event_filter_t filter, void* user_data) {
         LOG_WRN("Setting user_data without filter function");
     }
 
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
     if (!g_dispatcher_initialized) {
         g_dispatcher.filter = filter;
         g_dispatcher.filter_user_data = user_data;
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return;
     }
 
@@ -527,15 +542,19 @@ void event_dispatcher_set_filter(event_filter_t filter, void* user_data) {
     g_dispatcher.filter = filter;
     g_dispatcher.filter_user_data = user_data;
     k_mutex_unlock(&g_dispatcher.lock);
+    k_mutex_unlock(&g_dispatcher_api_lock);
 }
 
 /**
  * @brief 清除事件过滤器
  */
 void event_dispatcher_clear_filter(void) {
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
     if (!g_dispatcher_initialized) {
         g_dispatcher.filter = NULL;
         g_dispatcher.filter_user_data = NULL;
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return;
     }
 
@@ -543,6 +562,7 @@ void event_dispatcher_clear_filter(void) {
     g_dispatcher.filter = NULL;
     g_dispatcher.filter_user_data = NULL;
     k_mutex_unlock(&g_dispatcher.lock);
+    k_mutex_unlock(&g_dispatcher_api_lock);
 }
 
 /**
@@ -688,9 +708,8 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     *stats = g_dispatcher.stats;
-    k_mutex_unlock(&g_dispatcher.lock);
-
     stats->events_dropped += (uint64_t) atomic_get(&g_dispatcher_events_dropped);
+    k_mutex_unlock(&g_dispatcher.lock);
 }
 
 /**
@@ -704,9 +723,8 @@ void event_dispatcher_reset_stats(void) {
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     memset(&g_dispatcher.stats, 0, sizeof(g_dispatcher.stats));
-    k_mutex_unlock(&g_dispatcher.lock);
-
     atomic_set(&g_dispatcher_events_dropped, 0);
+    k_mutex_unlock(&g_dispatcher.lock);
 
     LOG_DBG("Dispatcher statistics reset");
 }

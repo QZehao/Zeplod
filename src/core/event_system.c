@@ -959,17 +959,20 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
 
     uint32_t new_id;
     uint32_t attempts = 0;
-    do {
+    while (true) {
         new_id = (uint32_t) atomic_inc(&g_event_system.next_subscriber_id);
-        if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
-            continue;
-        }
         if (++attempts > UINT16_MAX) {
             LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
             event_system_subscriber_id_unlock();
             return EVENT_ERR_NO_MEM;
         }
-    } while (subscriber_id_in_use(new_id));
+        if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
+            continue;
+        }
+        if (!subscriber_id_in_use(new_id)) {
+            break;
+        }
+    }
 
     event_system_entry_lock(entry);
     if (entry->name == NULL) {
@@ -1063,7 +1066,7 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
     for (int type = 0; type < MAX_EVENT_TYPES; type++) {
         event_type_entry_t* entry = &g_event_system.event_types[type];
 
-        if (entry->name == NULL) {
+        if (atomic_get(&entry->registered) == 0) {
             continue;
         }
 
