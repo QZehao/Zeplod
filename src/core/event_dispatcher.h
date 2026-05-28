@@ -303,6 +303,13 @@ void event_dispatcher_stats_inc_dropped(void);
  *
  * @note 保留 API 名称 event_dispatcher_get_current_latency 以保持向后兼容
  */
+uint32_t event_dispatcher_get_idle_time_us(void);
+
+/**
+ * @brief Backward-compatible alias for event_dispatcher_get_idle_time_us().
+ *
+ * @return Same value as event_dispatcher_get_idle_time_us().
+ */
 uint32_t event_dispatcher_get_current_latency(void);
 
 #ifdef __cplusplus

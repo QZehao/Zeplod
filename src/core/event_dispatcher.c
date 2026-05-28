@@ -742,7 +742,7 @@ void event_dispatcher_stats_inc_dropped(void) {
  *
  * @return 延迟时间（微秒）
  */
-uint32_t event_dispatcher_get_current_latency(void) {
+uint32_t event_dispatcher_get_idle_time_us(void) {
     uint64_t last_event_time;
 
     if (!g_dispatcher_initialized) {
@@ -754,6 +754,10 @@ uint32_t event_dispatcher_get_current_latency(void) {
     k_mutex_unlock(&g_dispatcher.lock);
 
     return calculate_idle_time_us(last_event_time);
+}
+
+uint32_t event_dispatcher_get_current_latency(void) {
+    return event_dispatcher_get_idle_time_us();
 }
 
 /* =============================================================================

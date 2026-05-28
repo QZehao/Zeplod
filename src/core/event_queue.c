@@ -44,15 +44,16 @@ extern void event_system_inc_dropped_count(void);
  * （k_msgq_put 在 ISR 中合法，但互斥锁不可用，原子操作填补此空白）。
  */
 typedef struct {
-    struct k_msgq* msgq;                /**< 消息队列指针 */
-    atomic_t       enqueue_count;       /**< 入队成功计数（ISR 安全） */
-    atomic_t       dequeue_count;       /**< 出队成功计数 */
-    atomic_t       overflow_count;      /**< 溢出（队列满）计数（ISR 安全） */
-    atomic_t       drop_count;          /**< 显式丢弃计数（DROP_LOWEST/purge） */
-    atomic_t       high_watermark;      /**< 队列深度历史最大值（CAS 更新） */
-    uint32_t       capacity;            /**< 队列容量 */
-    struct k_mutex reorder_lock;        /**< DROP_LOWEST 时串行化线程侧 msgq 操作 */
-    event_t*       drop_lowest_scratch; /**< DROP_LOWEST 独立临时缓冲区 */
+    struct k_msgq* msgq;                       /**< 消息队列指针 */
+    atomic_t       enqueue_count;              /**< 入队成功计数（ISR 安全） */
+    atomic_t       dequeue_count;              /**< 出队成功计数 */
+    atomic_t       overflow_count;             /**< 溢出（队列满）计数（ISR 安全） */
+    atomic_t       drop_count;                 /**< 显式丢弃计数（DROP_LOWEST/purge） */
+    atomic_t       high_watermark;             /**< 队列深度历史最大值（CAS 更新） */
+    uint32_t       capacity;                   /**< 队列容量 */
+    struct k_mutex reorder_lock;               /**< DROP_LOWEST 时串行化线程侧 msgq 操作 */
+    event_t*       drop_lowest_scratch;        /**< DROP_LOWEST 独立临时缓冲区 */
+    event_t*       drop_lowest_restore_failed; /**< DROP_LOWEST 回灌失败后待释放 payload */
 } event_queue_cb_t;
 
 /* 静态队列控制块数组，用于跟踪统计信息 */
@@ -76,7 +77,7 @@ static inline bool event_queue_use_op_lock(const event_queue_cb_t* cb) {
  * @brief 为 DROP_LOWEST 分配 scratch（Kconfig 启用时 init 预分配；否则首次使用时惰性分配）
  */
 static event_status_t event_queue_ensure_drop_lowest_scratch(event_queue_cb_t* cb) {
-    if (cb->drop_lowest_scratch != NULL) {
+    if (cb->drop_lowest_scratch != NULL && cb->drop_lowest_restore_failed != NULL) {
         return EVENT_OK;
     }
 
@@ -86,6 +87,14 @@ static event_status_t event_queue_ensure_drop_lowest_scratch(event_queue_cb_t* c
         if (cb->drop_lowest_scratch == NULL) {
             k_mutex_unlock(&g_queue_cb_lock);
             LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
+            return EVENT_ERR_NO_MEM;
+        }
+    }
+    if (cb->drop_lowest_restore_failed == NULL) {
+        cb->drop_lowest_restore_failed = (event_t*) k_malloc(cb->capacity * sizeof(event_t));
+        if (cb->drop_lowest_restore_failed == NULL) {
+            k_mutex_unlock(&g_queue_cb_lock);
+            LOG_ERR("Failed to allocate drop_lowest_restore_failed for queue");
             return EVENT_ERR_NO_MEM;
         }
     }
@@ -191,7 +200,7 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
     k_msgq_get_attrs(queue, &attrs);
 
     /* SIL-2: 检查 scratch 缓冲区是否已分配 */
-    if (cb->drop_lowest_scratch == NULL) {
+    if (cb->drop_lowest_scratch == NULL || cb->drop_lowest_restore_failed == NULL) {
         LOG_ERR("DROP_LOWEST scratch not allocated");
         return EVENT_ERR_INVALID_ARG;
     }
@@ -234,14 +243,14 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
             for (uint32_t j = 0; j < i; j++) {
                 if (k_msgq_put(queue, &cb->drop_lowest_scratch[j], K_NO_WAIT) != 0) {
                     LOG_ERR("DROP_LOWEST restore failed at %u during drain recovery", j);
-                    cb->drop_lowest_scratch[restore_free_count++] = cb->drop_lowest_scratch[j];
+                    cb->drop_lowest_restore_failed[restore_free_count++] = cb->drop_lowest_scratch[j];
                     atomic_inc(&cb->drop_count);
                     event_system_inc_dropped_count();
                 }
             }
             irq_unlock(irq_key);
             for (uint32_t k = 0U; k < restore_free_count; k++) {
-                event_free_queued_payload(&cb->drop_lowest_scratch[k]);
+                event_free_queued_payload(&cb->drop_lowest_restore_failed[k]);
             }
             return EVENT_ERR_QUEUE_FULL;
         }
@@ -405,8 +414,17 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
         LOG_ERR("Failed to allocate drop_lowest_scratch for queue");
         return EVENT_ERR_NO_MEM;
     }
+    cb->drop_lowest_restore_failed = (event_t*) k_malloc(capacity * sizeof(event_t));
+    if (cb->drop_lowest_restore_failed == NULL) {
+        k_free(cb->drop_lowest_scratch);
+        cb->drop_lowest_scratch = NULL;
+        k_mutex_unlock(&g_queue_cb_lock);
+        LOG_ERR("Failed to allocate drop_lowest_restore_failed for queue");
+        return EVENT_ERR_NO_MEM;
+    }
 #else
     cb->drop_lowest_scratch = NULL;
+    cb->drop_lowest_restore_failed = NULL;
 #endif
 
     k_msgq_init(queue, buffer, sizeof(event_t), capacity);
@@ -447,7 +465,7 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
      * 统计丢失可接受，安全优先。 */
     if (k_is_in_isr()) {
         event_queue_cb_t* cb = event_queue_cb_borrow_isr(queue);
-        event_status_t  st;
+        event_status_t    st;
 
         if (cb == NULL) {
             return EVENT_ERR_INVALID_ARG;
@@ -855,6 +873,11 @@ void event_queue_deinit(struct k_msgq* queue) {
     }
 
     /* 清理控制块状态 */
+    if (cb->drop_lowest_restore_failed != NULL) {
+        k_free(cb->drop_lowest_restore_failed);
+        cb->drop_lowest_restore_failed = NULL;
+    }
+
     cb->msgq = NULL;
     cb->capacity = 0;
     atomic_set(&cb->enqueue_count, 0);

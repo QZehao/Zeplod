@@ -326,6 +326,15 @@ static event_status_t event_publish_common(event_t* event, queue_overflow_policy
         return EVENT_ERR_INVALID_ARG;
     }
 
+    if (atomic_get(&g_event_system.running) == 0) {
+#ifndef CONFIG_EVENT_SYSTEM_LOG_MINIMAL
+        if (log_failures) {
+            LOG_WRN("Event system not running, event dropped");
+        }
+#endif
+        return EVENT_ERR_NOT_RUNNING;
+    }
+
     (void) atomic_inc(&g_publish_in_flight);
 
     if (atomic_get(&g_event_system.running) == 0) {
