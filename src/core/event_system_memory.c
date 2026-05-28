@@ -4,6 +4,9 @@
  * @author zeh (china_qzh@163.com)
  * @version 1.0
  * @date 2026-05-28
+ *
+ * @par 修改日志:
+ * 2026-05-28 1.1 zeh 收敛 event 壳初始化与 inline/slab 负载附着 helper（P4.1）
  */
 
 #include "event_system_internal.h"
@@ -43,6 +46,32 @@ static const char* event_slab_name_for_priority(event_priority_t priority) {
 }
 #endif
 
+static void event_object_init(event_t* event, event_type_t type, event_priority_t priority, uint8_t flags) {
+    event->type = type;
+    event->priority = priority;
+    event->timestamp = k_uptime_get_32();
+    event->source_id = 0;
+    event->data_len = 0;
+    event->flags = flags;
+    event->reserved = 0;
+    memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
+}
+
+static bool event_validate_data_len(size_t data_len) {
+    if (data_len > 65535) {
+        LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+        return false;
+    }
+    return true;
+}
+
+static bool event_attach_inline_payload(event_t* event, const void* data, size_t data_len) {
+    memcpy(event->data.inline_data, data, data_len);
+    event->data_len = (uint32_t) data_len;
+    event->flags |= EVENT_FLAG_DATA_INLINE;
+    return true;
+}
+
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
 static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, const void* data, size_t data_len) {
     if (event == NULL || slab == NULL || data == NULL) {
@@ -66,6 +95,55 @@ static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, cons
     event_debug_track_alloc(event->data.ptr, data_len, event->priority);
     return true;
 }
+
+/**
+ * @brief 为大负载尝试 slab（含 fallback slab）；仅 RT/ISR 路径使用，失败由调用方释放 event
+ */
+static bool event_attach_large_payload_slab_only(event_t* event, const void* data, size_t data_len,
+                                                 event_priority_t priority) {
+    struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
+
+    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
+        return true;
+    }
+    if (data_slab != NULL) {
+        event_memory_notify_slab_exhausted(priority, "event_slab_data");
+    }
+
+    data_slab = event_memory_select_data_slab_with_fallback(data_len);
+    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
+        return true;
+    }
+
+    event_memory_notify_slab_exhausted(priority, "event_slab_data");
+    LOG_WRN("All data slabs exhausted for size %zu", data_len);
+    return false;
+}
+
+/**
+ * @brief 为大负载尝试 slab（含 fallback）；调用方须已分配 event 壳
+ */
+static bool event_attach_large_payload_slab_first(event_t* event, const void* data, size_t data_len,
+                                                  event_priority_t priority) {
+    struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
+
+    if (data_slab == NULL) {
+        return false;
+    }
+
+    if (event_attach_slab_data(event, data_slab, data, data_len)) {
+        return true;
+    }
+
+    event_memory_notify_slab_exhausted(priority, "event_slab_data");
+    struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
+
+    if (fallback_slab != NULL && event_attach_slab_data(event, fallback_slab, data, data_len)) {
+        return true;
+    }
+
+    return false;
+}
 #endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
 
 event_t* event_create_rt(event_type_t type, event_priority_t priority) {
@@ -82,19 +160,11 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
         return NULL;
     }
 
-    event->flags = EVENT_FLAG_FROM_SLAB;
+    event_object_init(event, type, priority, EVENT_FLAG_FROM_SLAB);
 #else
     LOG_DBG("event_create_rt: slab not enabled, returning NULL");
     return NULL;
 #endif
-
-    event->type = type;
-    event->priority = priority;
-    event->timestamp = k_uptime_get_32();
-    event->source_id = 0;
-    event->data_len = 0;
-    event->reserved = 0;
-    memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
 
     event_debug_track_alloc(event, sizeof(event_t), priority);
 
@@ -107,8 +177,7 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return event_create_rt(type, priority);
     }
 
-    if (data_len > 65535) {
-        LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+    if (!event_validate_data_len(data_len)) {
         return NULL;
     }
 
@@ -117,29 +186,16 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
         return NULL;
     }
 
-    event->data_len = (uint32_t) data_len;
-
     if (data_len <= CONFIG_EVENT_INLINE_DATA_SIZE) {
-        memcpy(event->data.inline_data, data, data_len);
-        event->flags |= EVENT_FLAG_DATA_INLINE;
+        (void) event_attach_inline_payload(event, data, data_len);
         return event;
     }
 
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-    struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
-    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
-        return event;
-    }
-    if (data_slab != NULL) {
-        event_memory_notify_slab_exhausted(priority, "event_slab_data");
-    }
-    data_slab = event_memory_select_data_slab_with_fallback(data_len);
-    if (data_slab != NULL && event_attach_slab_data(event, data_slab, data, data_len)) {
+    if (event_attach_large_payload_slab_only(event, data, data_len, priority)) {
         return event;
     }
     event_free(event);
-    event_memory_notify_slab_exhausted(priority, "event_slab_data");
-    LOG_WRN("All data slabs exhausted for size %zu", data_len);
     return NULL;
 #else
     event_free(event);
@@ -171,14 +227,7 @@ event_t* event_create(event_type_t type, event_priority_t priority) {
         return NULL;
     }
 
-    event->type = type;
-    event->priority = priority;
-    event->timestamp = k_uptime_get_32();
-    event->source_id = 0;
-    event->data_len = 0;
-    event->flags = 0;
-    event->reserved = 0;
-    memset(event->data.inline_data, 0, CONFIG_EVENT_INLINE_DATA_SIZE);
+    event_object_init(event, type, priority, 0);
 
     event_debug_track_alloc(event, sizeof(event_t), priority);
 
@@ -191,36 +240,33 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
         return event_create(type, priority);
     }
 
-    if (data_len > 65535) {
-        LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+    if (!event_validate_data_len(data_len)) {
         return NULL;
     }
 
     if (data_len <= CONFIG_EVENT_INLINE_DATA_SIZE) {
         event_t* event = event_create(type, priority);
+
         if (event == NULL) {
             return NULL;
         }
-        event->data_len = (uint32_t) data_len;
-        memcpy(event->data.inline_data, data, data_len);
-        event->flags |= EVENT_FLAG_DATA_INLINE;
+        (void) event_attach_inline_payload(event, data, data_len);
         return event;
     }
 
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-    struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
-    if (data_slab != NULL) {
-        event_t* event = event_create(type, priority);
-        if (event != NULL) {
-            if (event_attach_slab_data(event, data_slab, data, data_len)) {
-                return event;
+    {
+        struct k_mem_slab* data_slab = event_memory_select_data_slab(data_len);
+
+        if (data_slab != NULL) {
+            event_t* event = event_create(type, priority);
+
+            if (event != NULL) {
+                if (event_attach_large_payload_slab_first(event, data, data_len, priority)) {
+                    return event;
+                }
+                event_free(event);
             }
-            event_memory_notify_slab_exhausted(priority, "event_slab_data");
-            struct k_mem_slab* fallback_slab = event_memory_select_data_slab_with_fallback(data_len);
-            if (fallback_slab != NULL && event_attach_slab_data(event, fallback_slab, data, data_len)) {
-                return event;
-            }
-            event_free(event);
         }
     }
 #endif
@@ -229,6 +275,9 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
     if (event == NULL) {
         return NULL;
     }
+
+    event_object_init(event, type, priority, EVENT_FLAG_DATA_DYNAMIC);
+
     event->data.ptr = k_malloc(data_len);
     if (event->data.ptr == NULL) {
         k_free(event);
@@ -237,13 +286,7 @@ event_t* event_create_with_data(event_type_t type, event_priority_t priority, co
 
     event_memory_inc_fallback_count();
 
-    event->type = type;
-    event->priority = priority;
-    event->timestamp = k_uptime_get_32();
-    event->source_id = 0;
     event->data_len = (uint32_t) data_len;
-    event->flags = EVENT_FLAG_DATA_DYNAMIC;
-    event->reserved = 0;
     memcpy(event->data.ptr, data, data_len);
 
     event_debug_track_alloc(event, sizeof(event_t), priority);
