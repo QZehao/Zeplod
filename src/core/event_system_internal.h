@@ -105,4 +105,6 @@ void event_system_init_rollback(void);
 void event_system_cleanup_event_types(void);
 void event_system_reset_control_block(void);
 
+bool event_system_type_is_registered(event_type_t type);
+
 #endif /* EVENT_SYSTEM_INTERNAL_H */

@@ -200,6 +200,10 @@ message(STATUS "Build Target: ${BUILD_TARGET}")
 target_sources(app PRIVATE
     src/core/event_system.c
     src/core/event_system_lifecycle.c
+    src/core/event_system_memory.c
+    src/core/event_system_pubsub.c
+    src/core/event_system_publish.c
+    src/core/event_system_stats.c
     src/core/event_system.h
     src/core/event_queue.c
     src/core/event_queue.h
