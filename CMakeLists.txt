@@ -199,6 +199,7 @@ message(STATUS "Build Target: ${BUILD_TARGET}")
 # Core Event System
 target_sources(app PRIVATE
     src/core/event_system.c
+    src/core/event_system_lifecycle.c
     src/core/event_system.h
     src/core/event_queue.c
     src/core/event_queue.h

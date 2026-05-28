@@ -20,6 +20,8 @@
 #include "event_dispatcher.h"
 #include "event_queue.h"
 #include "event_system.h"
+#include "test_event_stubs.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_event_system);
 
@@ -93,7 +95,7 @@ ZTEST(test_event_system, test_event_subscribe) {
     zassert_equal(status, EVENT_ERR_INVALID_ARG, "空回调应返回错误");
 
     /* 测试有效订阅 */
-    status = event_subscribe(20, (event_callback_t) 0x1000, NULL, &subscriber_id);
+    status = event_subscribe(20, test_event_noop_callback, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
     zassert_true(subscriber_id > 0, "订阅 ID 应大于 0");
 
@@ -236,7 +238,7 @@ ZTEST(test_event_system, test_event_notify_subscribers) {
     event_register_type(60, "notify_test");
 
     /* 订阅事件 */
-    status = event_subscribe(60, (event_callback_t) 0x1000, NULL, &subscriber_id);
+    status = event_subscribe(60, test_event_noop_callback, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
 
     /* 创建并发布事件 */
@@ -267,13 +269,13 @@ ZTEST(test_event_system, test_event_unsubscribe_all) {
     event_register_type(72, "unsubscribe_all_test3");
 
     /* 同一回调订阅多个事件类型，每次订阅会得到不同的 subscriber_id */
-    status = event_subscribe(70, (event_callback_t) 0x1000, NULL, &sub_id1);
+    status = event_subscribe(70, test_event_noop_callback, NULL, &sub_id1);
     zassert_equal(status, EVENT_OK, "订阅 70 失败");
 
-    status = event_subscribe(71, (event_callback_t) 0x1000, NULL, &sub_id2);
+    status = event_subscribe(71, test_event_noop_callback, NULL, &sub_id2);
     zassert_equal(status, EVENT_OK, "订阅 71 失败");
 
-    status = event_subscribe(72, (event_callback_t) 0x1000, NULL, &sub_id3);
+    status = event_subscribe(72, test_event_noop_callback, NULL, &sub_id3);
     zassert_equal(status, EVENT_OK, "订阅 72 失败");
 
     /* 验证每次订阅都得到不同的 subscriber_id */
@@ -307,7 +309,7 @@ ZTEST(test_event_system, test_event_unregister_type) {
     zassert_equal(status, EVENT_OK, "注册失败");
 
     /* 订阅事件 */
-    status = event_subscribe(80, (event_callback_t) 0x1000, NULL, &subscriber_id);
+    status = event_subscribe(80, test_event_noop_callback, NULL, &subscriber_id);
     zassert_equal(status, EVENT_OK, "订阅失败");
 
     /* 尝试注销有订阅者的类型（应失败）*/
@@ -346,7 +348,7 @@ ZTEST(test_event_system, test_event_system_shutdown) {
 
     event_system_init();
     event_register_type(90, "shutdown_test");
-    event_subscribe(90, (event_callback_t) 0x1000, NULL, &subscriber_id);
+    event_subscribe(90, test_event_noop_callback, NULL, &subscriber_id);
     event_system_start();
 
     /* 关闭系统 */
@@ -397,12 +399,12 @@ ZTEST(test_event_system, test_event_subscribe_max_subscribers) {
 
     /* 订阅直到达到上限 */
     for (int i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
-        status = event_subscribe(110, (event_callback_t) (0x1000 + i), NULL, &subscriber_ids[i]);
+        status = event_subscribe(110, test_event_noop_callback, NULL, &subscriber_ids[i]);
         zassert_equal(status, EVENT_OK, "订阅 %d 失败", i);
     }
 
     /* 超过上限应失败 */
-    status = event_subscribe(110, (event_callback_t) 0x2000, NULL, &subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS]);
+    status = event_subscribe(110, test_event_noop_callback, NULL, &subscriber_ids[CONFIG_EVENT_MAX_SUBSCRIBERS]);
     zassert_equal(status, EVENT_ERR_QUEUE_FULL, "超过订阅上限应返回 QUEUE_FULL");
 
     /* 清理 */
@@ -589,7 +591,7 @@ ZTEST(test_event_system, test_event_subscribe_unregistered_type) {
     event_system_init();
     /* 不注册类型 160 */
 
-    status = event_subscribe(160, (event_callback_t) 0x1000, NULL, &subscriber_id);
+    status = event_subscribe(160, test_event_noop_callback, NULL, &subscriber_id);
     zassert_equal(status, EVENT_ERR_NOT_FOUND, "订阅未注册类型应返回 NOT_FOUND");
 }
 
@@ -677,9 +679,7 @@ ZTEST(test_event_system, test_event_system_stop_rejected_from_callback) {
     zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
 
     zassert_equal(event_publish_copy(STOP_FROM_CALLBACK_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0), EVENT_OK, NULL);
-    k_msleep(100);
-
-    zassert_equal(atomic_get(&g_stop_from_callback_seen), 1, "回调应已执行");
+    zassert_true(ztest_wait_atomic_nonzero(&g_stop_from_callback_seen, 2000U), "回调应已执行");
     zassert_equal(g_stop_from_callback_status, EVENT_ERR_INVALID_ARG, "回调内 stop 应被拒绝");
     zassert_true(event_system_is_running(), "被拒绝后事件系统仍应运行");
 

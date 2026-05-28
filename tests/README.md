@@ -111,6 +111,12 @@ west build -t run --build-dir build_tests
 
 部分用例依赖全局事件/分发器状态。`test_event_dispatcher.c` 等在 `after_each` 中调用 `event_system_shutdown()` 以清空类型表与分发线程；新增套件时请遵循相同模式，避免跨套件污染。
 
+## 生命周期与异步测试约定
+
+- **边界契约表**：见 [LIFECYCLE_CONTRACTS.md](LIFECYCLE_CONTRACTS.md)（cancel、timeout、重复 stop 等返回值）。
+- **异步等待**：优先使用 [ztest_sync.h](ztest_sync.h)（`ztest_wait_atomic_*`）或 `k_sem` / `k_event`；避免仅用裸 `k_msleep()` 判断异步完成。
+- **订阅回调**：使用 [test_event_stubs.h](test_event_stubs.h) 中的 `test_event_noop_callback`，勿使用 `0x1000` 等不可调用地址。
+
 ## 编写新测试
 
 ### 测试模板

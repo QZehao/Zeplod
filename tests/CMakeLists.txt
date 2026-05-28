@@ -32,6 +32,7 @@ set(APP_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 # =============================================================================
 target_sources(app PRIVATE
 	${APP_SRC_DIR}/core/event_system.c
+	${APP_SRC_DIR}/core/event_system_lifecycle.c
 	${APP_SRC_DIR}/core/event_queue.c
 	${APP_SRC_DIR}/core/event_dispatcher.c
 	${APP_SRC_DIR}/core/event_memory.c

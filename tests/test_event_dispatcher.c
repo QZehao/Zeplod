@@ -60,6 +60,24 @@ ZTEST(event_dispatcher, test_init_start_stop) {
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 
+/**
+ * @brief 多轮 init/start/stop/deinit 循环（重构护栏）
+ */
+ZTEST(event_dispatcher, test_lifecycle_start_stop_cycle) {
+    for (int cycle = 0; cycle < 3; cycle++) {
+        zassert_equal(event_system_init(), EVENT_OK, "cycle %d init", cycle);
+        zassert_equal(event_system_start(), EVENT_OK, "cycle %d sys start", cycle);
+        zassert_equal(event_dispatcher_init(NULL), EVENT_OK, "cycle %d disp init", cycle);
+        zassert_equal(event_dispatcher_start(), EVENT_OK, "cycle %d disp start", cycle);
+        zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
+        zassert_equal(event_dispatcher_stop(), EVENT_OK, "cycle %d disp stop", cycle);
+        zassert_equal(event_dispatcher_get_state(), DISPATCHER_STOPPED, NULL);
+        zassert_equal(event_system_stop(), EVENT_OK, "cycle %d sys stop", cycle);
+        zassert_equal(event_dispatcher_deinit(), EVENT_OK, "cycle %d disp deinit", cycle);
+        zassert_equal(event_system_shutdown(), EVENT_OK, "cycle %d shutdown", cycle);
+    }
+}
+
 ZTEST(event_dispatcher, test_stats_reset) {
     dispatcher_stats_t stats;
 

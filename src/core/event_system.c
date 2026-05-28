@@ -21,6 +21,7 @@
  *
  */
 #include "event_system.h"
+#include "event_system_internal.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -35,54 +36,8 @@
 LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 
 /* =============================================================================
- * 内部定义
+ * 发布策略（生命周期见 event_system_lifecycle.c）
  * ============================================================================= */
-
-/** 最大支持的事件类型数量（从 Kconfig 获取） */
-#define MAX_EVENT_TYPES         CONFIG_EVENT_MAX_TYPES
-#define MAX_EVENT_TYPE_ID       (MAX_EVENT_TYPES - 1U)
-
-/** 魔术字，用于验证控制块有效性 ("EVNT") */
-#define EVENT_SYSTEM_MAGIC      0x45564E54
-
-/** 未初始化或已完成 shutdown（与 BSS 初值一致），非损坏状态 */
-#define EVENT_SYSTEM_MAGIC_IDLE 0U
-
-/** SIL-2: 验证事件系统魔术字（返回 event_status_t 版本） */
-#define EVENT_SYSTEM_VALIDATE()                                                                                        \
-    do {                                                                                                               \
-        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {                                                         \
-            return EVENT_ERR_INVALID_ARG;                                                                              \
-        }                                                                                                              \
-        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {                                                              \
-            LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);                           \
-            return EVENT_ERR_INVALID_ARG;                                                                              \
-        }                                                                                                              \
-    } while (0)
-
-/** SIL-2: 验证事件系统魔术字（返回 void 版本） */
-#define EVENT_SYSTEM_VALIDATE_VOID()                                                                                   \
-    do {                                                                                                               \
-        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {                                                         \
-            return;                                                                                                    \
-        }                                                                                                              \
-        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {                                                              \
-            LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);                           \
-            return;                                                                                                    \
-        }                                                                                                              \
-    } while (0)
-
-/** 分配类 API：空闲态静默失败，非法 magic 记录损坏 */
-#define EVENT_SYSTEM_CHECK_MAGIC_ALLOC()                                                                               \
-    do {                                                                                                               \
-        if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {                                                         \
-            return NULL;                                                                                               \
-        }                                                                                                              \
-        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {                                                              \
-            LOG_ERR("Event system magic corruption detected");                                                         \
-            return NULL;                                                                                               \
-        }                                                                                                              \
-    } while (0)
 
 /** 释放类 API：空闲态静默返回 */
 #define EVENT_SYSTEM_CHECK_MAGIC_FREE_VOID()                                                                           \
@@ -95,12 +50,6 @@ LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
             return;                                                                                                    \
         }                                                                                                              \
     } while (0)
-
-/** 初始化保护标志 */
-static atomic_t g_init_lock = ATOMIC_INIT(0);
-
-/** stop 期间停止了分发器；start 时需重新 event_dispatcher_start()（原子位，避免 start/stop 并发撕裂） */
-static atomic_t g_restart_dispatcher_on_start;
 
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_DROP_LOWEST)
 #define EVENT_PUBLISH_QUEUE_OVERFLOW_POLICY QUEUE_OVERFLOW_DROP_LOWEST
@@ -121,113 +70,62 @@ static atomic_t g_restart_dispatcher_on_start;
 #endif
 
 /* =============================================================================
- * 内部数据结构
+ * 全局变量（生命周期见 event_system_lifecycle.c）
  * ============================================================================= */
 
-/**
- * @brief 事件系统控制块
- *
- * 包含事件系统的全局状态和数据结构。
- */
-typedef struct {
-    uint32_t             magic;                        /**< 魔术字，用于验证有效性 */
-    bool                 initialized;                  /**< 系统是否已初始化 */
-    atomic_t             running;                      /**< 非 0：允许投递（线程与 ISR 可读） */
-    zepl_state_machine_t lifecycle;                    /**< init/start/stop/shutdown 生命周期状态机 */
-    struct k_msgq*       event_queue;                  /**< 事件队列指针 */
-    event_type_entry_t   event_types[MAX_EVENT_TYPES]; /**< 事件类型表 */
-    uint32_t             total_events;                 /**< 已处理的事件总数 */
-    struct k_mutex       stats_lock;                   /**< 保护统计信息的互斥锁 */
-    atomic_t             next_subscriber_id;           /**< 下一个可用的订阅者 ID (原子操作保护) */
-} event_system_cb_t;
+event_system_cb_t g_event_system;
 
-/* =============================================================================
- * 静态变量
- * ============================================================================= */
+struct k_msgq g_event_msgq;
 
-/** 全局事件系统控制块实例 */
-static event_system_cb_t g_event_system;
-
-/** 全局事件消息队列 */
-static struct k_msgq g_event_msgq;
-
-/** 事件消息队列缓冲区 */
-static char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)] __aligned(__alignof__(event_t));
+char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)] __aligned(__alignof__(event_t));
 
 /**
  * ISR 安全的丢弃计数器
  * 使用 Zephyr atomic_t 避免在 event_publish_from_isr 中使用互斥锁
  */
-static atomic_t g_event_dropped_count;
+atomic_t g_event_dropped_count;
 
 /**
  * 正在执行 event_publish / event_publish_from_isr 入队路径的调用数（ISR 安全）。
  * stop/shutdown 在 purge/deinit 前等待其归零，避免 running 检查后仍向队列投递。
  */
-static atomic_t g_publish_in_flight;
-/** stop/shutdown 等待 in-flight publish 归零的最大等待时间（毫秒） */
-#define EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS 5000U
+atomic_t g_publish_in_flight;
+
+atomic_t g_event_system_init_lock = ATOMIC_INIT(0);
+
+atomic_t g_restart_dispatcher_on_start;
 
 /** 串行化订阅者 ID 分配与全局唯一性检查，消除 subscriber_id_in_use 的 TOCTOU */
 static K_MUTEX_DEFINE(g_subscriber_id_lock);
 
-static void event_system_lifecycle_lock_wait(void) {
-    while (atomic_test_and_set_bit(&g_init_lock, 0)) {
-        k_yield();
-    }
-}
-
-static bool event_system_lifecycle_try_lock(void) {
-    return !atomic_test_and_set_bit(&g_init_lock, 0);
-}
-
-static void event_system_lifecycle_unlock(void) {
-    atomic_clear_bit(&g_init_lock, 0);
-}
-
-static zepl_state_t event_system_lifecycle_state(void) {
-    return zepl_state_machine_get(&g_event_system.lifecycle);
-}
-
-static void event_system_stats_lock(void) {
+void event_system_stats_lock(void) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_GLOBAL, (uintptr_t) &g_event_system.stats_lock);
     k_mutex_lock(&g_event_system.stats_lock, K_FOREVER);
 }
 
-static void event_system_stats_unlock(void) {
+void event_system_stats_unlock(void) {
     k_mutex_unlock(&g_event_system.stats_lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_GLOBAL, (uintptr_t) &g_event_system.stats_lock);
 }
 
-static void event_system_subscriber_id_lock(void) {
+void event_system_subscriber_id_lock(void) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &g_subscriber_id_lock);
     k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
 }
 
-static void event_system_subscriber_id_unlock(void) {
+void event_system_subscriber_id_unlock(void) {
     k_mutex_unlock(&g_subscriber_id_lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &g_subscriber_id_lock);
 }
 
-static void event_system_entry_lock(event_type_entry_t* entry) {
+void event_system_entry_lock(event_type_entry_t* entry) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &entry->lock);
     k_mutex_lock(&entry->lock, K_FOREVER);
 }
 
-static void event_system_entry_unlock(event_type_entry_t* entry) {
+void event_system_entry_unlock(event_type_entry_t* entry) {
     k_mutex_unlock(&entry->lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_ENTRY, (uintptr_t) &entry->lock);
-}
-
-static void event_publish_in_flight_wait_zero(void) {
-    int64_t deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
-    while (atomic_get(&g_publish_in_flight) != 0) {
-        if (k_uptime_get() >= deadline) {
-            LOG_ERR("Timeout waiting publish in-flight to drain: %d", (int) atomic_get(&g_publish_in_flight));
-            break;
-        }
-        k_sleep(K_MSEC(1));
-    }
 }
 
 /**
@@ -434,42 +332,6 @@ static bool event_attach_slab_data(event_t* event, struct k_mem_slab* slab, cons
 #endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
 
 /**
- * @brief 清理所有事件类型条目
- *
- * 释放所有事件类型的订阅者和相关资源。
- */
-static void event_system_cleanup_event_types(void) {
-    /* SIL-2: 无条件清理所有事件类型条目（不以 name!=NULL 为条件），
-     * 避免 name 异常为 NULL 时订阅者数组不被清理 */
-    for (int type = 0; type < MAX_EVENT_TYPES; type++) {
-        event_type_entry_t* entry = &g_event_system.event_types[type];
-        event_system_entry_lock(entry);
-        atomic_set(&entry->registered, 0);
-        entry->name = NULL;
-        entry->name_storage[0] = '\0';
-        entry->subscriber_count = 0;
-        memset(entry->subscribers, 0, sizeof(entry->subscribers));
-        event_system_entry_unlock(entry);
-    }
-}
-
-/**
- * @brief 重置事件系统控制块
- *
- * 将控制块重置为初始状态。
- */
-static void event_system_reset_control_block(void) {
-    /* SIL-2: 重置控制块 */
-    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_UNINIT);
-    g_event_system.initialized = false;
-    g_event_system.total_events = 0;
-    atomic_set(&g_event_system.next_subscriber_id, 1);
-    g_event_system.event_queue = NULL;
-    /* 与未初始化态一致，避免将 shutdown 误判为 magic 损坏 */
-    g_event_system.magic = EVENT_SYSTEM_MAGIC_IDLE;
-}
-
-/**
  * @brief 检查订阅者 ID 是否已被使用
  *
  * @note 调用方必须已持有 g_subscriber_id_lock（串行化所有 subscribe/unsubscribe）。
@@ -490,350 +352,6 @@ static bool subscriber_id_in_use(uint32_t id) {
         event_system_entry_unlock(entry);
     }
     return false;
-}
-
-/* =============================================================================
- * 核心实现 (Core Implementation)
- * ============================================================================= */
-
-/**
- * @brief 回滚未完成的 event_system_init（内部）
- *
- * 在设置 magic / initialized 之前失败时调用，保证重试可安全 memset + k_mutex_init。
- */
-static void event_system_init_rollback(void) {
-    event_queue_deinit(&g_event_msgq);
-    memset(&g_event_system, 0, sizeof(g_event_system));
-    atomic_set(&g_publish_in_flight, 0);
-    atomic_clear(&g_restart_dispatcher_on_start);
-}
-
-/**
- * @brief 初始化事件系统
- *
- * 初始化步骤：
- * 1. 检查是否已初始化（幂等性）
- * 2. 清零控制块（magic 在全部步骤成功后再设置）
- * 3. 初始化统计信息互斥锁
- * 4. 初始化所有事件类型条目的互斥锁
- * 5. 初始化消息队列
- * 6. 设置魔术字与 initial 状态
- *
- * @return EVENT_OK 成功
- */
-event_status_t event_system_init(void) {
-    LOG_DBG("Initializing event system...");
-
-    /* SIL-2: 使用原子标志保护初始化，防止多线程竞争 */
-    if (event_dispatcher_is_current_thread()) {
-        if (!event_system_lifecycle_try_lock()) {
-            LOG_ERR("Cannot init event system from dispatcher thread during lifecycle transition");
-            return EVENT_ERR_INVALID_ARG;
-        }
-    } else {
-        event_system_lifecycle_lock_wait();
-    }
-
-    if (g_event_system.initialized) {
-        if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-            LOG_ERR("Event system initialized flag set but magic is invalid: 0x%08x", g_event_system.magic);
-            event_system_lifecycle_unlock();
-            return EVENT_ERR_INVALID_ARG;
-        }
-        event_system_lifecycle_unlock();
-        LOG_WRN("Event system already initialized");
-        return EVENT_OK;
-    }
-
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC_IDLE) {
-        LOG_ERR("Event system magic corruption detected before init: 0x%08x", g_event_system.magic);
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    /* 初始化控制块（成功前不设置 magic，失败后可完整重试） */
-    memset(&g_event_system, 0, sizeof(g_event_system));
-    atomic_set(&g_publish_in_flight, 0);
-    zepl_state_machine_init(&g_event_system.lifecycle, ZEP_STATE_UNINIT);
-
-    /* 初始化互斥锁 */
-    k_mutex_init(&g_event_system.stats_lock);
-
-    /* 初始化事件类型条目 */
-    for (int i = 0; i < MAX_EVENT_TYPES; i++) {
-        g_event_system.event_types[i].type = i;
-        k_mutex_init(&g_event_system.event_types[i].lock);
-    }
-
-    g_event_system.event_queue = &g_event_msgq;
-    atomic_clear(&g_restart_dispatcher_on_start);
-
-    /* 注册队列到 event_queue 管理层（内部 k_msgq_init + 溢出策略统计） */
-    event_status_t qret = event_queue_init(&g_event_msgq, g_event_msgq_buffer, CONFIG_EVENT_QUEUE_SIZE);
-    if (qret != EVENT_OK) {
-        event_system_init_rollback();
-        event_system_lifecycle_unlock();
-        LOG_ERR("event_queue_init failed: %d", qret);
-        return qret;
-    }
-
-    g_event_system.magic = EVENT_SYSTEM_MAGIC;
-    atomic_set(&g_event_system.next_subscriber_id, 1);
-    atomic_set(&g_event_system.running, 0);
-    g_event_system.initialized = true;
-    if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_INITED) != 0) {
-        event_system_init_rollback();
-        event_system_lifecycle_unlock();
-        LOG_ERR("Failed to transition event system to INITED");
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    event_system_lifecycle_unlock();
-    LOG_DBG("Event system initialized successfully");
-    return EVENT_OK;
-}
-
-/**
- * @brief 启动事件系统
- *
- * 标记为运行状态；事件消费由 event_dispatcher 线程完成。
- *
- * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 未初始化
- */
-event_status_t event_system_start(void) {
-    if (!event_system_lifecycle_try_lock()) {
-        LOG_WRN("Event system lifecycle transition in progress; start rejected");
-        return EVENT_ERR_TIMEOUT;
-    }
-
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-    if (!g_event_system.initialized) {
-        LOG_ERR("Event system not initialized");
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    {
-        const zepl_state_t lc_state = event_system_lifecycle_state();
-
-        if (lc_state == ZEP_STATE_RUNNING && atomic_get(&g_event_system.running) != 0) {
-            LOG_WRN("Event system already running");
-            event_system_lifecycle_unlock();
-            return EVENT_OK;
-        }
-
-        if (lc_state != ZEP_STATE_INITED && lc_state != ZEP_STATE_STOPPED) {
-            LOG_ERR("Event system not in a startable state: %s", zepl_state_name(lc_state));
-            event_system_lifecycle_unlock();
-            return EVENT_ERR_INVALID_ARG;
-        }
-
-        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STARTING) != 0) {
-            LOG_ERR("Failed to transition event system to STARTING from %s", zepl_state_name(lc_state));
-            event_system_lifecycle_unlock();
-            return EVENT_ERR_INVALID_ARG;
-        }
-
-        if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_RUNNING) != 0) {
-            /* STARTING cannot transition directly to INITED/STOPPED; use the valid stop path. */
-            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING);
-            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
-            LOG_ERR("Failed to transition event system to RUNNING from STARTING; rolled back to STOPPED");
-            event_system_lifecycle_unlock();
-            return EVENT_ERR_INVALID_ARG;
-        }
-    }
-
-    if (atomic_cas(&g_restart_dispatcher_on_start, 1, 0)) {
-        if (event_dispatcher_is_initialized()) {
-            event_status_t dret = event_dispatcher_start();
-            if (dret != EVENT_OK) {
-                LOG_ERR("event_dispatcher_start during event_system_start failed: %d", dret);
-                atomic_set(&g_restart_dispatcher_on_start, 1);
-                (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING);
-                (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
-                event_system_lifecycle_unlock();
-                return dret;
-            }
-        }
-    }
-
-    atomic_set(&g_event_system.running, 1);
-    event_system_lifecycle_unlock();
-    LOG_DBG("Event system started");
-    return EVENT_OK;
-}
-
-/**
- * @brief 停止事件系统
- *
- * @return EVENT_OK 成功，其他错误码见 event_status_t
- */
-event_status_t event_system_stop(void) {
-    if (event_dispatcher_is_current_thread()) {
-        LOG_ERR("Cannot stop event system from dispatcher thread");
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    event_system_lifecycle_lock_wait();
-
-    /* 与 shutdown 一致：空闲态下幂等返回 OK，避免 VALIDATE 将 IDLE 误判为非法 */
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
-        event_system_lifecycle_unlock();
-        return EVENT_OK;
-    }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    if (atomic_get(&g_event_system.running) == 0) {
-        /* If a previous stop failed after clearing running, this remains idempotent.
-         * API docs call out that
-         * dispatcher termination is not guaranteed in that fault state.
-         */
-        event_system_lifecycle_unlock();
-        return EVENT_OK;
-    }
-
-    {
-        const zepl_state_t lc_state = event_system_lifecycle_state();
-
-        if (lc_state == ZEP_STATE_RUNNING &&
-            zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING) != 0) {
-            LOG_ERR("Failed to transition event system to STOPPING");
-            event_system_lifecycle_unlock();
-            return EVENT_ERR_INVALID_ARG;
-        }
-    }
-
-    atomic_set(&g_event_system.running, 0);
-
-    /* 等待进行中的 publish 完成后再停分发器 / purge，避免 stop 返回后仍有事件入队 */
-    event_publish_in_flight_wait_zero();
-
-    {
-        if (event_dispatcher_is_initialized()) {
-            dispatcher_state_t disp_st = event_dispatcher_get_state();
-            if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
-                atomic_set(&g_restart_dispatcher_on_start, 1);
-                event_status_t dret = event_dispatcher_stop();
-                if (dret != EVENT_OK) {
-                    LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
-                    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
-                    event_system_lifecycle_unlock();
-                    return dret;
-                }
-            }
-        }
-    }
-
-    event_queue_purge(g_event_system.event_queue);
-
-    (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
-
-    event_system_lifecycle_unlock();
-    LOG_DBG("Event system stopped");
-    return EVENT_OK;
-}
-
-/**
- * @brief 关闭事件系统
- *
- * 完全关闭事件系统，清理所有资源，重置所有状态。
- *
- * @return EVENT_OK 成功
- *
- * @note MED-7: 不要在持有任何 subscriber callback 可能也需要获取的锁时调用此函数，
- *       否则可能因分发器线程正在执行该 callback 而产生死锁。
- */
-event_status_t event_system_shutdown(void) {
-    /* HIGH-NEW-2: 禁止从分发器线程内部调用 shutdown。
-     * 该检查必须在生命周期锁之前执行：若外部线程已在 shutdown 并等待 join，
-     * 分发器回调再阻塞等同一把锁会造成 join 超时。 */
-    if (event_dispatcher_is_current_thread()) {
-        LOG_ERR("Cannot shutdown event system from dispatcher thread");
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    LOG_DBG("Shutting down event system...");
-
-    /* SIL-2: 使用 g_init_lock 防止与 init/shutdown 并发执行（NEW-1）。
-     * 与 event_system_init 共用同一原子标志，串行化整个生命周期变更。
-     * 必须先拿锁再判断 initialized/magic，否则 shutdown 可能在 init 半途早退。 */
-    event_system_lifecycle_lock_wait();
-
-    /* 幂等：已完成 shutdown 后 magic 为 IDLE，勿再走 VALIDATE（否则会误报 INVALID_ARG） */
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE || !g_event_system.initialized) {
-        event_system_lifecycle_unlock();
-        return EVENT_OK;
-    }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);
-        event_system_lifecycle_unlock();
-        return EVENT_ERR_INVALID_ARG;
-    }
-
-    if (!g_event_system.initialized) {
-        event_system_lifecycle_unlock();
-        return EVENT_OK;
-    }
-
-    /* SIL-2: 先停止运行状态，防止新事件入队 */
-    atomic_set(&g_event_system.running, 0);
-
-    /* 等待进行中的 publish 完成后再停 dispatcher / deinit 队列 */
-    event_publish_in_flight_wait_zero();
-
-    /* SIL-2: 主动停止 dispatcher 而非仅做防御性检查（HIGH-1）。
-     * event_dispatcher_stop 内部 join 线程，返回后线程已退出，
-     * 之后释放队列资源不会与悬挂线程产生竞态。 */
-    if (event_dispatcher_is_initialized()) {
-        event_status_t dret = event_dispatcher_deinit();
-        if (dret != EVENT_OK) {
-            LOG_ERR("Failed to deinit dispatcher during shutdown: %d", dret);
-            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
-            /* running 保持为 0，禁止继续入队；不释放资源，便于上层重试 shutdown。
-             *
-             * EVENT_ERR_TIMEOUT：dispatcher join 超时，线程可能仍存活；宜记录故障并系统复位，
- *
-             * 不宜在无人工介入下反复 shutdown。 */
-            event_system_lifecycle_unlock();
-            return dret;
-        }
-    }
-
-    /* SIL-2: 反初始化事件队列，释放动态负载和 DROP_LOWEST scratch 缓冲区 */
-    event_queue_deinit(g_event_system.event_queue);
-
-    /* 清理所有事件类型条目 */
-    event_system_cleanup_event_types();
-
-    /* 重置控制块（event_queue_deinit 已 purge 队列，无需再次 k_msgq_purge） */
-    event_system_reset_control_block();
-    atomic_clear(&g_restart_dispatcher_on_start);
-
-    event_system_lifecycle_unlock();
-    LOG_DBG("Event system shutdown complete");
-    return EVENT_OK;
-}
-
-/**
- * @brief 检查事件系统是否正在运行
- *
- * @return true 正在运行，false 已停止
- */
-bool event_system_is_running(void) {
-    return atomic_get(&g_event_system.running) != 0;
 }
 
 /* =============================================================================
