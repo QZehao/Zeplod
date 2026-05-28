@@ -369,8 +369,7 @@ ZTEST(module_manager, test_set_callback) {
     uint32_t id = 0U;
     zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, NULL);
 
-    k_msleep(20);
-    zassert_true(callback_count > 0, "回调应被调用");
+    zassert_true(callback_count > 0, "注册时回调应同步触发");
 
     zassert_equal(module_manager_unregister(id), 0, NULL);
 }

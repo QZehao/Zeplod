@@ -105,6 +105,22 @@ west build -b native_sim tests/ --build-dir build_tests \
 west build -t run --build-dir build_tests
 ```
 
+### 配置矩阵（叠加 `prj.conf`）
+
+| 叠加文件 | 用途 |
+| --- | --- |
+| `prj_native_sim.conf` | 单机全量：IPC、Data Bus、示例模块、较大堆 |
+| `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop` |
+| `prj_test_watchdog.conf` | 看门狗相关套件 |
+
+示例（BLOCK 溢出策略）：
+
+```bash
+west build -b native_sim tests/ --build-dir build_tests \
+  -- -DCONF_FILE="prj.conf;prj_block_overflow.conf"
+west build -t run --build-dir build_tests
+```
+
 在 Linux/macOS 上也可直接执行 `build_tests/zephyr/zephyr`。
 
 ### 套件间隔离

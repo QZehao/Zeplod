@@ -16,9 +16,16 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
+
+#include "ztest_sync.h"
 #include "sys_watchdog.h"
 
 LOG_MODULE_REGISTER(test_sys_watchdog);
+
+static bool wdt_at_least_50ms_since_feed(void* ctx) {
+    ARG_UNUSED(ctx);
+    return sys_wdt_get_time_since_feed() >= 50U;
+}
 
 ZTEST(sys_watchdog, test_init_start_feed_stop) {
     zassert_equal(sys_wdt_init(NULL), 0, "init 失败");
@@ -110,8 +117,7 @@ ZTEST(sys_watchdog, test_get_time_since_feed) {
     time_since_feed = sys_wdt_get_time_since_feed();
     zassert_true(time_since_feed < 100, "应在喂狗后短时间内");
 
-    /* 等待一会儿 */
-    k_msleep(50);
+    zassert_true(ztest_wait_until(wdt_at_least_50ms_since_feed, NULL, 500U), "应至少过了 50ms");
     time_since_feed = sys_wdt_get_time_since_feed();
     zassert_true(time_since_feed >= 50, "应至少过了 50ms");
 

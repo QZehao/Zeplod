@@ -202,20 +202,8 @@ add_subdirectory(src/core)
 # System Services
 add_subdirectory(src/services)
 
-# Application Layer - Base
-target_sources(app PRIVATE
-    src/app/app_main.c
-    src/app/app_main.h
-    src/app/app_config.h
-    src/app/app_kv.c
-    src/app/app_kv.h
-    src/app/app_version.c
-    src/app/app_version.h
-)
-
-if(CONFIG_SHELL)
-    target_sources(app PRIVATE src/app/app_shell.c)
-endif()
+# Application Layer
+add_subdirectory(src/app)
 
 # Business Modules (Example - Extendable)
 add_subdirectory(src/modules)

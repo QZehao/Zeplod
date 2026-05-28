@@ -9,6 +9,7 @@
  *
  *    Date         Version        Author          Description
  * 2026-04-10       1.0            agent          为 example_module_a 编写完整测试用例
+ * 2026-05-28       1.1            zeh            异步等待改用 ztest_sync（P0）
  *
  */
 
@@ -20,6 +21,7 @@
 #include "event_system.h"
 #include "example_module_a.h"
 #include "module_manager.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_example_module_a);
 
@@ -63,6 +65,27 @@ static void test_suite_teardown(void* fixture) {
 /* =============================================================================
  * 辅助函数
  * ============================================================================= */
+
+typedef struct {
+    sensor_sample_t* samples;
+    size_t           samples_bytes;
+    int              bytes_read;
+} module_a_get_data_ctx_t;
+
+static bool module_a_has_sample_data(void* ctx) {
+    module_a_get_data_ctx_t* probe = ctx;
+
+    probe->bytes_read = example_module_a_get_data(probe->samples, probe->samples_bytes);
+    return probe->bytes_read > 0;
+}
+
+static bool module_a_sample_rate_is_500(void* ctx) {
+    ARG_UNUSED(ctx);
+    uint32_t rate = 0;
+
+    example_module_a_control(CMD_GET_RATE, &rate);
+    return rate == 500U;
+}
 
 /* 简单的存根模块，用于测试模块管理器（使用唯一前缀避免符号冲突）*/
 static int stub_a_init(void* config) {
@@ -361,15 +384,15 @@ ZTEST(example_module_a, test_get_data_normal) {
     example_module_a_init(&config);
     example_module_a_start();
 
-    /* 等待一些数据被采集 */
-    k_msleep(50);
+    sensor_sample_t         samples[10];
+    module_a_get_data_ctx_t probe = {
+        .samples = samples,
+        .samples_bytes = sizeof(samples),
+        .bytes_read = 0,
+    };
 
-    /* 尝试读取数据 */
-    sensor_sample_t samples[10];
-    int             ret = example_module_a_get_data(samples, sizeof(samples));
-
-    /* 至少应该有一些数据 */
-    zassert_true(ret >= 0, "获取数据应返回 >= 0");
+    zassert_true(ztest_wait_until(module_a_has_sample_data, &probe, 2000U), "应采集到至少一条样本");
+    zassert_true(probe.bytes_read > 0, "获取数据应返回正字节数");
 
     example_module_a_stop();
     example_module_a_shutdown();
@@ -407,10 +430,8 @@ ZTEST(example_module_a, test_event_sensor_config) {
     uint32_t new_rate = 500;
     event_publish_copy(EVENT_TYPE_SENSOR_CONFIG, EVENT_PRIORITY_NORMAL, &new_rate, sizeof(new_rate));
 
-    /* 等待事件处理 */
-    k_msleep(20);
+    zassert_true(ztest_wait_until(module_a_sample_rate_is_500, NULL, 2000U), "事件处理后采样率应更新为 500");
 
-    /* 验证配置已更新 */
     uint32_t rate = 0;
     example_module_a_control(CMD_GET_RATE, &rate);
     zassert_equal(rate, 500, "采样率应已更新为 500");
