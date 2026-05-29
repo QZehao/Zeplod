@@ -161,36 +161,23 @@ PROJECT EXEC FAILED
 | `CONFIG_* not defined` | Kconfig option not enabled | Check if `tests/prj.conf` includes required configuration |
 | `Device not found` | Device tree doesn't configure that peripheral | Add board overlay or modify `tests/prj.conf` |
 | `Stack overflow` | Thread stack size insufficient | Increase `CONFIG_MAIN_STACK_SIZE` |
-| `Memory allocation failed` | Heap memory insufficient | Increase `CONFIG_HEAP_MEM_POOL_SIZE` |
+| `Memory allocation failed` | Heap memory insufficient | Increase `CONFIG_HEAP_MEM_POOL_SIZE`; confirm 640KB overlay (§6.4) |
+| `region RAM overflowed` | 192KB RAM or concurrency stress stacks | Use `tests/boards/nucleo_l4r5zi.overlay`; hardware: `prj.conf` only |
 | Hardware-related test failures | Peripheral not connected or misconfigured | Check hardware connections, confirm device tree configuration |
 
 ---
 
 ## 6. Hardware-Specific Test Configuration
 
-### 6.1 Modifying tests/prj.conf
+### 6.1 `tests/prj.conf` and overlays
 
-`tests/prj.conf` is the default test configuration. For hardware testing, you may need adjustments:
+| Overlay | Purpose |
+| --- | --- |
+| **`prj.conf` only** | **Hardware default** (slim; no concurrency stress) |
+| `prj.conf;prj_concurrency_stress.conf` | Enable `CONFIG_ZTEST_CONCURRENCY_STRESS` |
+| `prj.conf;prj_test_extensions.conf` | Full P0/P1 extensions (**native_sim CI**; not for hardware) |
 
-```kconfig
-# Increase memory pool (hardware usually has more RAM)
-CONFIG_HEAP_MEM_POOL_SIZE=32768
-
-# Increase main thread stack
-CONFIG_MAIN_STACK_SIZE=8192
-
-# Enable hardware watchdog (if target board supports)
-CONFIG_WATCHDOG=y
-
-# Enable hardware timer
-CONFIG_COUNTER=y
-
-# Enable specific peripheral drivers (based on test requirements)
-CONFIG_GPIO=y
-CONFIG_UART=y
-CONFIG_I2C=y
-CONFIG_SPI=y
-```
+Do not use `prj_test_extensions.conf` on boards with only 192KB `zephyr,sram` (link will fail).
 
 ### 6.2 Creating Board-Specific Configuration
 
@@ -212,7 +199,15 @@ west build -b nucleo_f429zi tests/ \
   -DCONF_FILE="tests/prj.conf;tests/prj_nucleo_f429zi.conf"
 ```
 
-### 6.3 Device Tree Overlay
+### 6.3 Device tree (main app `west build .`)
+
+Root **`boards/nucleo_l4r5zi.overlay`** applies when building the main application from the repo root.
+
+### 6.4 Unit tests `tests/` and 640KB SRAM (`nucleo_l4r5zi`)
+
+For `west build … tests/`, the application root is **`tests/`** — root `boards/nucleo_l4r5zi.overlay` is **not** auto-merged. Use **`tests/boards/nucleo_l4r5zi.overlay`** (also appended in `tests/CMakeLists.txt` for `nucleo_l4r5zi`). After `west build -p always`, verify **RAM Region Size = 640 KB**.
+
+### 6.5 Device Tree Overlay (other boards)
 
 If you need to modify device tree configuration, create board-level overlay:
 

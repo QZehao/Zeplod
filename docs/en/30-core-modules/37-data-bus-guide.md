@@ -233,9 +233,13 @@ ref_count = 0 ──► Free data buffer + block struct
 | `CONFIG_DATA_BUS_SLAB_256_COUNT` | 8 | 256B slab block count |
 | `CONFIG_DATA_BUS_SLAB_1K_COUNT` | 4 | 1KB slab block count |
 | `CONFIG_DATA_BUS_SLAB_4K_COUNT` | 2 | 4KB slab block count |
-| `CONFIG_DATA_BUS_EVENT_BRIDGE` | y | Bridge to event system |
+| `CONFIG_DATA_BUS_EVENT_BRIDGE` | y | Bridge to event system (`DATA_BUS_AVAILABLE`) |
+| `CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD` | 0 | Emit `DATA_BUS_MEMORY_WARNING` after this many `k_malloc` fallbacks per channel; 0 = log only |
+| `CONFIG_DATA_BUS_HEALTH_EVENT_TYPE_ID` | 31 | Event type ID for memory health warnings |
 | `CONFIG_DATA_BUS_DEBUG_REFCNT` | n | Reference count debug assertions |
 | `CONFIG_DATA_BUS_LOG_LEVEL` | 3 | Log level (0=OFF, 4=DEBUG) |
+
+Per-channel stats include `malloc_fallback_count` and `slab_exhausted_count`; use `data_bus_get_overview()` for aggregation.
 
 ### Memory Footprint Estimate
 

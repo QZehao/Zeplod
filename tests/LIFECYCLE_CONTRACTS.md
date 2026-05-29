@@ -70,7 +70,9 @@
 
 | 配置 | 套件 |
 | --- | --- |
-| `prj.conf` | 核心 event、module_manager、data_bus（默认 CI） |
+| `prj.conf` | 核心 event、module_manager、data_bus（**硬件默认**） |
+| `prj.conf;prj_test_extensions.conf` | 上列 + P0/P1 扩展 + `test_concurrency_stress`（**native_sim CI 默认**） |
+| `prj.conf;prj_concurrency_stress.conf` | 上列 + 仅 `test_concurrency_stress`（硬件 640KB 后可选） |
 | `prj.conf;prj_block_overflow.conf` | 上列 + `test_block_publish_unblocks_on_stop` |
-| `prj.conf;prj_native_sim.conf` | 上列 + `test_ipc_service` |
+| `prj.conf;prj_native_sim.conf` | 上列 + `test_ipc_service` + 扩展项 |
 | `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | 上列 + `test_example_module_*` |

@@ -35,7 +35,9 @@ west build -b native_posix tests/ --build-dir build_tests
 west build -t run --build-dir build_tests
 ```
 
-- **Note**: Default **`tests/prj.conf`** has **`CONFIG_THREAD_IPC_SERVICE=n`**; IPC tests use **`prj_native_sim.conf`** (see **`tests/README.md`**).
+- **Note**: Default **`tests/prj.conf`** has **`CONFIG_THREAD_IPC_SERVICE=n`**; IPC tests use **`prj.conf;prj_native_sim.conf`** (see **`tests/README.md`**).
+- **CI matrix** (`build-tests`): `prj.conf;prj_test_extensions.conf` → `prj.conf;prj_block_overflow.conf` → `prj.conf;prj_native_sim.conf` → `prj.conf;prj_native_sim.conf;prj_ci_examples.conf`.
+- **Hardware** (e.g. `nucleo_l4r5zi`): use **`prj.conf` only**; add **`prj_concurrency_stress.conf`** for stress tests; 640KB SRAM via **`tests/boards/nucleo_l4r5zi.overlay`** (see [Hardware Testing Guide](53-hardware-testing.md)).
 
 ### 1.1 Test Coverage
 

@@ -39,8 +39,12 @@ source scripts/setup_env.sh     # Linux/macOS/WSL
 # .\scripts\setup_env.ps1       # Windows PowerShell
 
 # 推荐：自动激活环境 + 选择板型（native_sim 优先）
-./scripts/run_tests.sh          # Linux/macOS/WSL
+./scripts/run_tests.sh          # 默认 CONF：prj.conf;prj_test_extensions.conf
 # .\scripts\run_tests.ps1       # Windows
+
+# 硬件板测试（精简 + 640KB SRAM overlay，如 nucleo_l4r5zi）
+west build -b nucleo_l4r5zi tests/ --build-dir build_tests_hw -p always -- "-DCONF_FILE=prj.conf"
+# 含并发压测：叠加 prj_concurrency_stress.conf（勿在 192KB RAM 下使用）
 
 # 手动（Zephyr 4.x）
 west build -b native_sim tests/ --build-dir build_tests
@@ -462,6 +466,9 @@ CONFIG_EVENT_DISPATCHER_PRIORITY=5
 CONFIG_MODULE_MANAGER=y
 CONFIG_MAX_MODULES=16
 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES=n
+
+CONFIG_APP_ENABLE_SHELL=y
+CONFIG_APP_ENABLE_TOP=y
 
 CONFIG_SYS_LOG_LEVEL=3
 CONFIG_SYS_MEMORY_POOL_SIZE=8192

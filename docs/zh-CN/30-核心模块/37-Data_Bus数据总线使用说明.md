@@ -233,9 +233,13 @@ ref_count = 0 ──► 释放数据缓冲区 + 块结构体
 | `CONFIG_DATA_BUS_SLAB_256_COUNT` | 8 | 256B slab 块数 |
 | `CONFIG_DATA_BUS_SLAB_1K_COUNT` | 4 | 1KB slab 块数 |
 | `CONFIG_DATA_BUS_SLAB_4K_COUNT` | 2 | 4KB slab 块数 |
-| `CONFIG_DATA_BUS_EVENT_BRIDGE` | y | 桥接到事件系统 |
+| `CONFIG_DATA_BUS_EVENT_BRIDGE` | y | 桥接到事件系统（`DATA_BUS_AVAILABLE` 通知） |
+| `CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD` | 0 | 通道级 `k_malloc` 回退达此次数后发布 **`DATA_BUS_MEMORY_WARNING`** 事件；0 仅记日志 |
+| `CONFIG_DATA_BUS_HEALTH_EVENT_TYPE_ID` | 31 | 内存健康警告事件类型 ID（须与 `DATA_BUS_EVENT_TYPE_ID` 区分） |
 | `CONFIG_DATA_BUS_DEBUG_REFCNT` | n | 引用计数调试断言 |
 | `CONFIG_DATA_BUS_LOG_LEVEL` | 3 | 日志级别 (0=OFF, 4=DEBUG) |
+
+通道统计 **`data_bus_stats_t`** 另含 **`malloc_fallback_count`**、**`slab_exhausted_count`**；全局聚合见 **`data_bus_get_overview()`**。
 
 ### 内存占用估算
 
