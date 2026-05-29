@@ -273,6 +273,8 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
     return 0;
 }
 
+#if APP_CONFIG_ENABLE_TOP
+
 static void cmd_app_top_once(const struct shell* shell) {
     module_compat_stats_t module_stats;
     event_compat_stats_t  event_stats;
@@ -347,6 +349,8 @@ static int cmd_app_top(const struct shell* shell, size_t argc, char** argv) {
     return 0;
 }
 
+#endif /* APP_CONFIG_ENABLE_TOP */
+
 static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 #if !APP_CONFIG_ENABLE_LOG_DUMP
     shell_print(shell, "Log dump disabled (enable CONFIG_APP_ENABLE_LOG_DUMP in prj.conf or overlay)");
@@ -378,7 +382,9 @@ static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
     shell_print(shell, "  app modules    - Show module information");
     shell_print(shell, "  app events     - Show event statistics");
     shell_print(shell, "  app memory     - Show memory statistics");
+#if APP_CONFIG_ENABLE_TOP
     shell_print(shell, "  app top [n]    - Show compact runtime snapshot");
+#endif
     shell_print(shell, "  app log [lvl]  - Dump log buffer");
     shell_print(shell, "  app kv ...     - Key-value (set/get/del/list/clear; save/load if persist)");
     shell_print(shell, "  app help       - Show this help");
@@ -398,7 +404,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app, SHELL_CMD(status, NULL, "Show applicatio
                                SHELL_CMD(modules, NULL, "Show registered modules", cmd_app_modules),
                                SHELL_CMD(events, NULL, "Show event statistics", cmd_app_events),
                                SHELL_CMD(memory, NULL, "Show memory statistics", cmd_app_memory),
+#if APP_CONFIG_ENABLE_TOP
                                SHELL_CMD(top, NULL, "Show compact runtime snapshot [count]", cmd_app_top),
+#endif
                                SHELL_CMD(log, NULL, "Dump log buffer [level]", cmd_app_log),
                                SHELL_CMD(kv, &sub_app_kv, "String key/value store (RAM)", NULL),
                                SHELL_CMD(help, NULL, "Show application help", cmd_app_help), SHELL_SUBCMD_SET_END);

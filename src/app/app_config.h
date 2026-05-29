@@ -89,6 +89,12 @@ extern "C" {
 #define APP_CONFIG_ENABLE_LOG_DUMP 0
 #endif
 
+#ifdef CONFIG_APP_ENABLE_TOP
+#define APP_CONFIG_ENABLE_TOP 1
+#else
+#define APP_CONFIG_ENABLE_TOP 0
+#endif
+
 #ifdef CONFIG_APP_ENABLE_BANNER
 #define APP_CONFIG_ENABLE_BANNER 1
 #else

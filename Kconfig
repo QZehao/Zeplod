@@ -510,6 +510,14 @@ config APP_ENABLE_LOG_DUMP
 	help
 	  Enable sys_log_dump shell command to dump buffered logs.
 
+config APP_ENABLE_TOP
+	bool "Enable app top runtime snapshot command"
+	default y
+	depends on APP_ENABLE_SHELL
+	help
+	  Enable Shell "app top [count]" for compact runtime diagnostics
+	  (modules, events, memory, Data Bus overview, watchdog).
+
 config APP_ENABLE_BANNER
 	bool "Enable Startup ASCII Banner"
 	default y
