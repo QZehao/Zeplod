@@ -4,9 +4,10 @@
  * @author zeh (china_qzh@163.com)
  * @version 1.0
  * @date 2026-05-29
+ *
+ * 仅当 CONFIG_ZTEST_CONCURRENCY_STRESS=y 时由 tests/CMakeLists.txt 编入；
+ * 勿在本文件使用 IS_ENABLED 包裹（须在 include util.h 之前，易编译失败）。
  */
-
-#if IS_ENABLED(CONFIG_ZTEST_CONCURRENCY_STRESS)
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -111,8 +112,15 @@ static void stress_module_reader(void* p1, void* p2, void* p3) {
 }
 
 ZTEST(concurrency_stress, test_module_manager_concurrent_readers) {
+    int ret;
+
     atomic_set(&g_module_reader_errors, 0);
-    zassert_equal(module_manager_init(), 0, NULL);
+
+    /* 可能在 module_manager 套件之后运行，已 init/start 时返回 -EALREADY / -EALREADY */
+    ret = module_manager_init();
+    zassert_true(ret == MODULE_OK || ret == MODULE_ERR_ALREADY_EXISTS, "module_manager_init: %d", ret);
+    ret = module_manager_start();
+    zassert_true(ret == MODULE_OK || ret == MODULE_ERR_ALREADY_RUNNING, "module_manager_start: %d", ret);
 
     for (uintptr_t i = 0; i < STRESS_READER_THREADS; i++) {
         k_tid_t tid = k_thread_create(&g_module_reader_threads[i], g_module_reader_stacks[i],
@@ -196,5 +204,3 @@ ZTEST(concurrency_stress, test_ipc_multi_client_sync_calls) {
 #endif /* CONFIG_THREAD_IPC_SERVICE */
 
 ZTEST_SUITE(concurrency_stress, NULL, NULL, NULL, NULL, NULL);
-
-#endif /* CONFIG_ZTEST_CONCURRENCY_STRESS */
