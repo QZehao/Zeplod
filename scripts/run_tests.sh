@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/scripts/setup_env.sh"
 python "${ROOT}/scripts/preflight_host_tests.py"
 BUILD_DIR="${ZEPHYR_TEST_BUILD_DIR:-build_tests}"
-CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf}"
+CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf;prj_test_extensions.conf}"
 
 pick_board() {
     if [ -n "${ZEPHYR_TEST_BOARD:-}" ]; then

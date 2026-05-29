@@ -6,6 +6,8 @@
  * @date 2026-05-29
  */
 
+#if IS_ENABLED(CONFIG_ZTEST_CONCURRENCY_STRESS)
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
@@ -194,3 +196,5 @@ ZTEST(concurrency_stress, test_ipc_multi_client_sync_calls) {
 #endif /* CONFIG_THREAD_IPC_SERVICE */
 
 ZTEST_SUITE(concurrency_stress, NULL, NULL, NULL, NULL, NULL);
+
+#endif /* CONFIG_ZTEST_CONCURRENCY_STRESS */

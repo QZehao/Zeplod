@@ -1,0 +1,15 @@
+/*
+ * nucleo_l4r5zi 单元测试（Zephyr 4.x 推荐路径）：640 KiB 连续 zephyr,sram。
+ * 内容与 tests/boards/nucleo_l4r5zi.overlay 相同；CMakeLists 显式引用扁平路径。
+ */
+
+/delete-node/ &sram0;
+/delete-node/ &sram1;
+/delete-node/ &sram2;
+
+/ {
+	sram0: memory@20000000 {
+		compatible = "mmio-sram";
+		reg = <0x20000000 0xA0000>;
+	};
+};

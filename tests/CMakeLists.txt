@@ -3,6 +3,15 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# nucleo_l4r5zi：显式合并 640KiB SRAM（避免 DTC_OVERLAY_FILE 空缓存导致 overlay 永不生效）
+if(BOARD STREQUAL "nucleo_l4r5zi")
+	set(_zeplod_test_dts_overlay "${CMAKE_CURRENT_LIST_DIR}/boards/nucleo_l4r5zi.overlay")
+	if(EXISTS "${_zeplod_test_dts_overlay}")
+		list(APPEND DTC_OVERLAY_FILE "${_zeplod_test_dts_overlay}")
+	endif()
+	unset(_zeplod_test_dts_overlay)
+endif()
+
 # 与主工程一致：支持从仓库根目录的 zephyr_config.env 加载 ZEPHYR_BASE
 if(NOT DEFINED ENV{ZEPHYR_BASE})
 	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../zephyr_config.env")
@@ -43,7 +52,6 @@ target_sources(app PRIVATE
 	test_event_dispatcher.c
 	test_event_memory.c
 	test_module_manager.c
-	test_concurrency_stress.c
 	test_sys_log.c
 	test_lock_order.c
 	test_state_machine.c
@@ -100,6 +108,13 @@ endif()
 if(CONFIG_THREAD_IPC_SERVICE)
 	add_subdirectory(${APP_SRC_DIR}/modules/ipc_service ${CMAKE_CURRENT_BINARY_DIR}/ipc_service)
 	target_sources(app PRIVATE test_ipc_service.c)
+endif()
+
+# =============================================================================
+# 并发压力测试（静态线程栈，默认关闭以适配硬件 RAM）
+# =============================================================================
+if(CONFIG_ZTEST_CONCURRENCY_STRESS)
+	target_sources(app PRIVATE test_concurrency_stress.c)
 endif()
 
 # =============================================================================

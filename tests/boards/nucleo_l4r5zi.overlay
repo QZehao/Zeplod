@@ -1,0 +1,19 @@
+/*
+ * nucleo_l4r5zi 单元测试：合并 SRAM 为 640 KiB 连续 zephyr,sram。
+ *
+ * 与仓库根目录 boards/nucleo_l4r5zi.overlay 的 SRAM 段一致。
+ * tests/ 为独立 Zephyr 应用，须使用 tests/boards/<board>.overlay 才会被自动合并；
+ * 根目录 boards/ 下的 overlay 仅对 west build . 主应用生效。
+ */
+
+/delete-node/ &sram0;
+/delete-node/ &sram1;
+/delete-node/ &sram2;
+
+/ {
+	sram0: memory@20000000 {
+		compatible = "mmio-sram";
+		/* 640 KiB 连续 SRAM（RM0432：SRAM1+SRAM2+SRAM3） */
+		reg = <0x20000000 0xA0000>;
+	};
+};

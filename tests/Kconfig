@@ -2,4 +2,17 @@
 #
 # 单元测试应用复用仓库根目录 Kconfig（事件系统、模块管理、IPC 等选项）。
 
+menu "Zeplod unit test options"
+
+config ZTEST_CONCURRENCY_STRESS
+	bool "Build concurrency stress ztest suite"
+	default n
+	depends on ZTEST
+	help
+	  Multi-thread stress tests allocate static K_THREAD_STACK arrays.
+	  Keep disabled for RAM-constrained hardware board test builds;
+	  enable via prj_test_extensions.conf on native_sim.
+
+endmenu
+
 rsource "../Kconfig"
