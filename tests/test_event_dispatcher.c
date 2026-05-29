@@ -596,9 +596,9 @@ ZTEST(event_dispatcher, test_dispatcher_stop_timeout_does_not_abort_callback) {
     zassert_equal(event_dispatcher_stop(), EVENT_ERR_TIMEOUT, "stop should time out while callback is still running");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 0, "callback must not be aborted on stop timeout");
 
-    zassert_true(ztest_wait_atomic_nonzero(&g_dispatcher_slow_callback_done,
-                                           EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 500U),
-                 "callback should complete naturally");
+    zassert_true(
+        ztest_wait_atomic_nonzero(&g_dispatcher_slow_callback_done, EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 500U),
+        "callback should complete naturally");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 1, "callback should complete naturally");
     zassert_equal(event_dispatcher_stop(), EVENT_OK, "second stop should join completed dispatcher thread");
     zassert_equal(event_system_stop(), EVENT_OK, NULL);

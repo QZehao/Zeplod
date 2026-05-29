@@ -281,8 +281,7 @@ int ipc_service_stop(ipc_service_t* service) {
     ipc_shm_deinit(service);
 #endif
 
-    LOG_DBG("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2,
-            stop_err);
+    LOG_DBG("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2, stop_err);
 
     return stop_err;
 }

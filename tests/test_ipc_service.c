@@ -432,8 +432,7 @@ ZTEST(ipc_service, test_get_pending_count) {
                        &request_id);
     zassert_equal(r, 0, "ipc_call_async failed: %d", r);
 
-    zassert_true(ztest_wait_until(ipc_delayed_started_or_pending, &g_ipc, 500U),
-                 "请求应已入队或进入 delayed handler");
+    zassert_true(ztest_wait_until(ipc_delayed_started_or_pending, &g_ipc, 500U), "请求应已入队或进入 delayed handler");
     count = ipc_service_get_pending_count(&g_ipc);
     zassert_true(count <= 1, "pending 数量应 <= 1");
 

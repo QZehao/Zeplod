@@ -9,10 +9,10 @@
 #ifndef MODULE_MANAGER_INTERNAL_H
 #define MODULE_MANAGER_INTERNAL_H
 
-#include "module_manager.h"
-#include "module_dependency_planner.h"
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
+#include "module_dependency_planner.h"
+#include "module_manager.h"
 #include "state_machine.h"
 
 #define MM_MODULE_NAME_MAX 32
@@ -37,13 +37,13 @@ typedef struct {
 } module_manager_cb_t;
 
 extern module_manager_cb_t g_module_mgr;
-extern atomic_t          g_module_mgr_shutting_down;
-extern atomic_t          g_module_mgr_initialized;
+extern atomic_t            g_module_mgr_shutting_down;
+extern atomic_t            g_module_mgr_initialized;
 
 void mm_copy_module_name(char* dst, const char* src);
 
-void module_manager_lock(void);
-void module_manager_unlock(void);
+void         module_manager_lock(void);
+void         module_manager_unlock(void);
 zepl_state_t module_manager_lifecycle_state_locked(void);
 
 module_info_t* find_module_by_id_locked(uint32_t module_id);

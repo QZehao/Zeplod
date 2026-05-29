@@ -15,10 +15,10 @@
  */
 
 #include "module_manager.h"
-#include "module_manager_internal.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include "lock_order.h"
+#include "module_manager_internal.h"
 
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
 

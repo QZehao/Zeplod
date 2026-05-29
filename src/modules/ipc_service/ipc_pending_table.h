@@ -24,10 +24,9 @@ extern "C" {
 
 ipc_pending_request_t* ipc_pending_table_find(ipc_service_t* service, ipc_request_id_t request_id);
 ipc_pending_request_t* ipc_pending_table_alloc(ipc_service_t* service);
-void                   ipc_pending_table_init_entry(ipc_service_t* service, ipc_pending_request_t* entry,
-                                                    ipc_request_id_t request_id, struct k_thread* caller_thread,
-                                                    ipc_async_callback_t callback, void* callback_user_data,
-                                                    ipc_future_t* future);
+void ipc_pending_table_init_entry(ipc_service_t* service, ipc_pending_request_t* entry, ipc_request_id_t request_id,
+                                  struct k_thread* caller_thread, ipc_async_callback_t callback,
+                                  void* callback_user_data, ipc_future_t* future);
 void ipc_pending_table_release(ipc_service_t* service, ipc_pending_request_t* entry);
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
 void ipc_pending_table_release_shm(ipc_service_t* service, ipc_pending_request_t* entry);

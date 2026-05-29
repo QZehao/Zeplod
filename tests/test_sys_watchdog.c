@@ -17,8 +17,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 
-#include "ztest_sync.h"
 #include "sys_watchdog.h"
+#include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_sys_watchdog);
 

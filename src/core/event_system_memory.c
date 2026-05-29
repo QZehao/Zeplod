@@ -9,10 +9,10 @@
  * 2026-05-28 1.1 zeh 收敛 event 壳初始化与 inline/slab 负载附着 helper（P4.1）
  */
 
-#include "event_system_internal.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include "event_memory.h"
+#include "event_system_internal.h"
 
 LOG_MODULE_DECLARE(event_system, CONFIG_SYS_LOG_LEVEL);
 

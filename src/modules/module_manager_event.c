@@ -6,10 +6,10 @@
  * @date 2026-05-28
  */
 
-#include "module_manager_internal.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include "event_system.h"
+#include "module_manager_internal.h"
 
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
 

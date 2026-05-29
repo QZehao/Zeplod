@@ -9,9 +9,9 @@
 #ifndef IPC_SERVICE_INTERNAL_H
 #define IPC_SERVICE_INTERNAL_H
 
-#include "ipc_service.h"
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
+#include "ipc_service.h"
 #include "state_machine.h"
 #include "zepl_thread_service.h"
 
@@ -35,10 +35,10 @@ static inline bool ipc_timeout_is_zero(k_timeout_t timeout) {
     return K_TIMEOUT_EQ(timeout, K_NO_WAIT);
 }
 
-void ipc_service_state_lock(ipc_service_t* service);
-void ipc_service_state_unlock(ipc_service_t* service);
-void ipc_service_pending_lock(ipc_service_t* service);
-void ipc_service_pending_unlock(ipc_service_t* service);
+void         ipc_service_state_lock(ipc_service_t* service);
+void         ipc_service_state_unlock(ipc_service_t* service);
+void         ipc_service_pending_lock(ipc_service_t* service);
+void         ipc_service_pending_unlock(ipc_service_t* service);
 zepl_state_t ipc_service_lifecycle_state_locked(const ipc_service_t* service);
 
 bool ipc_service_is_accepting_requests(ipc_service_t* service);

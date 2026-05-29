@@ -188,7 +188,6 @@ typedef struct {
 
 #define MODULE_DEP_VERSION_ANY              0U
 
-
 /**
  * @brief 声明完整的模块接口（包含所有可选函数）
  *

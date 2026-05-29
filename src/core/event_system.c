@@ -15,8 +15,8 @@
  */
 
 #include "event_system.h"
-#include "event_system_internal.h"
 #include <zephyr/logging/log.h>
+#include "event_system_internal.h"
 
 LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);
 

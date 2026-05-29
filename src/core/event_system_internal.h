@@ -9,16 +9,16 @@
 #ifndef EVENT_SYSTEM_INTERNAL_H
 #define EVENT_SYSTEM_INTERNAL_H
 
-#include "event_system.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+#include "event_system.h"
 #include "lock_order.h"
 #include "state_machine.h"
 
 /** 最大支持的事件类型数量（从 Kconfig 获取） */
-#define MAX_EVENT_TYPES     CONFIG_EVENT_MAX_TYPES
-#define MAX_EVENT_TYPE_ID   (MAX_EVENT_TYPES - 1U)
+#define MAX_EVENT_TYPES         CONFIG_EVENT_MAX_TYPES
+#define MAX_EVENT_TYPE_ID       (MAX_EVENT_TYPES - 1U)
 
 /** 魔术字，用于验证控制块有效性 ("EVNT") */
 #define EVENT_SYSTEM_MAGIC      0x45564E54U
@@ -81,16 +81,16 @@ typedef struct {
 } event_system_cb_t;
 
 extern event_system_cb_t g_event_system;
-extern struct k_msgq    g_event_msgq;
-extern char             g_event_msgq_buffer[];
-extern atomic_t         g_event_system_init_lock;
-extern atomic_t         g_restart_dispatcher_on_start;
-extern atomic_t         g_event_dropped_count;
-extern atomic_t         g_publish_in_flight;
+extern struct k_msgq     g_event_msgq;
+extern char              g_event_msgq_buffer[];
+extern atomic_t          g_event_system_init_lock;
+extern atomic_t          g_restart_dispatcher_on_start;
+extern atomic_t          g_event_dropped_count;
+extern atomic_t          g_publish_in_flight;
 
-void event_system_lifecycle_lock_wait(void);
-bool event_system_lifecycle_try_lock(void);
-void event_system_lifecycle_unlock(void);
+void         event_system_lifecycle_lock_wait(void);
+bool         event_system_lifecycle_try_lock(void);
+void         event_system_lifecycle_unlock(void);
 zepl_state_t event_system_lifecycle_state(void);
 
 void event_system_stats_lock(void);

@@ -4,9 +4,11 @@
  *
  * 调用方负责收集 start_order_entry_t 快照；拓扑排序路径会在函数内部短暂获取 module_manager 锁。
  *
- * @note 依赖版本下限按 MODULE_VERSION(major, minor, patch) 打包整数比较，
+ * @note
+ * 依赖版本下限按 MODULE_VERSION(major, minor, patch) 打包整数比较，
  *       不解析 semver 字符串。
- * @author zeh (china_qzh@163.com)
+ * @author zeh
+ * (china_qzh@163.com)
  * @version 1.0
  * @date 2026-05-28
  */
