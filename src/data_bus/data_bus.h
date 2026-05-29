@@ -74,18 +74,37 @@ typedef struct {
     void*                 user_data; /**< 回调用户数据 */
 } data_bus_consumer_cfg_t;
 
+/*
+ * 降级相关统计是内存压力观测值：在分配发生 k_malloc 回退或匹配 slab 耗尽时记录，
+ * 早于发布路径尝试入队，因此不等同于“成功发布的降级次数”。
+ */
+
 /* ============================================================================
  * 统计
  * ============================================================================ */
 
 typedef struct {
-    uint32_t publish_count;    /**< 发布次数 */
-    uint32_t drop_count;       /**< 丢弃次数（ring_buf 满） */
-    uint32_t queue_full_count; /**< 队列满次数 */
-    uint32_t alloc_fail_count; /**< 内存分配失败次数 */
-    uint32_t consumer_count;   /**< 当前消费者数量 */
-    uint32_t peak_queue_usage; /**< 历史最大队列使用量（槽位） */
+    uint32_t publish_count;         /**< 发布次数 */
+    uint32_t drop_count;            /**< 丢弃次数（ring_buf 满） */
+    uint32_t queue_full_count;      /**< 队列满次数 */
+    uint32_t alloc_fail_count;      /**< 内存分配失败次数 */
+    uint32_t malloc_fallback_count; /**< 数据缓冲区回退到 k_malloc 的次数 */
+    uint32_t slab_exhausted_count;  /**< 数据 slab 匹配但耗尽后回退/失败的次数 */
+    uint32_t consumer_count;        /**< 当前消费者数量 */
+    uint32_t peak_queue_usage;      /**< 历史最大队列使用量（槽位） */
 } data_bus_stats_t;
+
+typedef struct {
+    uint32_t channel_count;               /**< 当前通道数量 */
+    uint32_t active_channel_count;        /**< 当前 active 通道数量 */
+    uint32_t total_queue_used;            /**< 所有通道当前队列占用总和 */
+    uint32_t total_publish_count;         /**< 所有通道发布次数总和 */
+    uint32_t total_drop_count;            /**< 所有通道丢弃次数总和 */
+    uint32_t total_alloc_fail_count;      /**< 所有通道分配失败次数总和 */
+    uint32_t total_malloc_fallback_count; /**< 所有通道 k_malloc fallback 次数总和 */
+    uint32_t total_slab_exhausted_count;  /**< 所有通道数据 slab 耗尽次数总和 */
+    uint32_t peak_queue_usage;            /**< 单通道历史最大队列使用量峰值 */
+} data_bus_overview_t;
 
 /* ============================================================================
  * 生命周期
@@ -276,6 +295,9 @@ void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* 
 
 /** @brief 重置通道统计 */
 void data_bus_reset_stats(data_bus_channel_t* ch);
+
+/** @brief 获取 Data Bus 聚合统计；未初始化时返回全 0 */
+void data_bus_get_overview(data_bus_overview_t* overview);
 
 #ifdef __cplusplus
 }

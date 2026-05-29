@@ -269,6 +269,8 @@ void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* 
     stats->drop_count = ch->drop_count;
     stats->queue_full_count = ch->queue_full_count;
     stats->alloc_fail_count = ch->alloc_fail_count;
+    stats->malloc_fallback_count = ch->malloc_fallback_count;
+    stats->slab_exhausted_count = ch->slab_exhausted_count;
     stats->consumer_count = ch->consumer_count;
     stats->peak_queue_usage = ch->peak_queue_usage;
     k_spin_unlock(&ch_rw->lock, key);
@@ -284,8 +286,49 @@ void data_bus_reset_stats(data_bus_channel_t* ch) {
     ch->drop_count = 0;
     ch->queue_full_count = 0;
     ch->alloc_fail_count = 0;
+    ch->malloc_fallback_count = 0;
+    ch->slab_exhausted_count = 0;
     ch->peak_queue_usage = 0;
     k_spin_unlock(&ch->lock, key);
+}
+
+void data_bus_get_overview(data_bus_overview_t* overview) {
+    if (overview == NULL) {
+        return;
+    }
+
+    memset(overview, 0, sizeof(*overview));
+
+    if (data_bus_require_initialized() != 0) {
+        return;
+    }
+
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+    overview->channel_count = g_channel_count;
+
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        data_bus_channel_t* ch = g_channels[i];
+        if (ch == NULL) {
+            continue;
+        }
+
+        k_spinlock_key_t key = k_spin_lock(&ch->lock);
+        if (atomic_get(&ch->active)) {
+            overview->active_channel_count++;
+        }
+        overview->total_queue_used += ch->queue_used;
+        overview->total_publish_count += ch->publish_count;
+        overview->total_drop_count += ch->drop_count;
+        overview->total_alloc_fail_count += ch->alloc_fail_count;
+        overview->total_malloc_fallback_count += ch->malloc_fallback_count;
+        overview->total_slab_exhausted_count += ch->slab_exhausted_count;
+        if (ch->peak_queue_usage > overview->peak_queue_usage) {
+            overview->peak_queue_usage = ch->peak_queue_usage;
+        }
+        k_spin_unlock(&ch->lock, key);
+    }
+
+    k_mutex_unlock(&g_channels_lock);
 }
 
 /* ============================================================================

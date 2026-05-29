@@ -6,10 +6,10 @@
  * @date 2026-05-28
  */
 
-#include "module_manager_internal.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
+#include "module_manager_internal.h"
 #include "state_machine.h"
 
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
@@ -161,6 +161,7 @@ int module_manager_shutdown(void) {
             entries[n].priority = info->interface->priority;
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
             entries[n].depends_on = info->interface->depends_on;
+            entries[n].depends_version_min = info->interface->depends_version_min;
 #endif
             n++;
         }
@@ -362,6 +363,7 @@ int module_manager_start_all(void) {
             entries[n].priority = m->interface->priority;
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
             entries[n].depends_on = m->interface->depends_on;
+            entries[n].depends_version_min = m->interface->depends_version_min;
 #endif
             n++;
         }
@@ -408,6 +410,7 @@ int module_manager_stop_all(void) {
             entries[n].id = m->id;
             entries[n].priority = m->interface->priority;
             entries[n].depends_on = m->interface->depends_on;
+            entries[n].depends_version_min = m->interface->depends_version_min;
             n++;
         }
     }

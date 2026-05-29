@@ -38,6 +38,7 @@ static struct k_sem      g_test_sem;
 static atomic_t          g_call_count;
 static uint32_t          g_recv_seq = 0;
 static data_bus_block_t* g_retained_block = NULL;
+static uint8_t           g_large_payload[4097];
 
 /* ============================================================================
  * 消费者回调
@@ -159,9 +160,9 @@ ZTEST(test_data_bus, test_repeat_deinit_idempotent) {
     zassert_equal(data_bus_deinit(), 0, "重复 deinit 应返回 0");
 }
 
-static atomic_t g_deinit_from_dispatcher_result;
+static atomic_t     g_deinit_from_dispatcher_result;
 static struct k_sem g_deinit_from_dispatcher_sem;
-static bool     g_deinit_from_dispatcher_tried;
+static bool         g_deinit_from_dispatcher_tried;
 
 static void deinit_from_dispatcher_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
     ARG_UNUSED(ch);
@@ -535,7 +536,7 @@ ZTEST(test_data_bus, test_channel_destroy_retries_after_publish) {
     zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
 
     uint32_t start_ms = k_uptime_get_32();
-    int      ret        = -EAGAIN;
+    int      ret = -EAGAIN;
 
     while ((k_uptime_get_32() - start_ms) < 2000U) {
         ret = data_bus_channel_destroy(ch);
@@ -761,11 +762,54 @@ ZTEST(test_data_bus, test_reset_stats) {
     zassert_equal(stats.drop_count, 0, "drop_count 应为 0");
     zassert_equal(stats.queue_full_count, 0, "queue_full_count 应为 0");
     zassert_equal(stats.alloc_fail_count, 0, "alloc_fail_count 应为 0");
+    zassert_equal(stats.malloc_fallback_count, 0, "malloc_fallback_count 应为 0");
+    zassert_equal(stats.slab_exhausted_count, 0, "slab_exhausted_count 应为 0");
     zassert_equal(stats.consumer_count, 1, "consumer_count 应保持 1");
     zassert_equal(stats.peak_queue_usage, 0, "peak_queue_usage 应为 0");
 
     data_bus_channel_destroy(ch);
     data_bus_deinit();
+}
+
+/**
+ * @brief 测试 k_malloc fallback 与 slab 耗尽标记统计
+ */
+ZTEST(test_data_bus, test_malloc_fallback_stats) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+    zassert_equal(data_bus_channel_create("fallback_ch", &ch), 0, NULL);
+
+    memset(g_large_payload, 0xA5, sizeof(g_large_payload));
+    zassert_equal(data_bus_publish(ch, g_large_payload, sizeof(g_large_payload)), 0, NULL);
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_equal(stats.malloc_fallback_count, 1, "large payload 应回退到 k_malloc");
+    zassert_equal(stats.slab_exhausted_count, 0, "large payload 无匹配 slab，不应计入 slab 耗尽");
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_SLAB_ENABLE) && (CONFIG_DATA_BUS_SLAB_256_COUNT > 0)
+    data_bus_block_t* blocks[CONFIG_DATA_BUS_SLAB_256_COUNT + 1];
+    memset(blocks, 0, sizeof(blocks));
+
+    for (int i = 0; i < CONFIG_DATA_BUS_SLAB_256_COUNT + 1; i++) {
+        blocks[i] = data_bus_mem_alloc(1);
+        zassert_not_null(blocks[i], "block allocation %d failed", i);
+    }
+
+    zassert_false(blocks[0]->malloc_fallback, "first small block should use slab");
+    zassert_false(blocks[0]->slab_exhausted, "first small block should not mark exhausted");
+    zassert_true(blocks[CONFIG_DATA_BUS_SLAB_256_COUNT]->malloc_fallback, "exhausted slab should fall back");
+    zassert_true(blocks[CONFIG_DATA_BUS_SLAB_256_COUNT]->slab_exhausted, "matching slab exhaustion should be recorded");
+
+    for (int i = 0; i < CONFIG_DATA_BUS_SLAB_256_COUNT + 1; i++) {
+        data_bus_mem_free(blocks[i]);
+    }
+#endif
 }
 
 /**

@@ -97,6 +97,14 @@ typedef struct {
      * 管理器遍历时有上限以防未正确终止；不是全系统模块个数，也不是依赖链深度。
      */
     const char* const* depends_on;
+    /**
+     * 可选依赖版本下限：与 depends_on 下标一一对应。
+     * NULL 表示不检查依赖版本；非 NULL 时必须与 depends_on 的非 NULL 项等长。
+     * 无版本约束的依赖项填 MODULE_DEP_VERSION_ANY。
+     * 版本值使用 MODULE_VERSION(major, minor, patch) 打包，不解析 semver 字符串。
+     * 仅在 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES 启用且 depends_on 非 NULL 时生效。
+     */
+    const uint32_t* depends_version_min;
     int (*init)(void* config);           /**< 初始化函数指针 */
     int (*start)(void);                  /**< 启动函数指针 */
     int (*stop)(void);                   /**< 停止函数指针 */
@@ -178,6 +186,9 @@ typedef struct {
  */
 #define MODULE_VERSION_PATCH(v)             ((v) & 0xFF)
 
+#define MODULE_DEP_VERSION_ANY              0U
+
+
 /**
  * @brief 声明完整的模块接口（包含所有可选函数）
  *
@@ -194,6 +205,7 @@ typedef struct {
                                                             .version = MODULE_VERSION(1, 0, 0),                        \
                                                             .priority = MODULE_PRIORITY_NORMAL,                        \
                                                             .depends_on = NULL,                                        \
+                                                            .depends_version_min = NULL,                               \
                                                             .init = mod_name##_init,                                   \
                                                             .start = mod_name##_start,                                 \
                                                             .stop = mod_name##_stop,                                   \
@@ -211,6 +223,25 @@ typedef struct {
                                                             .version = MODULE_VERSION(1, 0, 0),                        \
                                                             .priority = MODULE_PRIORITY_NORMAL,                        \
                                                             .depends_on = (deps_array),                                \
+                                                            .depends_version_min = NULL,                               \
+                                                            .init = mod_name##_init,                                   \
+                                                            .start = mod_name##_start,                                 \
+                                                            .stop = mod_name##_stop,                                   \
+                                                            .shutdown = mod_name##_shutdown,                           \
+                                                            .on_event = mod_name##_on_event,                           \
+                                                            .get_status = mod_name##_get_status,                       \
+                                                            .control = mod_name##_control}
+
+/**
+ * @brief 与 DECLARE_MODULE_INTERFACE_WITH_DEPS 相同，并声明依赖版本下限数组
+ */
+#define DECLARE_MODULE_INTERFACE_WITH_DEPS_VERSION_MIN(mod_name, deps_array, versions_array)                           \
+    extern const module_interface_t mod_name##_interface;                                                              \
+    const module_interface_t        mod_name##_interface = {.name = #mod_name,                                         \
+                                                            .version = MODULE_VERSION(1, 0, 0),                        \
+                                                            .priority = MODULE_PRIORITY_NORMAL,                        \
+                                                            .depends_on = (deps_array),                                \
+                                                            .depends_version_min = (versions_array),                   \
                                                             .init = mod_name##_init,                                   \
                                                             .start = mod_name##_start,                                 \
                                                             .stop = mod_name##_stop,                                   \
@@ -236,6 +267,7 @@ typedef struct {
                                                             .version = MODULE_VERSION(1, 0, 0),                        \
                                                             .priority = MODULE_PRIORITY_NORMAL,                        \
                                                             .depends_on = NULL,                                        \
+                                                            .depends_version_min = NULL,                               \
                                                             .init = mod_name##_init,                                   \
                                                             .start = mod_name##_start,                                 \
                                                             .stop = mod_name##_stop,                                   \
@@ -250,6 +282,22 @@ typedef struct {
                                                             .version = MODULE_VERSION(1, 0, 0),                        \
                                                             .priority = MODULE_PRIORITY_NORMAL,                        \
                                                             .depends_on = (deps_array),                                \
+                                                            .depends_version_min = NULL,                               \
+                                                            .init = mod_name##_init,                                   \
+                                                            .start = mod_name##_start,                                 \
+                                                            .stop = mod_name##_stop,                                   \
+                                                            .shutdown = NULL,                                          \
+                                                            .on_event = mod_name##_on_event,                           \
+                                                            .get_status = NULL,                                        \
+                                                            .control = NULL}
+
+#define DECLARE_MODULE_INTERFACE_MINIMAL_WITH_DEPS_VERSION_MIN(mod_name, deps_array, versions_array)                   \
+    extern const module_interface_t mod_name##_interface;                                                              \
+    const module_interface_t        mod_name##_interface = {.name = #mod_name,                                         \
+                                                            .version = MODULE_VERSION(1, 0, 0),                        \
+                                                            .priority = MODULE_PRIORITY_NORMAL,                        \
+                                                            .depends_on = (deps_array),                                \
+                                                            .depends_version_min = (versions_array),                   \
                                                             .init = mod_name##_init,                                   \
                                                             .start = mod_name##_start,                                 \
                                                             .stop = mod_name##_stop,                                   \

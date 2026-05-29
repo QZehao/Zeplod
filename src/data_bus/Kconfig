@@ -85,6 +85,26 @@ config DATA_BUS_EVENT_TYPE_ID
       Passed to event_publish_copy() from data_bus_event_bridge_notify().
       Must not collide with other application event types.
 
+config DATA_BUS_FALLBACK_WARN_THRESHOLD
+    int "k_malloc fallback warning threshold"
+    default 0
+    range 0 65535
+    depends on DATA_BUS
+    help
+      Publish a Data Bus memory health warning after this many k_malloc
+      fallback allocations on a channel. 0 disables event warning emission
+      and preserves the existing logging-only behavior.
+
+config DATA_BUS_HEALTH_EVENT_TYPE_ID
+    int "Event type ID for Data Bus memory health warnings"
+    default 31
+    range 0 255
+    depends on DATA_BUS_EVENT_BRIDGE && DATA_BUS_FALLBACK_WARN_THRESHOLD > 0
+    help
+      Passed to event_publish_copy() for DATA_BUS_MEMORY_WARNING events.
+      Keep distinct from CONFIG_DATA_BUS_EVENT_TYPE_ID and application
+      event type IDs.
+
 config DATA_BUS_DEBUG_REFCNT
     bool "Debug: reference count assertions in destroy/deinit"
     default n

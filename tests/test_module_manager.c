@@ -83,6 +83,41 @@ static void stub3_on_event(const event_t* event, void* user_data) {
 
 DECLARE_MODULE_INTERFACE_MINIMAL(stub3);
 
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+static const char* const version_dep_names[] = {"version_base", NULL};
+static const uint32_t    version_dep_min_high[] = {MODULE_VERSION(2, 0, 0)};
+
+const module_interface_t version_base_interface = {
+    .name = "version_base",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
+    .depends_version_min = NULL,
+    .init = stub_init,
+    .start = stub_start,
+    .stop = stub_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+const module_interface_t version_needs_high_interface = {
+    .name = "version_needs_high",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = version_dep_names,
+    .depends_version_min = version_dep_min_high,
+    .init = stub_init,
+    .start = stub_start,
+    .stop = stub_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+#endif
+
 /* 用于 shutdown / unregister 交叠场景：统计 shutdown 调用次数 */
 static atomic_t g_counting_shutdown_calls;
 
@@ -206,6 +241,28 @@ ZTEST(module_manager, test_start_all_stop_all) {
     zassert_equal(module_manager_unregister(id1), 0, NULL);
     zassert_equal(module_manager_unregister(id2), 0, NULL);
 }
+
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+ZTEST(module_manager, test_dependency_version_min_rejects_low_version) {
+    uint32_t base_id = 0U;
+    uint32_t dependent_id = 0U;
+
+    zassert_equal(module_manager_register(&version_base_interface, NULL, &base_id), 0, NULL);
+    zassert_equal(module_manager_register(&version_needs_high_interface, NULL, &dependent_id), 0, NULL);
+
+    int started = module_manager_start_all();
+
+    zassert_equal(started, 1, "only dependency with acceptable version should start");
+
+    module_info_t base_info;
+    module_info_t dependent_info;
+
+    zassert_equal(module_manager_get_module_info(base_id, &base_info), 0, NULL);
+    zassert_equal(module_manager_get_module_info(dependent_id, &dependent_info), 0, NULL);
+    zassert_equal(base_info.status, MODULE_STATUS_RUNNING, NULL);
+    zassert_equal(dependent_info.status, MODULE_STATUS_INITIALIZED, NULL);
+}
+#endif
 
 ZTEST(module_manager, test_suspend_resume) {
     uint32_t id = 0U;

@@ -63,6 +63,31 @@ static bool mm_adj_matrix_test(const uint32_t adj[][MM_ADJ_ROW_WORDS], int row, 
     return (adj[row][(unsigned int) col / 32U] & (1U << ((unsigned int) col % 32U))) != 0U;
 }
 
+static bool mm_dep_version_satisfied(const mm_dep_order_entry_t* entry, unsigned int dep_index,
+                                     const module_info_t* dep) {
+    if (entry == NULL || entry->depends_version_min == NULL || dep == NULL || dep->interface == NULL) {
+        return true;
+    }
+
+    const uint32_t min_version = entry->depends_version_min[dep_index];
+    if (min_version == MODULE_DEP_VERSION_ANY) {
+        return true;
+    }
+
+    if (dep->interface->version >= min_version) {
+        return true;
+    }
+
+    LOG_ERR("Module id=%u: dependency '%s' version %u.%u.%u below required %u.%u.%u", (unsigned int) entry->id,
+            dep->interface->name != NULL ? dep->interface->name : "?",
+            (unsigned int) MODULE_VERSION_MAJOR(dep->interface->version),
+            (unsigned int) MODULE_VERSION_MINOR(dep->interface->version),
+            (unsigned int) MODULE_VERSION_PATCH(dep->interface->version),
+            (unsigned int) MODULE_VERSION_MAJOR(min_version), (unsigned int) MODULE_VERSION_MINOR(min_version),
+            (unsigned int) MODULE_VERSION_PATCH(min_version));
+    return false;
+}
+
 int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
     bool valid[CONFIG_MAX_MODULES];
     uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
@@ -111,6 +136,10 @@ int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
                 module_info_t* dep = find_module_by_id_locked(did);
 
                 if (dep == NULL) {
+                    valid[i] = false;
+                    break;
+                }
+                if (!mm_dep_version_satisfied(&entries[i], di, dep)) {
                     valid[i] = false;
                     break;
                 }

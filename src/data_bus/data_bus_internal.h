@@ -39,6 +39,8 @@ struct data_bus_block {
     atomic_t           ref_count;
     struct k_mem_slab* slab;
     uint32_t           seq;
+    bool               malloc_fallback;
+    bool               slab_exhausted;
 };
 
 struct data_bus_consumer {
@@ -72,6 +74,8 @@ struct data_bus_channel {
     uint32_t drop_count;
     uint32_t queue_full_count;
     uint32_t alloc_fail_count;
+    uint32_t malloc_fallback_count;
+    uint32_t slab_exhausted_count;
     uint32_t peak_queue_usage;
     uint32_t queue_used;
     atomic_t publish_hold;
@@ -106,6 +110,8 @@ extern k_thread_stack_t g_dispatcher_stack[];
 
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
 void data_bus_event_bridge_notify(data_bus_channel_t* ch, uint32_t seq, size_t len);
+void data_bus_event_bridge_notify_memory_warning(data_bus_channel_t* ch, uint32_t malloc_fallback_count,
+                                                 uint32_t slab_exhausted_count);
 #endif
 
 /* ============================================================================

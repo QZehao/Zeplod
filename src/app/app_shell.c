@@ -15,6 +15,11 @@
 #include "module_manager_compat.h"
 #include "sys_log.h"
 #include "sys_memory.h"
+#include "sys_watchdog.h"
+
+#ifdef CONFIG_DATA_BUS
+#include "data_bus.h"
+#endif
 
 #include <errno.h>
 #include <stdlib.h>
@@ -268,6 +273,80 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
     return 0;
 }
 
+static void cmd_app_top_once(const struct shell* shell) {
+    module_compat_stats_t module_stats;
+    event_compat_stats_t  event_stats;
+
+    module_compat_get_stats(&module_stats);
+    event_compat_get_statistics(&event_stats);
+
+    shell_print(shell, "Top Snapshot:");
+    shell_print(shell, "  Uptime: %d ms  State: %s", app_get_uptime(), app_is_running() ? "RUNNING" : "STOPPED");
+    shell_print(shell, "  Modules: total=%u active=%u errors=%u events=%u dropped=%u",
+                (unsigned int) module_stats.total_modules, (unsigned int) module_stats.active_modules,
+                (unsigned int) module_stats.error_modules, (unsigned int) module_stats.events_processed,
+                (unsigned int) module_stats.events_dropped);
+    shell_print(shell, "  Events: total=%u queue=%u dropped=%u", (unsigned int) event_stats.total_events,
+                (unsigned int) event_stats.queue_depth, (unsigned int) event_stats.dropped_events);
+    shell_print(shell, "  Memory: free=%d min_free=%d heap=%d", sys_mem_get_free_size(), sys_mem_get_min_free_size(),
+                sys_mem_get_heap_size());
+
+#ifdef CONFIG_DATA_BUS
+    data_bus_overview_t data_bus_stats;
+    data_bus_get_overview(&data_bus_stats);
+    shell_print(shell,
+                "  DataBus: channels=%u active=%u queue=%u pub=%u drop=%u alloc_fail=%u malloc_fb=%u slab_exh=%u",
+                (unsigned int) data_bus_stats.channel_count, (unsigned int) data_bus_stats.active_channel_count,
+                (unsigned int) data_bus_stats.total_queue_used, (unsigned int) data_bus_stats.total_publish_count,
+                (unsigned int) data_bus_stats.total_drop_count, (unsigned int) data_bus_stats.total_alloc_fail_count,
+                (unsigned int) data_bus_stats.total_malloc_fallback_count,
+                (unsigned int) data_bus_stats.total_slab_exhausted_count);
+#else
+    shell_print(shell, "  DataBus: disabled");
+#endif
+
+#ifdef CONFIG_THREAD_IPC_SERVICE
+    shell_print(shell, "  IPC: enabled (per-service pending/shm stats)");
+#else
+    shell_print(shell, "  IPC: disabled");
+#endif
+
+#ifdef CONFIG_SYS_WATCHDOG_ENABLE
+    wdt_stats_t wdt_stats;
+    sys_wdt_get_stats(&wdt_stats);
+    shell_print(shell, "  Watchdog: feeds=%u warnings=%u expires=%u since_feed=%u ms max_interval=%u ms",
+                (unsigned int) wdt_stats.feed_count, (unsigned int) wdt_stats.warning_count,
+                (unsigned int) wdt_stats.expire_count, (unsigned int) sys_wdt_get_time_since_feed(),
+                (unsigned int) wdt_stats.max_feed_interval_ms);
+#else
+    shell_print(shell, "  Watchdog: disabled");
+#endif
+}
+
+static int cmd_app_top(const struct shell* shell, size_t argc, char** argv) {
+    int count = 1;
+
+    if (argc > 1) {
+        count = atoi(argv[1]);
+        if (count <= 0) {
+            shell_print(shell, "Usage: app top [count]");
+            return -EINVAL;
+        }
+        if (count > 60) {
+            count = 60;
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        cmd_app_top_once(shell);
+        if (i + 1 < count) {
+            k_sleep(K_SECONDS(1));
+        }
+    }
+
+    return 0;
+}
+
 static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
 #if !APP_CONFIG_ENABLE_LOG_DUMP
     shell_print(shell, "Log dump disabled (enable CONFIG_APP_ENABLE_LOG_DUMP in prj.conf or overlay)");
@@ -299,6 +378,7 @@ static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
     shell_print(shell, "  app modules    - Show module information");
     shell_print(shell, "  app events     - Show event statistics");
     shell_print(shell, "  app memory     - Show memory statistics");
+    shell_print(shell, "  app top [n]    - Show compact runtime snapshot");
     shell_print(shell, "  app log [lvl]  - Dump log buffer");
     shell_print(shell, "  app kv ...     - Key-value (set/get/del/list/clear; save/load if persist)");
     shell_print(shell, "  app help       - Show this help");
@@ -318,6 +398,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app, SHELL_CMD(status, NULL, "Show applicatio
                                SHELL_CMD(modules, NULL, "Show registered modules", cmd_app_modules),
                                SHELL_CMD(events, NULL, "Show event statistics", cmd_app_events),
                                SHELL_CMD(memory, NULL, "Show memory statistics", cmd_app_memory),
+                               SHELL_CMD(top, NULL, "Show compact runtime snapshot [count]", cmd_app_top),
                                SHELL_CMD(log, NULL, "Dump log buffer [level]", cmd_app_log),
                                SHELL_CMD(kv, &sub_app_kv, "String key/value store (RAM)", NULL),
                                SHELL_CMD(help, NULL, "Show application help", cmd_app_help), SHELL_SUBCMD_SET_END);

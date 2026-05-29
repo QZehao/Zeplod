@@ -43,6 +43,7 @@ target_sources(app PRIVATE
 	test_event_dispatcher.c
 	test_event_memory.c
 	test_module_manager.c
+	test_concurrency_stress.c
 	test_sys_log.c
 	test_lock_order.c
 	test_state_machine.c

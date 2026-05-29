@@ -72,6 +72,28 @@ static bool channel_in_table_locked(const data_bus_channel_t* ch) {
     return false;
 }
 
+static bool channel_note_block_memory(data_bus_channel_t* ch, const data_bus_block_t* block) {
+    if (ch == NULL || block == NULL || (!block->malloc_fallback && !block->slab_exhausted)) {
+        return false;
+    }
+
+    bool             should_warn = false;
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+
+    if (block->malloc_fallback) {
+        ch->malloc_fallback_count++;
+#if CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0
+        should_warn = (ch->malloc_fallback_count == CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD);
+#endif
+    }
+    if (block->slab_exhausted) {
+        ch->slab_exhausted_count++;
+    }
+
+    k_spin_unlock(&ch->lock, key);
+    return should_warn;
+}
+
 static int channel_publish_acquire(data_bus_channel_t* ch, bool in_isr) {
     if (ch == NULL) {
         return -EINVAL;
@@ -484,6 +506,18 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
         return -ENOMEM;
     }
 
+    bool warn_memory_fallback = channel_note_block_memory(ch, block);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE) && (CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0)
+    if (warn_memory_fallback && !in_isr) {
+        data_bus_stats_t stats;
+        data_bus_channel_get_stats(ch, &stats);
+        data_bus_event_bridge_notify_memory_warning(ch, stats.malloc_fallback_count, stats.slab_exhausted_count);
+    }
+#else
+    ARG_UNUSED(warn_memory_fallback);
+#endif
+
     /* 拷贝数据 */
     memcpy(block->ptr, data, len);
     /* block->len 已由 mem_alloc 设置，ref_count 已为 0 */
@@ -590,6 +624,18 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
         channel_publish_release(ch);
         return err;
     }
+
+    bool warn_memory_fallback = channel_note_block_memory(ch, block);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE) && (CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0)
+    if (warn_memory_fallback && !in_isr) {
+        data_bus_stats_t stats;
+        data_bus_channel_get_stats(ch, &stats);
+        data_bus_event_bridge_notify_memory_warning(ch, stats.malloc_fallback_count, stats.slab_exhausted_count);
+    }
+#else
+    ARG_UNUSED(warn_memory_fallback);
+#endif
 
     LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 

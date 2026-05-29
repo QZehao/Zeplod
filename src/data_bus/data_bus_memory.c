@@ -81,6 +81,8 @@ static data_bus_block_t* mem_alloc_impl(size_t len, bool isr) {
     data_bus_block_t*  block = NULL;
     void*              data_ptr = NULL;
     struct k_mem_slab* slab = NULL;
+    bool               slab_candidate_exhausted = false;
+    bool               used_malloc_fallback = false;
 
     /* ---- 步骤 1：从 slab 分配块结构体 ---- */
     void* mem = NULL;
@@ -96,12 +98,14 @@ static data_bus_block_t* mem_alloc_impl(size_t len, bool isr) {
     if (slab != NULL) {
         /* Slab 路径 */
         data_ptr = alloc_from_slab(slab, K_NO_WAIT);
+        slab_candidate_exhausted = (data_ptr == NULL);
     }
 
     if (data_ptr == NULL && !isr) {
         /* 线程路径：k_malloc 兜底（仅 slab 禁用或耗尽时） */
         LOG_WRN("Data slab exhausted, falling back to k_malloc (len=%zu)", len);
         data_ptr = k_malloc(len);
+        used_malloc_fallback = (data_ptr != NULL);
         slab = NULL; /* 标记为堆分配 */
     }
 
@@ -117,6 +121,8 @@ static data_bus_block_t* mem_alloc_impl(size_t len, bool isr) {
     block->ptr = data_ptr;
     block->len = len;
     block->slab = slab;
+    block->malloc_fallback = used_malloc_fallback;
+    block->slab_exhausted = slab_candidate_exhausted;
     atomic_set(&block->ref_count, 0);
 
     return block;
