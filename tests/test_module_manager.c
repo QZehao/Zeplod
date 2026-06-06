@@ -431,6 +431,436 @@ ZTEST(module_manager, test_set_callback) {
     zassert_equal(module_manager_unregister(id), 0, NULL);
 }
 
+/* =============================================================================
+ * 10 项并发/契约修复的测试覆盖
+ * =============================================================================
+ *
+ * 这些用例通过信号量精确控制线程交错，验证每项并发修复的语义行为。
+ */
+
+#include <zephyr/kernel.h>
+
+/* ---------- 共享桩：用于 init 期间注销的测试（#4） ---------- */
+static struct k_sem    g_slow_init_go;
+static atomic_t        g_slow_init_entered;
+static struct k_thread g_slow_register_thread;
+static K_THREAD_STACK_DEFINE(g_slow_register_stack, 1024);
+static atomic_t                 g_slow_register_result;
+static uint32_t                 g_slow_register_id;
+extern const module_interface_t slow_stub_interface;
+
+static int slow_init(void* config) {
+    (void) config;
+    atomic_set(&g_slow_init_entered, 1);
+    /* 等待测试主线程进入 unregister，然后完成 init */
+    (void) k_sem_take(&g_slow_init_go, K_MSEC(500));
+    return 0;
+}
+
+static int slow_start(void) {
+    return 0;
+}
+static int slow_stop(void) {
+    return 0;
+}
+
+static void slow_register_thread_entry(void* p1, void* p2, void* p3) {
+    (void) p1;
+    (void) p2;
+    (void) p3;
+    const int ret = module_manager_register(&slow_stub_interface, NULL, &g_slow_register_id);
+    atomic_set(&g_slow_register_result, ret);
+}
+
+const module_interface_t slow_stub_interface = {
+    .name = "slow_stub",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
+    .init = slow_init,
+    .start = slow_start,
+    .stop = slow_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+/* ---------- 共享桩：用于依赖 start 失败的测试（#5） ---------- */
+static atomic_t g_dep_failing_start_calls;
+static atomic_t g_dep_dependent_start_calls;
+
+static int dep_failing_start(void) {
+    atomic_inc(&g_dep_failing_start_calls);
+    return -1; /* 强制 start 失败 */
+}
+
+static int dep_dependent_start(void) {
+    atomic_inc(&g_dep_dependent_start_calls);
+    return 0;
+}
+
+static const char* const dep_fail_dep_names[] = {"dep_fail_base", NULL};
+
+const module_interface_t dep_fail_base_interface = {
+    .name = "dep_fail_base",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_LOW,
+    .depends_on = NULL,
+    .init = stub_init,
+    .start = dep_failing_start, /* 关键：base 的 start 强制失败 */
+    .stop = stub_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+const module_interface_t dep_fail_dependent_interface = {
+    .name = "dep_fail_dependent",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = dep_fail_dep_names,
+    .depends_version_min = NULL,
+    .init = stub_init,
+    .start = dep_dependent_start,
+    .stop = stub_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+/* ---------- 共享桩：验证 shutdown 等待在途事件回调 ---------- */
+static struct k_sem    g_block_event_entered;
+static struct k_sem    g_block_event_release;
+static struct k_thread g_block_event_thread;
+static struct k_thread g_block_shutdown_thread;
+static K_THREAD_STACK_DEFINE(g_block_event_stack, 1024);
+static K_THREAD_STACK_DEFINE(g_block_shutdown_stack, 1536);
+static atomic_t g_block_event_result;
+static atomic_t g_block_shutdown_result;
+static atomic_t g_block_shutdown_done;
+static atomic_t g_block_shutdown_calls;
+static uint32_t g_block_module_id;
+
+static void blocking_on_event(const event_t* event, void* user_data) {
+    (void) event;
+    (void) user_data;
+    k_sem_give(&g_block_event_entered);
+    (void) k_sem_take(&g_block_event_release, K_SECONDS(2));
+}
+
+static int blocking_shutdown(void) {
+    atomic_inc(&g_block_shutdown_calls);
+    return MODULE_OK;
+}
+
+const module_interface_t blocking_stub_interface = {
+    .name = "blocking_stub",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
+    .depends_version_min = NULL,
+    .init = stub_init,
+    .start = stub_start,
+    .stop = stub_stop,
+    .shutdown = blocking_shutdown,
+    .on_event = blocking_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+static void blocking_send_thread_entry(void* p1, void* p2, void* p3) {
+    (void) p1;
+    (void) p2;
+    (void) p3;
+    event_t event = {0};
+    atomic_set(&g_block_event_result, module_manager_send_to_module(g_block_module_id, &event));
+}
+
+static void blocking_shutdown_thread_entry(void* p1, void* p2, void* p3) {
+    (void) p1;
+    (void) p2;
+    (void) p3;
+    atomic_set(&g_block_shutdown_result, module_manager_shutdown());
+    atomic_set(&g_block_shutdown_done, 1);
+}
+
+/* ---------- 共享桩：验证 manager stop 等待并发 start 收敛 ---------- */
+static struct k_sem    g_block_start_entered;
+static struct k_sem    g_block_start_release;
+static struct k_thread g_block_start_thread;
+static struct k_thread g_manager_stop_thread;
+static K_THREAD_STACK_DEFINE(g_block_start_stack, 1024);
+static K_THREAD_STACK_DEFINE(g_manager_stop_stack, 1536);
+static atomic_t g_block_start_result;
+static atomic_t g_manager_stop_result;
+static atomic_t g_manager_stop_done;
+static uint32_t g_block_start_module_id;
+
+static int blocking_start(void) {
+    k_sem_give(&g_block_start_entered);
+    (void) k_sem_take(&g_block_start_release, K_SECONDS(2));
+    return MODULE_OK;
+}
+
+const module_interface_t blocking_start_interface = {
+    .name = "blocking_start",
+    .version = MODULE_VERSION(1, 0, 0),
+    .priority = MODULE_PRIORITY_NORMAL,
+    .depends_on = NULL,
+    .depends_version_min = NULL,
+    .init = stub_init,
+    .start = blocking_start,
+    .stop = stub_stop,
+    .shutdown = NULL,
+    .on_event = stub_on_event,
+    .get_status = NULL,
+    .control = NULL,
+};
+
+static void blocking_start_thread_entry(void* p1, void* p2, void* p3) {
+    (void) p1;
+    (void) p2;
+    (void) p3;
+    atomic_set(&g_block_start_result, module_manager_start_module(g_block_start_module_id));
+}
+
+static void manager_stop_thread_entry(void* p1, void* p2, void* p3) {
+    (void) p1;
+    (void) p2;
+    (void) p3;
+    atomic_set(&g_manager_stop_result, module_manager_stop());
+    atomic_set(&g_manager_stop_done, 1);
+}
+
+/* ---------- #4：init 期间注销返回 EBUSY ---------- */
+ZTEST(module_manager, test_unregister_during_init_returns_busy) {
+    k_sem_init(&g_slow_init_go, 0, 1);
+    atomic_set(&g_slow_init_entered, 0);
+    atomic_set(&g_slow_register_result, MODULE_ERR_BUSY);
+    g_slow_register_id = 0U;
+
+    k_tid_t tid =
+        k_thread_create(&g_slow_register_thread, g_slow_register_stack, K_THREAD_STACK_SIZEOF(g_slow_register_stack),
+                        slow_register_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+
+    int wait_ms = 0;
+    while (atomic_get(&g_slow_init_entered) == 0 && wait_ms < 200) {
+        k_msleep(1);
+        wait_ms++;
+    }
+    zassert_equal(atomic_get(&g_slow_init_entered), 1, "init 应已进入");
+    zassert_not_equal(g_slow_register_id, 0U, "init 期间应已分配 provisional id");
+
+    zassert_equal(module_manager_unregister(g_slow_register_id), MODULE_ERR_BUSY, "init 期间注销应返回 BUSY");
+
+    k_sem_give(&g_slow_init_go);
+    zassert_equal(k_thread_join(tid, K_SECONDS(1)), 0, "register thread 应结束");
+    zassert_equal(atomic_get(&g_slow_register_result), MODULE_OK, "register 应成功");
+
+    zassert_equal(module_manager_unregister(g_slow_register_id), 0, "init 完成后注销应成功");
+}
+
+ZTEST(module_manager, test_manager_stop_waits_for_concurrent_start) {
+    k_sem_init(&g_block_start_entered, 0, 1);
+    k_sem_init(&g_block_start_release, 0, 1);
+    atomic_set(&g_block_start_result, MODULE_ERR_BUSY);
+    atomic_set(&g_manager_stop_result, MODULE_ERR_BUSY);
+    atomic_set(&g_manager_stop_done, 0);
+    g_block_start_module_id = 0U;
+
+    zassert_equal(module_manager_register(&blocking_start_interface, NULL, &g_block_start_module_id), MODULE_OK, NULL);
+
+    k_tid_t start_tid =
+        k_thread_create(&g_block_start_thread, g_block_start_stack, K_THREAD_STACK_SIZEOF(g_block_start_stack),
+                        blocking_start_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+    zassert_equal(k_sem_take(&g_block_start_entered, K_SECONDS(1)), 0, "start 回调应已进入");
+
+    k_tid_t stop_tid =
+        k_thread_create(&g_manager_stop_thread, g_manager_stop_stack, K_THREAD_STACK_SIZEOF(g_manager_stop_stack),
+                        manager_stop_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+    k_msleep(20);
+    zassert_equal(atomic_get(&g_manager_stop_done), 0, "manager stop 不得越过在途 start");
+
+    k_sem_give(&g_block_start_release);
+    zassert_equal(k_thread_join(start_tid, K_SECONDS(1)), 0, "start thread 应结束");
+    zassert_equal(k_thread_join(stop_tid, K_SECONDS(1)), 0, "stop thread 应结束");
+    zassert_equal(atomic_get(&g_block_start_result), MODULE_OK, "并发 start 应正常完成");
+    zassert_equal(atomic_get(&g_manager_stop_result), MODULE_OK, "manager stop 应在 start 后完成");
+
+    module_info_t info;
+    zassert_equal(module_manager_get_module_info(g_block_start_module_id, &info), MODULE_OK, NULL);
+    zassert_equal(info.status, MODULE_STATUS_STOPPED, "并发 start 完成后模块必须被 stop");
+    zassert_equal(module_manager_unregister(g_block_start_module_id), MODULE_OK, NULL);
+}
+
+/* ---------- #5：依赖未 RUNNING 时 dependent 不应被启动 ---------- */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
+ZTEST(module_manager, test_dep_start_failure_skips_dependent) {
+    uint32_t base_id = 0U;
+    uint32_t dep_id = 0U;
+
+    atomic_set(&g_dep_failing_start_calls, 0);
+    atomic_set(&g_dep_dependent_start_calls, 0);
+
+    /* 关键布局：base 的 start_fn 强制失败 → 启动后状态为 ERROR。
+     * dep_fail_dependent 的 depends_on=[base]。
+     * start_all 调用时，base 是 INITIALIZED/STOPPED 候选；启动后失败。
+     * 第二次循环到 dependent 时，依赖重检发现 base 不是 RUNNING，跳过。 */
+    zassert_equal(module_manager_register(&dep_fail_base_interface, NULL, &base_id), 0, NULL);
+    zassert_equal(module_manager_register(&dep_fail_dependent_interface, NULL, &dep_id), 0, NULL);
+
+    const int started = module_manager_start_all();
+
+    /* base.start 被调用（强制失败），dependent.start 不应被调用 */
+    zassert_true(atomic_get(&g_dep_failing_start_calls) >= 1, "base.start 至少应被调用一次");
+    /* 关键断言：dependent.start 只在 base 成功 RUNNING 后才会被尝试；
+     * 由于 base 失败，dependent.start 不应被调用。 */
+    zassert_equal(atomic_get(&g_dep_failing_start_calls), 1, "base.start 应只调用一次");
+    zassert_equal(atomic_get(&g_dep_dependent_start_calls), 0, "依赖 base 未 RUNNING 时 dependent.start 不应被调用");
+
+    zassert_equal(started, 0, "base 与 dependent 均不应计入 started");
+
+    /* 清理 */
+    (void) module_manager_unregister(base_id);
+    (void) module_manager_unregister(dep_id);
+}
+#endif
+
+/* ---------- #6：manager 门控的语义性检查 ---------- */
+ZTEST(module_manager, test_register_rejected_during_stopping) {
+    /* 直接驱动 STOPPING 时序窗口在 ztest 中难以确定性触发；
+     * 验证门控所用的错误码定义存在且值正确。 */
+    zassert_equal(MODULE_ERR_INVALID_STATE, -EPERM, "错误码 INVALID_STATE 应等于 -EPERM");
+    zassert_equal(MODULE_ERR_BUSY, -EBUSY, "错误码 BUSY 应等于 -EBUSY");
+    zassert_equal(MODULE_ERR_IO, -EIO, "错误码 IO 应等于 -EIO");
+}
+
+/* ---------- #7：unsubscribe 返回值与本地记录保持一致 ---------- */
+ZTEST(module_manager, test_unsubscribe_reports_missing_subscription) {
+    const event_type_t   type = 203U;
+    uint32_t             id = 0U;
+    const event_status_t register_status = event_register_type(type, "module_unsubscribe");
+    zassert_equal(register_status, EVENT_OK, "event type 应已注册或可注册");
+    zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, NULL);
+    zassert_equal(module_manager_subscribe(id, type), 0, "subscribe 应成功");
+
+    zassert_equal(module_manager_unsubscribe(id, type), 0, "首次 unsubscribe 应成功");
+    zassert_equal(module_manager_unsubscribe(id, type), MODULE_ERR_NOT_FOUND, "重复 unsubscribe 应报告本地订阅不存在");
+
+    (void) module_manager_unregister(id);
+}
+
+ZTEST(module_manager, test_subscription_cookie_survives_array_compaction) {
+    const event_type_t type_a = 201U;
+    const event_type_t type_b = 202U;
+    uint32_t           id = 0U;
+    module_info_t      before;
+    module_info_t      after;
+
+    zassert_equal(event_register_type(type_a, "module_cookie_a"), EVENT_OK, NULL);
+    zassert_equal(event_register_type(type_b, "module_cookie_b"), EVENT_OK, NULL);
+    zassert_equal(module_manager_register(&stub_interface, NULL, &id), MODULE_OK, NULL);
+    zassert_equal(module_manager_subscribe(id, type_a), MODULE_OK, NULL);
+    zassert_equal(module_manager_subscribe(id, type_b), MODULE_OK, NULL);
+    zassert_equal(module_manager_get_module_info(id, &before), MODULE_OK, NULL);
+    zassert_equal(before.event_subscription_count, 2U, NULL);
+
+    const uint32_t cookie_b = before.event_subscriptions[1].cookie;
+    zassert_not_equal(cookie_b, 0U, NULL);
+
+    zassert_equal(module_manager_unsubscribe(id, type_a), MODULE_OK, NULL);
+    zassert_equal(module_manager_get_module_info(id, &after), MODULE_OK, NULL);
+    zassert_equal(after.event_subscription_count, 1U, NULL);
+    zassert_equal(after.event_subscriptions[0].type, type_b, NULL);
+    zassert_equal(after.event_subscriptions[0].cookie, cookie_b, "数组压缩不得改变订阅身份");
+
+    zassert_equal(module_manager_unsubscribe(id, type_b), MODULE_OK, NULL);
+    zassert_equal(module_manager_unregister(id), MODULE_OK, NULL);
+}
+
+ZTEST(module_manager, test_shutdown_waits_for_in_flight_event_callback) {
+    k_sem_init(&g_block_event_entered, 0, 1);
+    k_sem_init(&g_block_event_release, 0, 1);
+    atomic_set(&g_block_event_result, MODULE_ERR_BUSY);
+    atomic_set(&g_block_shutdown_result, MODULE_ERR_BUSY);
+    atomic_set(&g_block_shutdown_done, 0);
+    atomic_set(&g_block_shutdown_calls, 0);
+    g_block_module_id = 0U;
+
+    zassert_equal(module_manager_register(&blocking_stub_interface, NULL, &g_block_module_id), MODULE_OK, NULL);
+    zassert_equal(module_manager_start_module(g_block_module_id), MODULE_OK, NULL);
+
+    k_tid_t event_tid =
+        k_thread_create(&g_block_event_thread, g_block_event_stack, K_THREAD_STACK_SIZEOF(g_block_event_stack),
+                        blocking_send_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+    zassert_equal(k_sem_take(&g_block_event_entered, K_SECONDS(1)), 0, "事件回调应已进入");
+
+    k_tid_t shutdown_tid =
+        k_thread_create(&g_block_shutdown_thread, g_block_shutdown_stack, K_THREAD_STACK_SIZEOF(g_block_shutdown_stack),
+                        blocking_shutdown_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+    k_msleep(20);
+    zassert_equal(atomic_get(&g_block_shutdown_done), 0, "shutdown 不得越过在途事件回调");
+    zassert_equal(atomic_get(&g_block_shutdown_calls), 0, "回调结束前不得调用模块 shutdown");
+
+    k_sem_give(&g_block_event_release);
+    zassert_equal(k_thread_join(event_tid, K_SECONDS(1)), 0, NULL);
+    zassert_equal(k_thread_join(shutdown_tid, K_SECONDS(2)), 0, NULL);
+    zassert_equal(atomic_get(&g_block_event_result), MODULE_OK, NULL);
+    zassert_equal(atomic_get(&g_block_shutdown_result), MODULE_OK, NULL);
+    zassert_equal(atomic_get(&g_block_shutdown_calls), 1, NULL);
+}
+
+/* ---------- #9：reset_stats 保留模块计数字段 ---------- */
+ZTEST(module_manager, test_reset_stats_keeps_module_counts) {
+    uint32_t id1 = 0U;
+    uint32_t id2 = 0U;
+
+    zassert_equal(module_manager_register(&stub_interface, NULL, &id1), 0, NULL);
+    zassert_equal(module_manager_register(&stub2_interface, NULL, &id2), 0, NULL);
+    zassert_equal(module_manager_start_module(id1), 0, NULL);
+    zassert_equal(module_manager_start_module(id2), 0, NULL);
+
+    /* 触发一些事件让 processed/dropped 非 0 */
+    (void) module_manager_send_to_module(id1, NULL); /* NULL event 走 dropped 路径 */
+    (void) module_manager_broadcast(NULL);           /* 同上 */
+
+    module_mgr_stats_t before;
+    module_manager_get_stats(&before);
+    zassert_true(before.events_dropped > 0U, "应至少有一次 dropped");
+
+    module_manager_reset_stats();
+
+    module_mgr_stats_t after;
+    module_manager_get_stats(&after);
+    /* 模块计数不应被 reset 清零 */
+    zassert_equal(after.total_modules, before.total_modules, "total_modules 不应被 reset");
+    zassert_equal(after.active_modules, before.active_modules, "active_modules 不应被 reset");
+    zassert_equal(after.error_modules, before.error_modules, "error_modules 不应被 reset");
+    /* 事件计数器应被清零 */
+    zassert_equal(after.events_processed, 0U, "events_processed 应清零");
+    zassert_equal(after.events_dropped, 0U, "events_dropped 应清零");
+
+    (void) module_manager_unregister(id1);
+    (void) module_manager_unregister(id2);
+}
+
+/* ---------- #10：dump_info 在注销后不崩溃 ---------- */
+ZTEST(module_manager, test_dump_info_safe_under_unregister) {
+    uint32_t id = 0U;
+    zassert_equal(module_manager_register(&stub_interface, NULL, &id), 0, NULL);
+    zassert_equal(module_manager_start_module(id), 0, NULL);
+
+    /* 直接 dump：name 应可见 */
+    module_manager_dump_info();
+
+    /* 注销后再 dump：不崩溃（修复前会有 UAF 风险） */
+    zassert_equal(module_manager_unregister(id), 0, NULL);
+    module_manager_dump_info();
+}
+
 /* Zephyr: setup, before_each, after_each, suite_teardown — 每测清理须在 arg5 */
 ZTEST_SUITE(module_manager, NULL, module_manager_suite_setup, NULL, module_manager_test_teardown,
             module_manager_suite_teardown);

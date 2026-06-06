@@ -24,10 +24,11 @@ LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);
 
 module_manager_cb_t g_module_mgr;
 
-atomic_t g_module_mgr_shutting_down = ATOMIC_INIT(0);
-atomic_t g_module_mgr_initialized = ATOMIC_INIT(0);
+atomic_t        g_module_mgr_shutting_down = ATOMIC_INIT(0);
+atomic_t        g_module_mgr_initialized = ATOMIC_INIT(0);
+static uint32_t g_module_event_cookie_next = 1U;
 
-BUILD_ASSERT(sizeof(module_info_t) * CONFIG_MAX_MODULES <= 2048,
+BUILD_ASSERT(sizeof(module_info_t) * CONFIG_MAX_MODULES <= 3072,
              "module_manager snapshot too large for stack; reduce CONFIG_MAX_MODULES or "
              "CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS");
 
@@ -41,6 +42,33 @@ void mm_copy_module_name(char* dst, const char* src) {
     }
     strncpy(dst, src, MM_MODULE_NAME_MAX - 1U);
     dst[MM_MODULE_NAME_MAX - 1U] = '\0';
+}
+
+uint32_t allocate_event_cookie_locked(void) {
+    if (g_module_event_cookie_next == 0U) {
+        return 0U;
+    }
+
+    const uint32_t cookie = g_module_event_cookie_next;
+    g_module_event_cookie_next = (cookie == UINT32_MAX) ? 0U : (cookie + 1U);
+    return cookie;
+}
+
+int mm_wait_in_flight_drain(module_info_t* info, uint32_t timeout_ms) {
+    if (info == NULL) {
+        return MODULE_ERR_INVALID_ARG;
+    }
+    const uint32_t start = k_uptime_get_32();
+    const uint32_t deadline = start + timeout_ms;
+    while (atomic_get(&info->in_flight) > 0) {
+        if ((int32_t) (k_uptime_get_32() - deadline) >= 0) {
+            LOG_ERR("module id=%u: in_flight drain timeout (count=%ld, waited=%u ms)", (unsigned int) info->id,
+                    (long) atomic_get(&info->in_flight), (unsigned int) (k_uptime_get_32() - start));
+            return MODULE_ERR_TIMEOUT;
+        }
+        k_msleep(1);
+    }
+    return MODULE_OK;
 }
 
 zepl_state_t module_manager_lifecycle_state_locked(void) {

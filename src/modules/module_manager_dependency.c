@@ -6,8 +6,8 @@
  * @date 2026-05-28
  */
 
-#include "module_dependency_planner.h"
 #include "module_manager_internal.h"
+#include "module_manager_planner_internal.h"
 
 #include <zephyr/logging/log.h>
 #include <string.h>
@@ -15,6 +15,10 @@
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
 
 void mm_dep_planner_sort_priority_asc(mm_dep_order_entry_t* entries, int n) {
+    if (entries == NULL || n <= 1 || n > CONFIG_MAX_MODULES) {
+        return;
+    }
+
     for (int i = 0; i < n - 1; i++) {
         for (int j = i + 1; j < n; j++) {
             if ((int) entries[j].priority < (int) entries[i].priority) {
@@ -34,6 +38,10 @@ void mm_dep_planner_sort_priority_asc(mm_dep_order_entry_t* entries, int n) {
 #endif
 
 void mm_dep_planner_sort_priority_desc(mm_dep_order_entry_t* entries, int n) {
+    if (entries == NULL || n <= 1 || n > CONFIG_MAX_MODULES) {
+        return;
+    }
+
     for (int i = 0; i < n - 1; i++) {
         for (int j = i + 1; j < n; j++) {
             if ((int) entries[j].priority > (int) entries[i].priority) {
@@ -95,6 +103,9 @@ int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
     uint32_t pick_order[CONFIG_MAX_MODULES];
     int      n_work;
 
+    if (entries == NULL || n < 0 || n > CONFIG_MAX_MODULES) {
+        return 0;
+    }
     if (n <= 1) {
         return n;
     }
@@ -283,6 +294,9 @@ int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
 
+    if (entries == NULL || n < 0 || n > CONFIG_MAX_MODULES) {
+        return 0;
+    }
     if (n <= 1) {
         return n;
     }
@@ -306,13 +320,8 @@ int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
             if (depn == NULL) {
                 break;
             }
-            const uint32_t       did = find_module_id_by_name_locked(depn);
-            module_info_t* const dep = find_module_by_id_locked(did);
-
-            if (dep == NULL || dep->status != MODULE_STATUS_RUNNING) {
-                continue;
-            }
-            int j = -1;
+            const uint32_t did = find_module_id_by_name_locked(depn);
+            int            j = -1;
 
             for (int k = 0; k < n; k++) {
                 if (entries[k].id == did) {
@@ -321,8 +330,7 @@ int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
                 }
             }
             if (j < 0) {
-                LOG_WRN("Module id=%u: dependency '%s' not in stop snapshot (RUNNING but not collected)",
-                        (unsigned int) entries[i].id, depn);
+                LOG_WRN("Module id=%u: dependency '%s' not in stop snapshot", (unsigned int) entries[i].id, depn);
                 continue;
             }
             if (!mm_adj_matrix_test(adj, j, i)) {

@@ -1,16 +1,19 @@
 /**
  * @file module_dependency_planner.h
- * @brief 模块批量启停依赖规划（拓扑 + 优先级）
+ * @brief 模块批量启停依赖规划（拓扑 + 优先级）— 公开类型
  *
- * 调用方负责收集 start_order_entry_t 快照；拓扑排序路径会在函数内部短暂获取 module_manager 锁。
+ * 本头仅暴露数据结构（mm_dep_order_entry_t / start_order_entry_t），
+ * 供应用层在调用 module_manager_start_all / module_manager_stop_all 之前
+ * 收集条目时使用。具体的排序与拓扑构建函数已迁移到内部头
+ * module_manager_planner_internal.h，不再对应用层公开。
  *
  * @note
  * 依赖版本下限按 MODULE_VERSION(major, minor, patch) 打包整数比较，
  *       不解析 semver 字符串。
  * @author zeh
  * (china_qzh@163.com)
- * @version 1.0
- * @date 2026-05-28
+ * @version 1.1
+ * @date 2026-06-06
  */
 
 #ifndef MODULE_DEPENDENCY_PLANNER_H
@@ -38,29 +41,6 @@ typedef struct {
 
 /** 与历史 start_order_entry_t 布局相同 */
 typedef mm_dep_order_entry_t start_order_entry_t;
-
-/** 按 priority 升序（数值小优先启动） */
-void mm_dep_planner_sort_priority_asc(mm_dep_order_entry_t* entries, int n);
-
-#if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
-
-/** 按 priority 降序（停止时作 fallback） */
-void mm_dep_planner_sort_priority_desc(mm_dep_order_entry_t* entries, int n);
-
-/**
- * @brief 校验批次内依赖并拓扑排序（启动顺序）
- * @pre 调用方不得持有 module_manager_lock
- * @return 有效条目数（可能小于 n）
- */
-int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n);
-
-/**
- * @brief 拓扑排序后反转为停止顺序
- * @pre 调用方不得持有 module_manager_lock
- */
-int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n);
-
-#endif /* CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES */
 
 #ifdef __cplusplus
 }

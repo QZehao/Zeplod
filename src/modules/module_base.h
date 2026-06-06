@@ -26,6 +26,7 @@
 #ifndef MODULE_BASE_H
 #define MODULE_BASE_H
 
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
 
 #include <stdbool.h>
@@ -132,12 +133,31 @@ BUILD_ASSERT(CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS <= 255);
 typedef struct {
     event_type_t type;          /**< 事件类型 ID */
     uint32_t     subscriber_id; /**< 订阅者 ID（由事件系统分配） */
+    uint32_t     cookie;        /**< 管理器分配的稳定订阅身份，进程生命周期内不复用 */
+    bool         removing;      /**< 正在锁外调用 event_unsubscribe，阻止重复操作和新分发 */
 } module_event_subscription_t;
+
+/**
+ * @brief 模块操作态枚举（与 module_status_t 正交）
+ *
+ * 用于 start/stop 协议中防止同一槽位并发 start 或 stop。
+ * 0 表示 idle，可以接受新操作；非 0 表示有进行中的操作。
+ */
+typedef enum {
+    MM_OP_IDLE = 0,
+    MM_OP_STARTING = 1,
+    MM_OP_STOPPING = 2,
+} mm_op_state_t;
 
 /**
  * @brief 模块注册信息结构
  *
  * 包含模块注册后的所有管理信息。
+ *
+ * @note 指针字段（interface / config / internal_data）在锁外可能失效。
+ *       跨锁使用时请结合 generation 字段校验，或在持锁期间复制所需数据。
+ * @note generation 在每次清槽时自增，生命周期快照重入时用它检测
+ *       「槽位已被回收并复用」。事件订阅使用独立且不复用的 cookie。
  */
 typedef struct {
     const module_interface_t*   interface;     /**< 模块接口指针 */
@@ -147,7 +167,17 @@ typedef struct {
     uint32_t                    id;            /**< 模块唯一 ID */
     module_event_subscription_t event_subscriptions[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
     uint8_t                     event_subscription_count; /**< 已订阅的事件类型数量 */
+    mm_op_state_t               op_state;                 /**< 生命周期操作态：防止并发 start/stop */
+    uint32_t                    generation;               /**< 槽位 generation：清槽时自增，用于跨锁稳定性校验 */
+    atomic_t                    in_flight;                /**< 正在锁外执行的回调计数；注销前需等待归零 */
+    atomic_t                    draining;                 /**< 注销入口置 1；新分发路径见到即跳过 */
+    bool                        unregistering;            /**< unregister 入口防重入标志 */
 } module_info_t;
+
+static inline uint32_t mm_generation_next(uint32_t cur) {
+    /* 0 保留给首次初始化；回绕时跳过 0。 */
+    return (cur == UINT32_MAX) ? 1U : (cur + 1U);
+}
 
 /* =============================================================================
  * 模块辅助宏

@@ -88,7 +88,8 @@ typedef enum {
     MODULE_ERR_NOT_RUNNING = -ENOTCONN,     /**< 模块未运行 */
     MODULE_ERR_TIMEOUT = -ETIMEDOUT,        /**< 操作超时 */
     MODULE_ERR_IO = -EIO,                   /**< I/O 错误 */
-    MODULE_ERR_BUSY = -EBUSY                /**< 资源忙碌 */
+    MODULE_ERR_BUSY = -EBUSY,               /**< 资源忙碌 */
+    MODULE_ERR_INVALID_STATE = -EPERM       /**< 管理器/模块当前状态不允许该操作 */
 } module_mgr_result_t;
 
 /**
@@ -181,6 +182,12 @@ int module_manager_shutdown(void);
  * @param config 模块配置数据
  * @param module_id 输出参数：分配的模块 ID
  * @return 0 成功，负值错误码失败
+ * @retval MODULE_ERR_NOT_INITIALIZED 管理器未初始化
+ * @retval MODULE_ERR_INVALID_ARG 参数无效
+ * @retval MODULE_ERR_NO_MEM 槽位或模块 ID 耗尽
+ * @retval MODULE_ERR_ALREADY_EXISTS 同名模块已注册
+ * @retval MODULE_ERR_INVALID_STATE 管理器处于 STOPPING/ERROR 状态（拒绝新注册）
+ * @retval MODULE_ERR_IO init 返回期间槽位被回收/复用（罕见竞态）
  *
  * @note init() 在管理器互斥锁外调用（槽位占位后解锁再执行），但仍请不要在 init 内调用
  *       可能阻塞过久或依赖其它模块尚未就绪的 module_manager_* API。
@@ -192,10 +199,19 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 /**
  * @brief 注销模块
  *
- * 从管理器中移除模块，调用模块的 stop() 和 shutdown() 函数。
+ * 从管理器中移除模块，调用模块的 stop()（如处于 RUNNING）和 shutdown() 函数。
  *
  * @param module_id 模块 ID
  * @return 0 成功，负值错误码失败
+ * @retval MODULE_ERR_NOT_INITIALIZED 管理器未初始化
+ * @retval MODULE_ERR_NOT_FOUND 模块不存在
+ * @retval MODULE_ERR_BUSY 模块处于 INITIALIZING（init 未完成）或有重入 unregister
+ * @retval MODULE_ERR_INVALID_ARG 模块 ID 为 0
+ * @retval MODULE_ERR_IO 槽位在 stop/shutdown 期间被回收/复用
+ *
+ * @note 注销期间会先标记 draining 并等待所有正在锁外执行的回调结束，再调用 shutdown
+ *       与清槽。等待上限 1 秒；超时返回 MODULE_ERR_TIMEOUT，槽位保持冻结且不会释放资源，
+ *       调用方可稍后重试注销。
  */
 int module_manager_unregister(uint32_t module_id);
 
@@ -211,6 +227,8 @@ int module_manager_unregister(uint32_t module_id);
  *       interface->name）。仅在对应模块保持已注册、且由调用方自行持锁或同步的前提下才可
  *       安全访问；锁释放后勿长期持有快照中的指针。需要稳定名称时请使用
  *       module_manager_get_id_by_name，或在持锁期间复制所需字段。
+ * @note module_info_t 内的 `generation` 字段在槽位被清空时自增，可作为「当前
+ *       占用者身份」标识。跨锁访问快照时建议同时校验该字段以识别槽位回收。
  */
 int module_manager_get_module_info(uint32_t module_id, module_info_t* out);
 
@@ -247,6 +265,12 @@ void module_manager_foreach(void (*callback)(module_info_t*, void*), void* user_
  *
  * @param module_id 模块 ID
  * @return 0 成功，负值错误码失败
+ * @retval MODULE_ERR_NOT_FOUND 模块不存在
+ * @retval MODULE_ERR_INVALID_STATE 管理器未处于 RUNNING 状态
+ * @retval MODULE_ERR_BUSY 已有 start/stop 操作正在进行
+ * @retval MODULE_ERR_INVALID_ARG 状态不允许 start（仅 INITIALIZED/STOPPED 可启动）
+ * @retval MODULE_ERR_IO 回调执行期间槽位被回收/复用
+ * @retval 其他 start() 返回值原样回传
  */
 int module_manager_start_module(uint32_t module_id);
 
@@ -256,6 +280,9 @@ int module_manager_start_module(uint32_t module_id);
  * @param module_id 模块 ID
  * @return 0 表示成功，或**幂等**：模块当前非 RUNNING 时亦返回 0（未再次调用业务 stop 回调）；
  *         未找到或参数无效时返回 -1
+ * @retval MODULE_ERR_NOT_FOUND 模块不存在
+ * @retval MODULE_ERR_BUSY 已有 start/stop 操作正在进行
+ * @retval MODULE_ERR_IO 回调执行期间槽位被回收/复用
  * @note 含 SUSPENDED：挂起后直接 stop 亦返回 0 且不调业务 stop()；须先 resume 再 stop，
  *       或由模块在 control/shutdown 中自行收尾硬件。
  */
@@ -360,6 +387,10 @@ void module_manager_get_stats(module_mgr_stats_t* stats);
 
 /**
  * @brief 重置模块管理器统计信息
+ *
+ * 仅清零事件计数器（events_processed / events_dropped）。
+ * 模块计数字段（total_modules / active_modules / error_modules）反映
+ * 当前注册与启停状态，不在本函数清零范围内。
  */
 void module_manager_reset_stats(void);
 

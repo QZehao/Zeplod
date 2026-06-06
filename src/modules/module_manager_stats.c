@@ -37,17 +37,30 @@ void module_manager_get_stats(module_mgr_stats_t* stats) {
 }
 
 void module_manager_reset_stats(void) {
+    /* 修复 #9：只清零事件计数器。total_modules / active_modules / error_modules
+     * 是当前状态量，与模块注册/启停状态绑定，不应被 reset 抹掉。 */
     module_manager_lock();
-    (void) memset(&g_module_mgr.stats, 0, sizeof(g_module_mgr.stats));
+    g_module_mgr.stats.events_processed = 0U;
+    g_module_mgr.stats.events_dropped = 0U;
     module_manager_unlock();
 }
 
+/**
+ * @brief 锁内拷贝的快照条目。所有指针字段已替换为值字段。
+ */
+typedef struct {
+    uint32_t        id;
+    module_status_t status;
+    char            name[MM_MODULE_NAME_MAX];
+    uint32_t        version;
+} mm_dump_entry_t;
+
 void module_manager_dump_info(void) {
-    module_info_t snap[CONFIG_MAX_MODULES];
-    uint32_t      mod_count;
-    uint32_t      active;
-    uint32_t      errors;
-    int           n = 0;
+    mm_dump_entry_t snap[CONFIG_MAX_MODULES];
+    uint32_t        mod_count;
+    uint32_t        active;
+    uint32_t        errors;
+    int             n = 0;
 
     module_manager_lock();
 
@@ -56,9 +69,17 @@ void module_manager_dump_info(void) {
     errors = g_module_mgr.stats.error_modules;
 
     for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
-        if (g_module_mgr.modules[i].status != MODULE_STATUS_UNINITIALIZED) {
-            snap[n++] = g_module_mgr.modules[i];
+        module_info_t* m = &g_module_mgr.modules[i];
+        if (m->status == MODULE_STATUS_UNINITIALIZED) {
+            continue;
         }
+        /* 修复 #10：在持锁期间把 name/version 拷贝到栈缓冲。
+         * 锁外只访问本地栈，interface 指针的释放/模块注销都不再影响本函数。 */
+        snap[n].id = m->id;
+        snap[n].status = m->status;
+        snap[n].version = (m->interface != NULL) ? m->interface->version : 0U;
+        mm_copy_module_name(snap[n].name, (m->interface != NULL) ? m->interface->name : NULL);
+        n++;
     }
 
     module_manager_unlock();
@@ -69,10 +90,9 @@ void module_manager_dump_info(void) {
     LOG_INF("Active: %u, Errors: %u", (unsigned int) active, (unsigned int) errors);
 
     for (int i = 0; i < n; i++) {
-        module_info_t* info = &snap[i];
-        const char*    status_str;
+        const char* status_str;
 
-        switch (info->status) {
+        switch (snap[i].status) {
         case MODULE_STATUS_INITIALIZING:
             status_str = "INITING";
             break;
@@ -96,11 +116,10 @@ void module_manager_dump_info(void) {
             break;
         }
 
-        LOG_INF("  [%u] %s - %s (v%u.%u.%u)", (unsigned int) info->id,
-                info->interface != NULL && info->interface->name != NULL ? info->interface->name : "N/A", status_str,
-                info->interface != NULL ? MODULE_VERSION_MAJOR(info->interface->version) : 0,
-                info->interface != NULL ? MODULE_VERSION_MINOR(info->interface->version) : 0,
-                info->interface != NULL ? MODULE_VERSION_PATCH(info->interface->version) : 0);
+        LOG_INF("  [%u] %s - %s (v%u.%u.%u)", (unsigned int) snap[i].id, snap[i].name[0] != '\0' ? snap[i].name : "N/A",
+                status_str, (unsigned int) MODULE_VERSION_MAJOR(snap[i].version),
+                (unsigned int) MODULE_VERSION_MINOR(snap[i].version),
+                (unsigned int) MODULE_VERSION_PATCH(snap[i].version));
     }
 
     LOG_INF("=== end ===");

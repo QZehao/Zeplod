@@ -70,6 +70,15 @@ void clear_module_slot_locked(module_info_t* info) {
     info->id = 0U;
     info->event_subscription_count = 0U;
     (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
+
+    /* 清槽即代际变更；回绕时跳过保留值 0。 */
+    info->generation = mm_generation_next(info->generation);
+
+    info->op_state = MM_OP_IDLE;
+    info->unregistering = false;
+    /* 槽位清空即不再有回调在锁外执行；in_flight 与 draining 也随之重置。 */
+    atomic_set(&info->in_flight, 0);
+    atomic_set(&info->draining, 0);
 }
 
 int module_manager_register(const module_interface_t* interface, void* config, uint32_t* module_id) {
@@ -94,6 +103,14 @@ int module_manager_register(const module_interface_t* interface, void* config, u
     }
 
     module_manager_lock();
+
+    const zepl_state_t mgr_state = module_manager_lifecycle_state_locked();
+    if (atomic_get(&g_module_mgr_shutting_down) != 0 || !module_manager_lifecycle_allows_op(mgr_state)) {
+        module_manager_unlock();
+        LOG_WRN("Module manager lifecycle (%s) does not allow register", zepl_state_name(mgr_state));
+        return MODULE_ERR_INVALID_STATE;
+    }
+
     if (g_module_mgr.module_count >= CONFIG_MAX_MODULES) {
         module_manager_unlock();
         LOG_ERR("Maximum module count (%d) reached", CONFIG_MAX_MODULES);
@@ -133,12 +150,19 @@ int module_manager_register(const module_interface_t* interface, void* config, u
         return MODULE_ERR_NO_MEM;
     }
 
+    const uint16_t slot_index = (uint16_t) (info - g_module_mgr.modules);
+    const uint32_t slot_generation = info->generation;
+
     info->interface = interface;
     info->config = config;
     info->internal_data = NULL;
     info->status = MODULE_STATUS_INITIALIZING;
     info->id = new_id;
     info->event_subscription_count = 0U;
+    info->op_state = MM_OP_IDLE;
+    info->unregistering = false;
+    atomic_set(&info->in_flight, 0);
+    atomic_set(&info->draining, 0);
     (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
 
     if (module_id != NULL) {
@@ -157,7 +181,10 @@ int module_manager_register(const module_interface_t* interface, void* config, u
     module_manager_lock();
 
     info = find_module_by_id_locked(new_id);
-    if (info == NULL || info->status != MODULE_STATUS_INITIALIZING || info->interface != interface) {
+    /* 三段校验：槽位未被清空、仍处于 INITIALIZING、interface 未被改写。
+     * 这与 lifecycle.c 的 start/stop 协议保持一致。 */
+    if (info == NULL || info->status != MODULE_STATUS_INITIALIZING || info->interface != interface ||
+        info->generation != slot_generation || (uint16_t) (info - g_module_mgr.modules) != slot_index) {
         module_manager_unlock();
         LOG_ERR("Module '%s' slot lost or raced during init", interface->name);
         return MODULE_ERR_IO;
@@ -167,7 +194,6 @@ int module_manager_register(const module_interface_t* interface, void* config, u
         LOG_ERR("Module '%s' init failed: %d", interface->name, iret);
         int (*shutdown_fn)(void) = interface->shutdown;
         clear_module_slot_locked(info);
-        g_module_mgr.stats.error_modules++;
         module_manager_unlock();
         if (shutdown_fn != NULL) {
             shutdown_fn();
@@ -180,13 +206,24 @@ int module_manager_register(const module_interface_t* interface, void* config, u
 
         LOG_ERR("Module '%s' init exceeded timeout (%u ms)", interface->name, (unsigned int) elapsed);
         clear_module_slot_locked(info);
-        g_module_mgr.stats.error_modules++;
         module_manager_unlock();
 
         if (shutdown_fn != NULL) {
             shutdown_fn();
         }
         return MODULE_ERR_TIMEOUT;
+    }
+
+    if (atomic_get(&g_module_mgr_shutting_down) != 0 ||
+        !module_manager_lifecycle_allows_op(module_manager_lifecycle_state_locked())) {
+        int (*shutdown_fn)(void) = interface->shutdown;
+
+        clear_module_slot_locked(info);
+        module_manager_unlock();
+        if (shutdown_fn != NULL) {
+            (void) shutdown_fn();
+        }
+        return MODULE_ERR_INVALID_STATE;
     }
 
     info->status = MODULE_STATUS_INITIALIZED;
@@ -217,66 +254,111 @@ int module_manager_unregister(uint32_t module_id) {
         return MODULE_ERR_NOT_FOUND;
     }
 
-    if (info->status == MODULE_STATUS_RUNNING) {
-        int (*stop_fn)(void) = NULL;
-        int stop_ret = MODULE_OK;
-
-        if (info->interface != NULL) {
-            stop_fn = info->interface->stop;
-        }
+    /* 初始化期间拒绝注销（#4）：调用方需等待 init 完成。 */
+    if (info->status == MODULE_STATUS_INITIALIZING) {
         module_manager_unlock();
-        if (stop_fn != NULL) {
-            stop_ret = stop_fn();
-        }
-        module_manager_lock();
-        info = find_module_by_id_locked(module_id);
-        if (info == NULL) {
+        return MODULE_ERR_BUSY;
+    }
+    /* 重入防护（#3）：shutdown_fn 可能反向调入 unregister 自身。 */
+    if (info->unregistering) {
+        module_manager_unlock();
+        return MODULE_ERR_BUSY;
+    }
+    /* 操作进行中（STARTING/STOPPING）拒绝注销：此时 start_fn/stop_fn
+     * 仍在锁外执行，若并发 shutdown 会出现 use-after-init 风险。 */
+    if (info->op_state != MM_OP_IDLE) {
+        module_manager_unlock();
+        return MODULE_ERR_BUSY;
+    }
+    for (uint8_t i = 0U; i < info->event_subscription_count; i++) {
+        if (info->event_subscriptions[i].removing) {
             module_manager_unlock();
-            return MODULE_ERR_NOT_FOUND;
+            return MODULE_ERR_BUSY;
         }
-        if (stop_ret != MODULE_OK) {
-            LOG_ERR("Module unregister aborted: stop failed (id=%u ret=%d)", (unsigned int) module_id, stop_ret);
-            if (info->status == MODULE_STATUS_RUNNING) {
-                info->status = MODULE_STATUS_ERROR;
-                g_module_mgr.stats.error_modules++;
-            }
-            module_manager_unlock();
-            module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_ERROR);
-            return stop_ret;
-        }
+    }
+
+    const module_interface_t* const captured_iface = info->interface;
+    const uint32_t                  captured_gen = info->generation;
+    const uint16_t                  captured_slot = (uint16_t) (info - g_module_mgr.modules);
+
+    info->unregistering = true;
+    info->op_state = MM_OP_STOPPING;
+    atomic_set(&info->draining, 1);
+
+    int (*stop_fn)(void) = NULL;
+    if (info->status == MODULE_STATUS_RUNNING && info->interface != NULL) {
+        stop_fn = info->interface->stop;
+    }
+
+    module_manager_unlock();
+
+    const int stop_ret = (stop_fn != NULL) ? stop_fn() : MODULE_OK;
+
+    module_manager_lock();
+    info = find_module_by_id_locked(module_id);
+    if (info == NULL || info->interface != captured_iface || info->generation != captured_gen ||
+        (uint16_t) (info - g_module_mgr.modules) != captured_slot) {
+        module_manager_unlock();
+        return MODULE_ERR_IO;
+    }
+
+    if (stop_ret != MODULE_OK) {
+        LOG_ERR("Module unregister aborted: stop failed (id=%u ret=%d)", (unsigned int) module_id, stop_ret);
         if (info->status == MODULE_STATUS_RUNNING) {
-            info->status = MODULE_STATUS_STOPPED;
+            info->status = MODULE_STATUS_ERROR;
+            g_module_mgr.stats.error_modules++;
             if (g_module_mgr.stats.active_modules > 0U) {
                 g_module_mgr.stats.active_modules--;
             }
+        }
+        info->op_state = MM_OP_IDLE;
+        info->unregistering = false;
+        atomic_set(&info->draining, 0);
+        module_manager_unlock();
+        module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_ERROR);
+        return stop_ret;
+    }
+
+    if (info->status == MODULE_STATUS_RUNNING) {
+        info->status = MODULE_STATUS_STOPPED;
+        if (g_module_mgr.stats.active_modules > 0U) {
+            g_module_mgr.stats.active_modules--;
         }
     }
 
     event_type_t  types[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
     uint32_t      ids[CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS];
     const uint8_t sub_n = module_event_detach_locked(info, types, ids, CONFIG_MODULE_MAX_EVENT_SUBSCRIPTIONS);
-
+    int (*shutdown_fn)(void) = (info->interface != NULL) ? info->interface->shutdown : NULL;
     module_manager_unlock();
-    module_event_unsubscribe_batch(types, ids, sub_n);
-    module_manager_lock();
 
-    info = find_module_by_id_locked(module_id);
-    if (info == NULL) {
-        module_manager_unlock();
-        return MODULE_ERR_NOT_FOUND;
-    }
-
-    if (atomic_get(&g_module_mgr_shutting_down) == 0 && info->interface != NULL && info->interface->shutdown != NULL) {
-        int (*sd)(void) = info->interface->shutdown;
-
-        module_manager_unlock();
-        sd();
+    const int unsubscribe_ret = module_event_unsubscribe_batch(types, ids, sub_n);
+    const int drain_ret = mm_wait_in_flight_drain(info, MM_DRAIN_TIMEOUT_MS);
+    if (drain_ret != MODULE_OK) {
         module_manager_lock();
         info = find_module_by_id_locked(module_id);
-        if (info == NULL) {
-            module_manager_unlock();
-            return MODULE_ERR_NOT_FOUND;
+        if (info != NULL && info->interface == captured_iface && info->generation == captured_gen) {
+            info->op_state = MM_OP_IDLE;
+            info->unregistering = false;
+            /* 保持 draining=1：模块已停止且订阅身份已撤销，等待调用方稍后重试注销。 */
         }
+        module_manager_unlock();
+        return drain_ret;
+    }
+
+    if (shutdown_fn != NULL) {
+        const int shutdown_ret = shutdown_fn();
+        if (shutdown_ret != MODULE_OK) {
+            LOG_WRN("Module shutdown id=%u returned %d", (unsigned int) module_id, shutdown_ret);
+        }
+    }
+
+    module_manager_lock();
+    info = find_module_by_id_locked(module_id);
+    if (info == NULL || info->interface != captured_iface || info->generation != captured_gen ||
+        (uint16_t) (info - g_module_mgr.modules) != captured_slot) {
+        module_manager_unlock();
+        return MODULE_ERR_IO;
     }
 
     if (g_module_mgr.module_count > 0U) {
@@ -285,14 +367,16 @@ int module_manager_unregister(uint32_t module_id) {
     if (g_module_mgr.stats.total_modules > 0U) {
         g_module_mgr.stats.total_modules--;
     }
+    if (info->status == MODULE_STATUS_ERROR && g_module_mgr.stats.error_modules > 0U) {
+        g_module_mgr.stats.error_modules--;
+    }
 
     clear_module_slot_locked(info);
-
     module_manager_unlock();
 
-    LOG_DBG("Module unregistered: id=%d", module_id);
+    LOG_DBG("Module unregistered: id=%u", (unsigned int) module_id);
     module_mgr_notify_callback(module_id, MODULE_MGR_EVENT_UNREGISTERED);
-    return MODULE_OK;
+    return unsubscribe_ret;
 }
 
 int module_manager_get_module_info(uint32_t module_id, module_info_t* out) {
