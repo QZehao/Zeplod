@@ -22,7 +22,9 @@
 #include "module_manager_compat.h"
 #include "sys_log.h"
 #include "sys_timer.h"
+#include "sys_watchdog.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -104,6 +106,9 @@ static void app_apply_runtime_config(void) {
             lv = SYS_LOG_LEVEL_DBG;
         }
         sys_log_set_level(NULL, lv);
+    } else {
+        /* 运行时关闭日志：将级别置为 OFF，使 enable_logging=false 真正生效 */
+        sys_log_set_level(NULL, SYS_LOG_LEVEL_OFF);
     }
 #endif
 }
@@ -126,7 +131,33 @@ static int app_init_kv_step(void) {
 #endif
 
 static int app_init_finalize(void) {
-    g_app.initialized = true;
+    /*
+     * 核对前序 SYS_INIT 的关键结果：事件系统与分发器是事件驱动应用的硬前提。
+     * 任一未就绪则不进入 initialized 状态，使后续 app_init()/app_start() 拒绝运行，
+     * 避免在底层初始化失败时仍假装 RUNNING。
+     */
+    bool ok = true;
+
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
+    if (!event_compat_is_running()) {
+        LOG_ERR("Event system not running after SYS_INIT");
+        ok = false;
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
+    if (event_dispatcher_get_state() != DISPATCHER_RUNNING) {
+        LOG_ERR("Event dispatcher not running after SYS_INIT");
+        ok = false;
+    }
+#endif
+
+    g_app.initialized = ok;
+    if (!ok) {
+        LOG_ERR("Application initialization incomplete; start will be rejected");
+        return -EIO;
+    }
+
     app_apply_runtime_config();
     LOG_DBG("Application initialization complete");
     return 0;
@@ -163,19 +194,65 @@ int app_start(void) {
 
     LOG_DBG("Starting application...");
 
-    /* 事件系统/分发器已由 SYS_INIT 启动；module_compat SYS_INIT 仅启动管理器本身。 */
+    /*
+     * 启动按依赖顺序进行，并记录已启动资源；任一步失败时统一 goto rollback，
+     * 按启动逆序停止已启动资源，保证失败后不残留运行中的子系统（事务性回滚）。
+     */
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
+    bool started_event_system = false;
+#endif
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
+    bool started_dispatcher = false;
+#endif
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
+    bool started_modules = false;
+#endif
+#if APP_CONFIG_ENABLE_WATCHDOG
+    bool started_wdt = false;
+#endif
+    int started = 0;
+
+    /*
+     * 首次启动时事件系统/分发器已由 SYS_INIT autoinit 启动（此处检测到 RUNNING 则跳过）；
+     * 经 app_stop() 后二者已停止，此处负责重启，修复“停止后无法正确重启”。
+     */
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
+    if (!event_compat_is_running()) {
+        if (event_compat_start() != 0) {
+            LOG_ERR("event_compat_start failed");
+            goto rollback;
+        }
+        started_event_system = true;
+        LOG_DBG("Event system (re)started");
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
+    if (event_dispatcher_get_state() == DISPATCHER_STOPPED) {
+        if (event_dispatcher_start() != EVENT_OK) {
+            LOG_ERR("event_dispatcher_start failed");
+            goto rollback;
+        }
+        started_dispatcher = true;
+        LOG_DBG("Event dispatcher (re)started");
+    }
+#endif
 
     /* 启动各已注册业务模块（INITIALIZED/STOPPED → RUNNING） */
-    int started = module_compat_start_all();
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
+    started = module_compat_start_all();
+    started_modules = true;
     LOG_DBG("Started %d modules", started);
+#endif
 
 #if APP_CONFIG_ENABLE_WATCHDOG
     if (g_app.config.enable_watchdog) {
         int wdt_rc = sys_wdt_start();
         if (wdt_rc != 0) {
             LOG_ERR("sys_wdt_start failed: %d", wdt_rc);
-            return APP_ERR_INIT;
+            goto rollback;
         }
+        started_wdt = true;
     }
 #endif
 
@@ -191,13 +268,13 @@ int app_start(void) {
         g_heartbeat_timer = sys_timer_create(&heartbeat_config);
         if (g_heartbeat_timer == NULL) {
             LOG_ERR("Heartbeat timer create failed");
-            return APP_ERR_INIT;
+            goto rollback;
         }
         int tmr_rc = sys_timer_start(g_heartbeat_timer);
         if (tmr_rc != 0) {
             LOG_ERR("sys_timer_start(heartbeat) failed: %d", tmr_rc);
             app_heartbeat_timer_teardown();
-            return APP_ERR_INIT;
+            goto rollback;
         }
     }
 #endif
@@ -209,6 +286,34 @@ int app_start(void) {
     LOG_INF("Application ready (modules=%d)", started);
 
     return APP_OK;
+
+/* 仅当存在可能 goto rollback 的启动步骤时才生成回滚段，避免极简配置下出现未使用标签告警。 */
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT) || IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT) ||                          \
+    APP_CONFIG_ENABLE_WATCHDOG || (APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0))
+rollback:
+    /* 按启动逆序停止本次已启动的资源；仅回滚本函数启动的部分。 */
+#if APP_CONFIG_ENABLE_WATCHDOG
+    if (started_wdt) {
+        (void) sys_wdt_stop();
+    }
+#endif
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
+    if (started_modules) {
+        (void) module_compat_stop_all();
+    }
+#endif
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
+    if (started_dispatcher) {
+        (void) event_dispatcher_stop();
+    }
+#endif
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
+    if (started_event_system) {
+        (void) event_compat_stop();
+    }
+#endif
+    return APP_ERR_INIT;
+#endif
 }
 
 int app_stop(void) {
@@ -225,19 +330,29 @@ int app_stop(void) {
     atomic_set(&g_app.running, 0);
 
     /* 停止所有模块 */
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
     module_compat_stop_all();
+#endif
 
+    /*
+     * 仅停止由 SYS_INIT autoinit 管理的事件系统/分发器，确保与 app_start() 的重启路径
+     * 对称：app_start() 在二者停止后负责重新启动。
+     */
+#if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
     /* 在事件系统之前停止事件分发器 */
     if (event_dispatcher_stop() != EVENT_OK) {
         LOG_ERR("event_dispatcher_stop failed");
     } else {
         LOG_INF("Event dispatcher stopped");
     }
+#endif
 
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
     /* 停止事件系统 */
     if (event_compat_stop() != 0) {
         LOG_ERR("event_compat_stop failed");
     }
+#endif
 
 #if APP_CONFIG_ENABLE_WATCHDOG
     if (g_app.config.enable_watchdog) {
@@ -289,9 +404,11 @@ static void app_heartbeat_timer_callback(sys_timer_handle_t timer, void* user_da
 
     uint32_t count = (uint32_t) atomic_inc(&g_app.heartbeat_count);
 
-    /* 喂看门狗 */
+    /* 喂看门狗（同时受编译开关与运行时 enable_watchdog 控制，与 app_start 的启动条件一致） */
 #if APP_CONFIG_ENABLE_WATCHDOG
-    sys_wdt_feed();
+    if (g_app.config.enable_watchdog) {
+        sys_wdt_feed();
+    }
 #endif
 
     /* 记录周期性状态 */

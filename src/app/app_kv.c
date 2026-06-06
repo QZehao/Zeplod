@@ -73,11 +73,23 @@ static int find_free_locked(void) {
 }
 
 #define KV_PERSIST_MAGIC   0x01764B41u
-#define KV_PERSIST_VERSION 1U
+/*
+ * 版本 2：每条记录头部由 klen(1) + vlen(1) 改为 klen(1) + vlen(2, LE)。
+ * 旧版 vlen 为 8 位，无法表示 APP_KV_VALUE_MAX_LEN 允许的 >255 的值（最大 512），
+ * 会截断长度字段导致保存后无法解码。改为 16 位长度并提升版本号；旧版本(1)的 blob
+ * 在 decode 时因版本不匹配被安全拒绝（清表），不会误读为新格式。
+ */
+#define KV_PERSIST_VERSION 2U
 #define KV_SETTINGS_KEY    "app_kv/d"
 
 /** 持久化编解码缓冲（静态，避免 SYS_INIT/shell 栈上分配 APP_KV_PERSIST_BLOB_MAX） */
 static uint8_t g_kv_persist_blob[APP_KV_PERSIST_BLOB_MAX];
+
+/**
+ * 持久化专用锁：保护 g_kv_persist_blob 在「编码/解码 → settings 读写」整个过程不被并发复用。
+ * 锁序固定为 persist → kv（先持久化锁，再 KV 锁），任何路径不得反向，以避免死锁。
+ */
+static struct k_mutex g_kv_persist_lock;
 
 static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
     if (len < 8U) {
@@ -100,11 +112,12 @@ static int kv_decode_into_slots(const uint8_t* buf, size_t len) {
     size_t off = 8U;
 
     for (uint16_t n = 0U; n < count; n++) {
-        if (off + 2U > len) {
+        if (off + 3U > len) { /* 每条头部：klen(1) + vlen(2) */
             return APP_ERR_INVALID_PARAM;
         }
-        uint8_t klen = buf[off++];
-        uint8_t vlen = buf[off++];
+        uint8_t  klen = buf[off++];
+        uint16_t vlen = sys_get_le16(buf + off);
+        off += 2U;
         if (klen == 0U || klen >= APP_KV_KEY_MAX_LEN || vlen >= APP_KV_VALUE_MAX_LEN) {
             return APP_ERR_INVALID_PARAM;
         }
@@ -171,11 +184,12 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
         if (klen == 0U || klen >= (size_t) APP_KV_KEY_MAX_LEN || vlen >= (size_t) APP_KV_VALUE_MAX_LEN) {
             return APP_ERR_INVALID_PARAM;
         }
-        if (off + 2U + klen + 1U + vlen + 1U > cap) {
+        if (off + 3U + klen + 1U + vlen + 1U > cap) { /* 每条头部：klen(1) + vlen(2) */
             return APP_ERR_MEMORY;
         }
-        buf[off++] = (uint8_t) klen;
-        buf[off++] = (uint8_t) vlen;
+        buf[off++] = (uint8_t) klen;              /* key 长度 < 256，单字节足够 */
+        sys_put_le16((uint16_t) vlen, buf + off); /* value 长度可达 512，需 16 位 */
+        off += 2U;
         memcpy(buf + off, g_kv[i].key, klen + 1U);
         off += klen + 1U;
         memcpy(buf + off, g_kv[i].value, vlen + 1U);
@@ -202,21 +216,24 @@ void app_kv_init(void) {
     memset(g_kv, 0, sizeof(g_kv));
 
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
+    k_mutex_init(&g_kv_persist_lock);
     if (settings_subsys_init() != 0) {
         LOG_WRN("settings_subsys_init failed; app_kv not loaded from flash");
     } else {
-        k_mutex_lock(&g_kv_lock, K_FOREVER);
+        k_mutex_lock(&g_kv_persist_lock, K_FOREVER);
         ssize_t n = settings_load_one(KV_SETTINGS_KEY, g_kv_persist_blob, sizeof(g_kv_persist_blob));
         if (n < 0 && n != -ENOENT) {
             LOG_WRN("settings_load_one(%s) failed: %zd", KV_SETTINGS_KEY, n);
         } else if (n > 0) {
+            k_mutex_lock(&g_kv_lock, K_FOREVER);
             int d = kv_decode_into_slots(g_kv_persist_blob, (size_t) n);
             if (d != APP_OK) {
                 LOG_WRN("app_kv flash blob invalid or corrupt (err=%d), cleared RAM table", d);
                 memset(g_kv, 0, sizeof(g_kv));
             }
+            k_mutex_unlock(&g_kv_lock);
         }
-        k_mutex_unlock(&g_kv_lock);
+        k_mutex_unlock(&g_kv_persist_lock);
     }
 #endif
 
@@ -389,16 +406,21 @@ int app_kv_save(void) {
         return APP_ERR_INIT;
     }
     size_t len = 0U;
+    /* persist 锁覆盖「编码 → settings_save_one」全程，避免其它 save/load 复用缓冲。 */
+    k_mutex_lock(&g_kv_persist_lock, K_FOREVER);
     k_mutex_lock(&g_kv_lock, K_FOREVER);
     int enc = kv_encode_blob_locked(g_kv_persist_blob, sizeof(g_kv_persist_blob), &len);
     k_mutex_unlock(&g_kv_lock);
     if (enc != APP_OK) {
+        k_mutex_unlock(&g_kv_persist_lock);
         return enc;
     }
     if (settings_subsys_init() != 0) {
+        k_mutex_unlock(&g_kv_persist_lock);
         return APP_ERR_INIT;
     }
     int w = settings_save_one(KV_SETTINGS_KEY, g_kv_persist_blob, len);
+    k_mutex_unlock(&g_kv_persist_lock);
     return w == 0 ? APP_OK : APP_ERR_IO;
 #endif
 }
@@ -413,23 +435,27 @@ int app_kv_load(void) {
     if (settings_subsys_init() != 0) {
         return APP_ERR_INIT;
     }
-    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    /* persist 锁覆盖「settings_load_one → 解码」全程，避免其它 save/load 复用缓冲。 */
+    k_mutex_lock(&g_kv_persist_lock, K_FOREVER);
     ssize_t n = settings_load_one(KV_SETTINGS_KEY, g_kv_persist_blob, sizeof(g_kv_persist_blob));
     if (n < 0) {
-        k_mutex_unlock(&g_kv_lock);
         if (n == -ENOENT) {
             k_mutex_lock(&g_kv_lock, K_FOREVER);
             memset(g_kv, 0, sizeof(g_kv));
             k_mutex_unlock(&g_kv_lock);
+            k_mutex_unlock(&g_kv_persist_lock);
             return APP_OK;
         }
+        k_mutex_unlock(&g_kv_persist_lock);
         return APP_ERR_IO;
     }
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
     int d = kv_decode_into_slots(g_kv_persist_blob, (size_t) n);
     if (d != APP_OK) {
         memset(g_kv, 0, sizeof(g_kv));
     }
     k_mutex_unlock(&g_kv_lock);
+    k_mutex_unlock(&g_kv_persist_lock);
     return d == APP_OK ? APP_OK : APP_ERR_INVALID_PARAM;
 #endif
 }

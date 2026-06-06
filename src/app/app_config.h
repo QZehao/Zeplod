@@ -121,8 +121,8 @@ extern "C" {
 #define APP_KV_KEY_MAX_LEN            CONFIG_APP_KV_KEY_MAX_LEN
 #define APP_KV_VALUE_MAX_LEN          CONFIG_APP_KV_VALUE_MAX_LEN
 
-/** 单条 KV 在 persist blob 中的编码上界（klen + vlen 字节 + key NUL + value NUL） */
-#define APP_KV_PERSIST_ENTRY_MAX      (2U + (unsigned) APP_KV_KEY_MAX_LEN + (unsigned) APP_KV_VALUE_MAX_LEN)
+/** 单条 KV 在 persist blob 中的编码上界（klen(1) + vlen(2) 字节 + key NUL + value NUL） */
+#define APP_KV_PERSIST_ENTRY_MAX      (3U + (unsigned) APP_KV_KEY_MAX_LEN + (unsigned) APP_KV_VALUE_MAX_LEN)
 
 /** Settings 中单条 blob 上限（魔数+头+各槽位序列化，需 ≥ 实际编码长度） */
 #define APP_KV_PERSIST_BLOB_MAX       (8U + (unsigned) APP_KV_MAX_ENTRIES * APP_KV_PERSIST_ENTRY_MAX)

@@ -273,8 +273,7 @@ zeplod/
     ├── app/                          # 应用层
     │   ├── app_main.{c,h}
     │   ├── app_config.h              # 功能开关、初始化优先级、栈大小
-    │   ├── app_version.{c,h}
-    │   ├── app_version_config.h.in   # 版本头文件模板（CMake 生成）
+    │   ├── app_version.{c,h}         # 版本 API（版本宏由根目录 APP_VERSION 经 -D 注入）
     │   └── app_kv.{c,h}              # 应用键值存储（可选掉电保存）
     └── proprietary/                  # 商业闭源模块（可选，由 proprietary_manage 启用）
 ```

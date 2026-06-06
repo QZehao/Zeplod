@@ -159,11 +159,16 @@ Bits 7-0:   Patch version (8 bits)
 Example: 1.2.3 = 0x010203 = 66051
 ```
 
-## Auto-Generated Files
+## Version Macro Injection
 
-CMake automatically generates the following files during build:
+Version macros are injected at build time via `target_compile_definitions` (`-D`)
+in `CMakeLists.txt`, sourced from the repo-root `APP_VERSION` file:
 
-- `build/generated/app_version_config.h` - Contains all version macro definitions
+- `PROJECT_VERSION_MAJOR/MINOR/PATCH`, `PROJECT_VERSION` - application version (from `APP_VERSION`)
+- `GIT_COMMIT_HASH`, `GIT_BRANCH`, `GIT_TAG`, `GIT_DIRTY` - Git information
+- `BUILD_TIMESTAMP`, `BUILD_DATE`, `BUILD_TIME`, `BUILD_TARGET` - build information
+
+`app_version.h` consumes these macros (with safe `#ifndef` fallbacks).
 
 ## CI/CD Integration
 
@@ -230,10 +235,10 @@ git clean -fdx
 
 | File | Description |
 |------|-------------|
+| `APP_VERSION` | Single source of truth for the version number (X.Y.Z) |
 | `src/app/app_version.h` | Version API header |
 | `src/app/app_version.c` | Version API implementation |
-| `src/app/app_version_config.h.in` | CMake template |
-| `CMakeLists.txt` | Version configuration |
+| `CMakeLists.txt` | Reads `APP_VERSION`, injects version macros via `-D` |
 
 ## References
 

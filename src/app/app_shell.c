@@ -27,7 +27,8 @@
 
 #include <zephyr/shell/shell.h>
 
-#ifdef CONFIG_SHELL
+/* 受 CONFIG_APP_ENABLE_SHELL 控制（该选项 depends on SHELL）；关闭时不注册任何 app 命令。 */
+#ifdef CONFIG_APP_ENABLE_SHELL
 
 static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size_t first_idx) {
     size_t pos = 0U;
@@ -210,8 +211,8 @@ static int cmd_app_status(const struct shell* shell, size_t argc, char** argv) {
     shell_print(shell, "  Version: %s", version_str);
     shell_print(shell, "  Info: %s", info_str);
     shell_print(shell, "  State: %s", app_is_running() ? "RUNNING" : "STOPPED");
-    shell_print(shell, "  Uptime: %d ms", app_get_uptime());
-    shell_print(shell, "  Heartbeats: %d", (int) app_get_heartbeat_count());
+    shell_print(shell, "  Uptime: %u ms", app_get_uptime());
+    shell_print(shell, "  Heartbeats: %u", (unsigned int) app_get_heartbeat_count());
 
     return 0;
 }
@@ -220,6 +221,7 @@ static int cmd_app_modules(const struct shell* shell, size_t argc, char** argv) 
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
     shell_print(shell, "Registered Modules:");
     module_compat_dump_info();
 
@@ -227,9 +229,12 @@ static int cmd_app_modules(const struct shell* shell, size_t argc, char** argv) 
 
     module_compat_get_stats(&stats);
     shell_print(shell, "Module Statistics:");
-    shell_print(shell, "  Total: %d", stats.total_modules);
-    shell_print(shell, "  Active: %d", stats.active_modules);
-    shell_print(shell, "  Errors: %d", stats.error_modules);
+    shell_print(shell, "  Total: %u", (unsigned int) stats.total_modules);
+    shell_print(shell, "  Active: %u", (unsigned int) stats.active_modules);
+    shell_print(shell, "  Errors: %u", (unsigned int) stats.error_modules);
+#else
+    shell_print(shell, "Module manager disabled (CONFIG_MODULE_MANAGER=n)");
+#endif
 
     return 0;
 }
@@ -242,9 +247,9 @@ static int cmd_app_events(const struct shell* shell, size_t argc, char** argv) {
     event_compat_get_statistics(&stats);
 
     shell_print(shell, "Event System Statistics:");
-    shell_print(shell, "  Total Events: %d", stats.total_events);
-    shell_print(shell, "  Queue Depth: %d", stats.queue_depth);
-    shell_print(shell, "  Dropped: %d", stats.dropped_events);
+    shell_print(shell, "  Total Events: %u", (unsigned int) stats.total_events);
+    shell_print(shell, "  Queue Depth: %u", (unsigned int) stats.queue_depth);
+    shell_print(shell, "  Dropped: %u", (unsigned int) stats.dropped_events);
 
 #if APP_CONFIG_ENABLE_STATS
     dispatcher_stats_t dstats;
@@ -265,10 +270,14 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
+#if APP_CONFIG_ENABLE_MEMORY_MGR
     shell_print(shell, "Memory Statistics:");
-    shell_print(shell, "  Heap Size: %d bytes", sys_mem_get_heap_size());
-    shell_print(shell, "  Free: %d bytes", sys_mem_get_free_size());
-    shell_print(shell, "  Min Free: %d bytes", sys_mem_get_min_free_size());
+    shell_print(shell, "  Heap Size: %zu bytes", sys_mem_get_heap_size());
+    shell_print(shell, "  Free: %zu bytes", sys_mem_get_free_size());
+    shell_print(shell, "  Min Free: %zu bytes", sys_mem_get_min_free_size());
+#else
+    shell_print(shell, "Memory service disabled (CONFIG_SYS_MEMORY_ENABLE=n)");
+#endif
 
     return 0;
 }
@@ -276,22 +285,31 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
 #if APP_CONFIG_ENABLE_TOP
 
 static void cmd_app_top_once(const struct shell* shell) {
-    module_compat_stats_t module_stats;
-    event_compat_stats_t  event_stats;
+    event_compat_stats_t event_stats;
 
-    module_compat_get_stats(&module_stats);
     event_compat_get_statistics(&event_stats);
 
     shell_print(shell, "Top Snapshot:");
-    shell_print(shell, "  Uptime: %d ms  State: %s", app_get_uptime(), app_is_running() ? "RUNNING" : "STOPPED");
+    shell_print(shell, "  Uptime: %u ms  State: %s", app_get_uptime(), app_is_running() ? "RUNNING" : "STOPPED");
+#if IS_ENABLED(CONFIG_MODULE_MANAGER)
+    module_compat_stats_t module_stats;
+
+    module_compat_get_stats(&module_stats);
     shell_print(shell, "  Modules: total=%u active=%u errors=%u events=%u dropped=%u",
                 (unsigned int) module_stats.total_modules, (unsigned int) module_stats.active_modules,
                 (unsigned int) module_stats.error_modules, (unsigned int) module_stats.events_processed,
                 (unsigned int) module_stats.events_dropped);
+#else
+    shell_print(shell, "  Modules: disabled");
+#endif
     shell_print(shell, "  Events: total=%u queue=%u dropped=%u", (unsigned int) event_stats.total_events,
                 (unsigned int) event_stats.queue_depth, (unsigned int) event_stats.dropped_events);
-    shell_print(shell, "  Memory: free=%d min_free=%d heap=%d", sys_mem_get_free_size(), sys_mem_get_min_free_size(),
-                sys_mem_get_heap_size());
+#if APP_CONFIG_ENABLE_MEMORY_MGR
+    shell_print(shell, "  Memory: free=%zu min_free=%zu heap=%zu", sys_mem_get_free_size(),
+                sys_mem_get_min_free_size(), sys_mem_get_heap_size());
+#else
+    shell_print(shell, "  Memory: disabled");
+#endif
 
 #ifdef CONFIG_DATA_BUS
     data_bus_overview_t data_bus_stats;
@@ -413,4 +431,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app, SHELL_CMD(status, NULL, "Show applicatio
 
 SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
 
-#endif /* CONFIG_SHELL */
+#endif /* CONFIG_APP_ENABLE_SHELL */

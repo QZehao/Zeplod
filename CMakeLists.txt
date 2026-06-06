@@ -85,6 +85,15 @@ endif()
 
 message(STATUS "Project Version: ${PROJECT_VERSION}")
 
+# 保存独立的应用版本变量。
+# 下方的 find_package(Zephyr) 与 project() 会用 Zephyr 内核版本（如 4.x.x）重写
+# PROJECT_VERSION_* / PROJECT_VERSION，因此其后所有编译宏与生成头必须改用 APP_VERSION_*，
+# 切勿再复用 PROJECT_VERSION_*，否则固件会错误地报告 Zephyr 版本。
+set(APP_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(APP_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(APP_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(APP_VERSION_STRING "${PROJECT_VERSION}")
+
 # Note: BOARD_ROOT is not needed for standard boards like nucleo_l4r5zi
 # Only use BOARD_ROOT if you have custom boards in the boards/ directory
 # list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/boards)
@@ -93,7 +102,7 @@ message(STATUS "Project Version: ${PROJECT_VERSION}")
 # For freestanding applications, explicitly specify ZEPHYR_BASE
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(zeplod VERSION ${PROJECT_VERSION})
+project(zeplod VERSION ${APP_VERSION_STRING})
 
 # =============================================================================
 # Git Information (Auto-detect)
@@ -328,10 +337,10 @@ endif()
 # =============================================================================
 
 target_compile_definitions(app PRIVATE
-    PROJECT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-    PROJECT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-    PROJECT_VERSION_PATCH=${PROJECT_VERSION_PATCH}
-    PROJECT_VERSION="${PROJECT_VERSION}"
+    PROJECT_VERSION_MAJOR=${APP_VERSION_MAJOR}
+    PROJECT_VERSION_MINOR=${APP_VERSION_MINOR}
+    PROJECT_VERSION_PATCH=${APP_VERSION_PATCH}
+    PROJECT_VERSION="${APP_VERSION_STRING}"
     GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
     GIT_BRANCH="${GIT_BRANCH}"
     GIT_TAG="${GIT_TAG}"
@@ -346,6 +355,9 @@ target_compile_definitions(app PRIVATE
 # Include Directories
 # =============================================================================
 
+# 版本信息说明：版本宏（PROJECT_VERSION_* / PROJECT_VERSION / GIT_* / BUILD_*）统一通过
+# 上方 target_compile_definitions 的 -D 注入，源头为仓库根 APP_VERSION 文件。
+# 不再生成/包含 app_version_config.h（曾为无人 include 的死代码）。
 target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
@@ -353,19 +365,4 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules_examples
-)
-
-# =============================================================================
-# Generate Version Header (Optional - for auto-generated version file)
-# =============================================================================
-
-# Configure a version header file with build-time values
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/app/app_version_config.h.in
-    ${CMAKE_BINARY_DIR}/generated/app_version_config.h
-    @ONLY
-)
-
-target_include_directories(app PRIVATE
-    ${CMAKE_BINARY_DIR}/generated
 )
