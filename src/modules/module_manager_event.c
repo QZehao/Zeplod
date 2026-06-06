@@ -104,6 +104,10 @@ int event_status_to_module_error(event_status_t status) {
 }
 
 int module_manager_subscribe(uint32_t module_id, event_type_t event_type) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     module_info_t* info = find_module_by_id_locked(module_id);
@@ -183,6 +187,10 @@ int module_manager_subscribe(uint32_t module_id, event_type_t event_type) {
 }
 
 int module_manager_unsubscribe(uint32_t module_id, event_type_t event_type) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     module_info_t* info = find_module_by_id_locked(module_id);
@@ -264,6 +272,10 @@ int module_manager_unsubscribe(uint32_t module_id, event_type_t event_type) {
 }
 
 int module_manager_send_to_module(uint32_t module_id, const event_t* event) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     if (event == NULL) {
         module_manager_lock();
         g_module_mgr.stats.events_dropped++;
@@ -316,6 +328,10 @@ int module_manager_send_to_module(uint32_t module_id, const event_t* event) {
 }
 
 int module_manager_broadcast(const event_t* event) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     if (event == NULL) {
         return MODULE_ERR_INVALID_ARG;
     }
@@ -381,11 +397,13 @@ static void module_event_handler(const event_t* event, void* user_data) {
     module_info_t* info = NULL;
     const int      sub_idx = find_event_cookie_locked(cookie, &info);
     if (sub_idx < 0 || info == NULL || info->event_subscriptions[sub_idx].removing) {
+        g_module_mgr.stats.events_dropped++;
         module_manager_unlock();
         return;
     }
     if (atomic_get(&info->draining) != 0 || info->status != MODULE_STATUS_RUNNING || info->interface == NULL ||
         info->interface->on_event == NULL) {
+        g_module_mgr.stats.events_dropped++;
         module_manager_unlock();
         return;
     }

@@ -165,10 +165,6 @@ int module_manager_register(const module_interface_t* interface, void* config, u
     atomic_set(&info->draining, 0);
     (void) memset(info->event_subscriptions, 0, sizeof(info->event_subscriptions));
 
-    if (module_id != NULL) {
-        *module_id = new_id;
-    }
-
     int (*init_fn)(void*) = interface->init;
     void* cfg = config;
 
@@ -229,6 +225,11 @@ int module_manager_register(const module_interface_t* interface, void* config, u
     info->status = MODULE_STATUS_INITIALIZED;
     g_module_mgr.module_count++;
     g_module_mgr.stats.total_modules++;
+
+    /* 仅在注册最终成功后才写出 ID，避免失败/超时/状态拒绝路径误置输出参数。 */
+    if (module_id != NULL) {
+        *module_id = new_id;
+    }
 
     module_manager_unlock();
 

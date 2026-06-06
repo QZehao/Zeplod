@@ -16,6 +16,10 @@ void module_mgr_notify_callback(uint32_t module_id, module_mgr_event_t evt) {
     module_mgr_callback_t cb;
     void*                 ud;
 
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return;
+    }
+
     module_manager_lock();
     cb = g_module_mgr.callback;
     ud = g_module_mgr.callback_user_data;
@@ -31,12 +35,21 @@ void module_manager_get_stats(module_mgr_stats_t* stats) {
         return;
     }
 
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        (void) memset(stats, 0, sizeof(*stats));
+        return;
+    }
+
     module_manager_lock();
     *stats = g_module_mgr.stats;
     module_manager_unlock();
 }
 
 void module_manager_reset_stats(void) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return;
+    }
+
     /* 修复 #9：只清零事件计数器。total_modules / active_modules / error_modules
      * 是当前状态量，与模块注册/启停状态绑定，不应被 reset 抹掉。 */
     module_manager_lock();
@@ -61,6 +74,10 @@ void module_manager_dump_info(void) {
     uint32_t        active;
     uint32_t        errors;
     int             n = 0;
+
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return;
+    }
 
     module_manager_lock();
 
@@ -126,6 +143,10 @@ void module_manager_dump_info(void) {
 }
 
 void module_manager_set_callback(module_mgr_callback_t callback, void* user_data) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return;
+    }
+
     module_manager_lock();
     g_module_mgr.callback = callback;
     g_module_mgr.callback_user_data = user_data;

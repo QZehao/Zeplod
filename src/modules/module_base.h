@@ -101,6 +101,8 @@ typedef struct {
     /**
      * 可选依赖版本下限：与 depends_on 下标一一对应。
      * NULL 表示不检查依赖版本；非 NULL 时必须与 depends_on 的非 NULL 项等长。
+     * @warning 该数组无独立长度，仅靠与 depends_on 等长的契约约束。若长度短于
+     *          depends_on，规划器按 depends_on 下标访问本数组将越界读取（未定义行为）。
      * 无版本约束的依赖项填 MODULE_DEP_VERSION_ANY。
      * 版本值使用 MODULE_VERSION(major, minor, patch) 打包，不解析 semver 字符串。
      * 仅在 CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES 启用且 depends_on 非 NULL 时生效。
@@ -192,8 +194,11 @@ static inline uint32_t mm_generation_next(uint32_t cur) {
  * @param minor 次版本号
  * @param patch 补丁号
  * @return 编码后的版本号
+ * @note 各字段按 8 位存放；编码端对 major/minor/patch 均做 0xFF 掩码，
+ *       避免某字段 >= 256 时溢出串入相邻字段。
  */
-#define MODULE_VERSION(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
+#define MODULE_VERSION(major, minor, patch)                                                                            \
+    ((((uint32_t) (major) & 0xFFU) << 16) | (((uint32_t) (minor) & 0xFFU) << 8) | ((uint32_t) (patch) & 0xFFU))
 
 /**
  * @brief 提取主版本号

@@ -52,8 +52,8 @@ extern "C" {
  * @brief 模块管理器配置（传入 compat_init；映射到 PRO 时字段按语义对齐，见实现注释）
  */
 typedef struct {
-    uint16_t max_modules;
-    uint16_t max_dependencies;
+    uint16_t max_modules;      /**< @note 当前实现未使用：标准版槽位数由 CONFIG_MAX_MODULES 决定，PRO 版亦忽略 */
+    uint16_t max_dependencies; /**< PRO 版复用为 max_restart_count 启发值；标准版未使用 */
     bool     enable_auto_deps;
     bool     enable_hotplug;
     bool     enable_lifecycle_hooks;

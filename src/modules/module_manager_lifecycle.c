@@ -272,6 +272,10 @@ int module_manager_start_module(uint32_t module_id) {
     const module_interface_t* captured_iface;
     uint32_t                  captured_gen;
 
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     /* 门控：manager 必须处于 RUNNING 才允许启动单模块（#6）。 */
@@ -355,6 +359,10 @@ int module_manager_stop_module(uint32_t module_id) {
 
     const module_interface_t* captured_iface;
     uint32_t                  captured_gen;
+
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
 
     module_manager_lock();
 
@@ -464,6 +472,10 @@ int module_manager_start_all(void) {
     start_order_entry_t entries[CONFIG_MAX_MODULES];
     int                 n = 0;
 
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     /* 门控（#6）：STOPPING / ERROR 状态不允许批量启动。 */
@@ -536,6 +548,10 @@ int module_manager_stop_all(void) {
 #endif
     int n = 0;
 
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
@@ -580,6 +596,10 @@ int module_manager_stop_all(void) {
 }
 
 int module_manager_suspend_module(uint32_t module_id) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     if (module_manager_lifecycle_state_locked() != ZEP_STATE_RUNNING || atomic_get(&g_module_mgr_shutting_down) != 0) {
@@ -622,6 +642,10 @@ int module_manager_suspend_module(uint32_t module_id) {
 }
 
 int module_manager_resume_module(uint32_t module_id) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
     module_manager_lock();
 
     if (module_manager_lifecycle_state_locked() != ZEP_STATE_RUNNING || atomic_get(&g_module_mgr_shutting_down) != 0) {

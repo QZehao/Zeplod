@@ -78,18 +78,18 @@ extern "C" {
  * 所有模块管理器 API 均返回此枚举值，使用负 errno 风格。
  */
 typedef enum {
-    MODULE_OK = 0,                          /**< 操作成功 */
-    MODULE_ERR_INVALID_ARG = -EINVAL,       /**< 无效参数 */
-    MODULE_ERR_NO_MEM = -ENOMEM,            /**< 内存不足 */
-    MODULE_ERR_ALREADY_EXISTS = -EALREADY,  /**< 模块已存在 */
-    MODULE_ERR_NOT_FOUND = -ENOENT,         /**< 模块未找到 */
-    MODULE_ERR_NOT_INITIALIZED = -ENOTCONN, /**< 管理器未初始化 */
-    MODULE_ERR_ALREADY_RUNNING = -EALREADY, /**< 管理器已运行 */
-    MODULE_ERR_NOT_RUNNING = -ENOTCONN,     /**< 模块未运行 */
-    MODULE_ERR_TIMEOUT = -ETIMEDOUT,        /**< 操作超时 */
-    MODULE_ERR_IO = -EIO,                   /**< I/O 错误 */
-    MODULE_ERR_BUSY = -EBUSY,               /**< 资源忙碌 */
-    MODULE_ERR_INVALID_STATE = -EPERM       /**< 管理器/模块当前状态不允许该操作 */
+    MODULE_OK = 0,                            /**< 操作成功 */
+    MODULE_ERR_INVALID_ARG = -EINVAL,         /**< 无效参数 */
+    MODULE_ERR_NO_MEM = -ENOMEM,              /**< 内存不足 */
+    MODULE_ERR_ALREADY_EXISTS = -EALREADY,    /**< 模块已存在 */
+    MODULE_ERR_NOT_FOUND = -ENOENT,           /**< 模块未找到 */
+    MODULE_ERR_NOT_INITIALIZED = -ENOTCONN,   /**< 管理器未初始化 */
+    MODULE_ERR_ALREADY_RUNNING = -EINPROGRESS, /**< 管理器已运行（区别于 ALREADY_EXISTS） */
+    MODULE_ERR_NOT_RUNNING = -ESHUTDOWN,      /**< 模块未运行（区别于 NOT_INITIALIZED） */
+    MODULE_ERR_TIMEOUT = -ETIMEDOUT,          /**< 操作超时 */
+    MODULE_ERR_IO = -EIO,                     /**< I/O 错误 */
+    MODULE_ERR_BUSY = -EBUSY,                 /**< 资源忙碌 */
+    MODULE_ERR_INVALID_STATE = -EPERM         /**< 管理器/模块当前状态不允许该操作 */
 } module_mgr_result_t;
 
 /**
@@ -220,7 +220,7 @@ int module_manager_unregister(uint32_t module_id);
  *
  * @param module_id 模块 ID
  * @param out 输出结构指针，不能为 NULL
- * @return 0 成功，-1 未找到或参数无效
+ * @return 0 成功；MODULE_ERR_INVALID_ARG 参数无效/管理器未初始化；MODULE_ERR_NOT_FOUND 未找到
  *
  * @note 返回的 module_info_t 为槽位内容的按值拷贝；其中的指针字段（interface、config、
  *       internal_data 等）均为浅拷贝，调用者不应在管理器锁外解引用这些指针（含
@@ -279,7 +279,7 @@ int module_manager_start_module(uint32_t module_id);
  *
  * @param module_id 模块 ID
  * @return 0 表示成功，或**幂等**：模块当前非 RUNNING 时亦返回 0（未再次调用业务 stop 回调）；
- *         未找到或参数无效时返回 -1
+ *         未找到时返回 MODULE_ERR_NOT_FOUND，管理器未初始化返回 MODULE_ERR_NOT_INITIALIZED
  * @retval MODULE_ERR_NOT_FOUND 模块不存在
  * @retval MODULE_ERR_BUSY 已有 start/stop 操作正在进行
  * @retval MODULE_ERR_IO 回调执行期间槽位被回收/复用
