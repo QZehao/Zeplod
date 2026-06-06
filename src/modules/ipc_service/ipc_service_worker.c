@@ -82,7 +82,17 @@ void ipc_service_worker_thread(void* p1, void* p2, void* p3) {
         bool request_shm_acquired = false;
 
         if (request_msg.shm_handle != 0) {
-            ipc_shm_acquire(service, request_msg.shm_handle);
+            if (ipc_shm_acquire(service, request_msg.shm_handle) != 0) {
+                LOG_ERR("Request %u: invalid shm handle %u", request_msg.request_id, request_msg.shm_handle);
+                response_msg.request_id = request_msg.request_id;
+                response_msg.result = -EINVAL;
+                response_msg.data = NULL;
+                response_msg.data_size = 0;
+                response_msg.caller_thread = request_msg.caller_thread;
+                response_msg.shm_handle = 0;
+                (void) ipc_put_msgq_until_shutdown(&service->response_queue, &response_msg, &service->shutdown);
+                continue;
+            }
             request_shm_acquired = true;
             LOG_DBG("Request %u: acquired shm handle %u", request_msg.request_id, request_msg.shm_handle);
         }
@@ -97,8 +107,8 @@ void ipc_service_worker_thread(void* p1, void* p2, void* p3) {
         response_msg.data_size = out_data_size;
         response_msg.caller_thread = request_msg.caller_thread;
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-        response_msg.shm_handle = request_msg.shm_handle;
-        if (response_msg.shm_handle == 0 && out_data != NULL) {
+        response_msg.shm_handle = 0;
+        if (out_data != NULL) {
             ipc_shm_handle_t out_handle = ipc_shm_lookup_handle_by_ptr(service, out_data);
 
             if (out_handle != IPC_SHM_HANDLE_INVALID) {
@@ -119,6 +129,9 @@ void ipc_service_worker_thread(void* p1, void* p2, void* p3) {
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
         if (request_shm_acquired) {
+            ipc_shm_release(service, request_msg.shm_handle);
+        }
+        if (request_msg.shm_handle != 0 && response_msg.shm_handle != request_msg.shm_handle) {
             ipc_shm_release(service, request_msg.shm_handle);
         }
 #endif

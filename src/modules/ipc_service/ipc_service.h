@@ -74,6 +74,8 @@ typedef uint32_t ipc_request_id_t;
  * @return 0 成功，负值错误码失败
  *
  * @note 服务函数在工作线程上下文中执行
+ * @note data 指向的输入缓冲区必须在请求处理完成前保持有效；若通过 ipc_call_async / ipc_call_future
+ *       传入，调用者须保证缓冲区一直存活到回调触发或 future 完成。
  * @note out_data 可以是：
  *       - 输入数据的指针（零拷贝回显）
  *       - 通过 ipc_shm_alloc() 分配的共享内存（推荐；框架按指针解析句柄）
@@ -218,11 +220,12 @@ typedef struct ipc_service {
     ipc_future_t  futures[CONFIG_THREAD_IPC_SERVICE_MAX_PENDING_REQUESTS];
     ipc_future_t* free_futures; /**< 空闲 Future 链表头 */
 
-    struct k_mutex       state_lock;  /**< 保护 running 的互斥锁 */
-    zepl_state_machine_t lifecycle;   /**< 服务生命周期状态机 */
-    bool                 initialized; /**< 服务资源是否已初始化。 */
-    bool                 running;     /**< 服务是否正在运行 */
-    atomic_t             shutdown;    /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */
+    struct k_mutex       state_lock;       /**< 保护 running 的互斥锁 */
+    zepl_state_machine_t lifecycle;        /**< 服务生命周期状态机 */
+    bool                 initialized;      /**< 服务资源是否已初始化。 */
+    bool                 running;          /**< 服务是否正在运行 */
+    atomic_t             shutdown;         /**< 关闭标志：0=运行，非 0=正在/已关闭（原子读写，多核安全） */
+    atomic_t             stop_in_progress; /**< stop 串行化标志：1=已有线程正在执行 stop */
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
     ipc_shm_pool_t shm_pool; /**< 共享内存池（引用计数管理） */
@@ -265,10 +268,12 @@ int ipc_service_start(ipc_service_t* service);
  * 停止工作线程和响应分发线程。
  *
  * @param service 服务实例指针
- * @return 0 成功；-EINVAL 参数无效；-EIO 任一线程在 abort 后仍未能 join（实例不宜再 start，除非另行约定复位）
+ * @return 0 成功；-EINVAL 参数无效；-EALREADY 已有其他线程正在执行 stop；
+ *         -EIO 任一线程未能在超时内 join（实例保持 STOPPING，可稍后重试 stop）
  *
  * @note 停止后不再处理新请求；已在请求队列中的条目可能被 worker 丢弃（若对应 pending 已释放）
- * @note join 超时后将 k_thread_abort 对应线程并重试 join，以降低 running=false 但线程仍存活的风险
+ * @note 若线程在 join 超时后仍未退出，实例保持 STOPPING 且不会强制 abort 线程；
+ *       调用方应稍后重试 stop，直至线程退出并完成资源清理。
  */
 int ipc_service_stop(ipc_service_t* service);
 
@@ -288,6 +293,8 @@ int ipc_service_stop(ipc_service_t* service);
  *
  * @note 调用线程将阻塞直到收到响应或超时
  * @note 若响应携带共享内存句柄，须使用 ipc_call_sync_shm()；ipc_call_sync() 将返回 -ENOTSUP
+ * @warning 调用者必须保证输入数据（data 及其指向的内存）在请求处理完成前保持有效。
+ *          超时返回仅表示调用者不再阻塞，worker 仍可能在访问该数据，调用者不得立即释放栈缓冲区或堆内存。
  * @warning 超时返回后，out_data 指向的数据可能已被释放，调用者不应使用超时返回后的数据。
  *          若请求携带共享内存输入（通过 ipc_call_sync_shm），超时后该内存引用会被框架自动释放；
  *          调用者不得继续使用原数据指针。
@@ -331,6 +338,8 @@ int ipc_call_sync_shm(ipc_service_t* service, const void* data, size_t data_size
  *
  * @note 调用线程立即返回，不阻塞
  * @note 回调在分发器线程中执行
+ * @warning 调用者必须保证输入数据（data 及其指向的内存）在回调触发前保持有效，
+ *          不得因 ipc_call_async 立即返回就释放栈缓冲区或堆内存。
  */
 int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, ipc_async_callback_t callback,
                    void* user_data,
@@ -353,6 +362,8 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
  *
  * @note 调用线程立即返回，不阻塞
  * @note 使用 ipc_future_wait 或 ipc_future_is_ready 获取结果
+ * @warning 调用者必须保证输入数据（data 及其指向的内存）在 future 完成前保持有效，
+ *          不得因 ipc_call_future 立即返回就释放栈缓冲区或堆内存。
  */
 int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)

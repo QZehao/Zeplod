@@ -39,6 +39,16 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
         return -EINVAL;
     }
 
+    if (k_current_get() == &service->thread || k_current_get() == &service->response_thread) {
+        return -EDEADLK;
+    }
+
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    if (in_shm_handle != 0 && !ipc_shm_is_valid(service, in_shm_handle)) {
+        return -EINVAL;
+    }
+#endif
+
     ipc_request_id_t request_id = ipc_generate_request_id();
 
     ipc_service_pending_lock(service);
@@ -169,6 +179,12 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
         return -EINVAL;
     }
 
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    if (in_shm_handle != 0 && !ipc_shm_is_valid(service, in_shm_handle)) {
+        return -EINVAL;
+    }
+#endif
+
     ipc_request_id_t request_id = ipc_generate_request_id();
 
     if (out_request_id != NULL) {
@@ -233,6 +249,12 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
     if (out_future == NULL) {
         return -EINVAL;
     }
+
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    if (in_shm_handle != 0 && !ipc_shm_is_valid(service, in_shm_handle)) {
+        return -EINVAL;
+    }
+#endif
 
     ipc_request_id_t request_id = ipc_generate_request_id();
 
@@ -310,10 +332,14 @@ int ipc_future_wait(ipc_service_t* service, ipc_future_t* future, int* out_resul
         return -EINVAL;
     }
 
-    int ret = k_sem_take(&future->semaphore, timeout);
+    if (atomic_get(&future->completed) == 0) {
+        int ret = k_sem_take(&future->semaphore, timeout);
 
-    if (ret != 0) {
-        return ret;
+        if (ret != 0) {
+            return ret;
+        }
+
+        k_sem_give(&future->semaphore);
     }
 
     if (out_result != NULL) {

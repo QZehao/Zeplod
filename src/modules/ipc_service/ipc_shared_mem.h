@@ -30,6 +30,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -45,9 +46,10 @@ static inline ipc_shm_handle_t ipc_shm_alloc(struct ipc_service* service, size_t
     (void) size;
     return IPC_SHM_HANDLE_INVALID;
 }
-static inline void ipc_shm_acquire(struct ipc_service* service, ipc_shm_handle_t handle) {
+static inline int ipc_shm_acquire(struct ipc_service* service, ipc_shm_handle_t handle) {
     (void) service;
     (void) handle;
+    return -ENOTSUP;
 }
 static inline int ipc_shm_release(struct ipc_service* service, ipc_shm_handle_t handle) {
     (void) service;
@@ -206,9 +208,9 @@ ipc_shm_handle_t ipc_shm_alloc(struct ipc_service* service, size_t size);
  * @param handle 共享内存句柄
  *
  * @note 引用计数用原子更新；块状态与合法性由块互斥锁 ipc_shm_block_t::lock 保护
- * @note 如果句柄无效则静默忽略（SIL-2 防御性编程）
+ * @return 0 成功；-EINVAL 句柄无效或已过期
  */
-void ipc_shm_acquire(struct ipc_service* service, ipc_shm_handle_t handle);
+int ipc_shm_acquire(struct ipc_service* service, ipc_shm_handle_t handle);
 
 /**
  * @brief 减少共享内存块的引用计数

@@ -399,7 +399,7 @@ typedef enum {
 | 函数 | 说明 |
 |------|------|
 | `ipc_shm_handle_t ipc_shm_alloc(ipc_service_t *service, size_t size)` | 分配块，初始引用计数=1；失败返回 `IPC_SHM_HANDLE_INVALID` |
-| `void ipc_shm_acquire(ipc_service_t *service, ipc_shm_handle_t handle)` | 增加引用计数（将块传递给另一个消费者） |
+| `int ipc_shm_acquire(ipc_service_t *service, ipc_shm_handle_t handle)` | 增加引用计数；无效或过期句柄返回 `-EINVAL` |
 | `int ipc_shm_release(ipc_service_t *service, ipc_shm_handle_t handle)` | 减少引用计数；计数=0时自动回收；返回 `-EINVAL`(无效句柄)、`-EBUSY`(状态异常) |
 | `void *ipc_shm_get_ptr(ipc_service_t *service, ipc_shm_handle_t handle)` | 获取块指针；句柄无效返回 NULL |
 | `size_t ipc_shm_get_size(ipc_service_t *service, ipc_shm_handle_t handle)` | 获取块大小 |

@@ -66,6 +66,17 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
         return -EINVAL;
     }
 
+    if (service->initialized) {
+        ipc_service_state_lock(service);
+        zepl_state_t state = ipc_service_lifecycle_state_locked(service);
+        ipc_service_state_unlock(service);
+
+        if (state == ZEP_STATE_RUNNING || state == ZEP_STATE_STARTING || state == ZEP_STATE_STOPPING ||
+            state == ZEP_STATE_ERROR) {
+            return -EBUSY;
+        }
+    }
+
     memset(service, 0, sizeof(ipc_service_t));
     zepl_state_machine_init(&service->lifecycle, ZEP_STATE_UNINIT);
 
@@ -75,6 +86,7 @@ int ipc_service_init(ipc_service_t* service, const char* name, ipc_service_func_
     service->initialized = true;
     service->running = false;
     atomic_set(&service->shutdown, 0);
+    atomic_set(&service->stop_in_progress, 0);
     k_mutex_init(&service->state_lock);
 
     k_msgq_init(&service->request_queue, (char*) service->request_queue_buf, sizeof(ipc_request_msg_t),
@@ -163,8 +175,12 @@ int ipc_service_start(ipc_service_t* service) {
 }
 
 int ipc_service_stop(ipc_service_t* service) {
-    if (service == NULL) {
+    if (service == NULL || !service->initialized) {
         return -EINVAL;
+    }
+
+    if (!atomic_cas(&service->stop_in_progress, 0, 1)) {
+        return -EALREADY;
     }
 
     ipc_service_state_lock(service);
@@ -172,29 +188,33 @@ int ipc_service_stop(ipc_service_t* service) {
 
     if (state == ZEP_STATE_UNINIT) {
         ipc_service_state_unlock(service);
+        atomic_set(&service->stop_in_progress, 0);
         return -EINVAL;
     }
 
     if (!service->running || state == ZEP_STATE_INITED || state == ZEP_STATE_STOPPED) {
         ipc_service_state_unlock(service);
+        atomic_set(&service->stop_in_progress, 0);
         return 0;
     }
 
     if (state == ZEP_STATE_ERROR) {
         ipc_service_state_unlock(service);
+        atomic_set(&service->stop_in_progress, 0);
         return -EINVAL;
     }
 
     if (k_current_get() == &service->thread || k_current_get() == &service->response_thread) {
         ipc_service_state_unlock(service);
+        atomic_set(&service->stop_in_progress, 0);
         return -EDEADLK;
     }
 
-    if (state != ZEP_STATE_STOPPING) {
-        if (zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPING) != 0) {
-            ipc_service_state_unlock(service);
-            return -EINVAL;
-        }
+    if (state != ZEP_STATE_STOPPING &&
+        zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPING) != 0) {
+        ipc_service_state_unlock(service);
+        atomic_set(&service->stop_in_progress, 0);
+        return -EINVAL;
     }
 
     atomic_set(&service->shutdown, 1);
@@ -210,23 +230,18 @@ int ipc_service_stop(ipc_service_t* service) {
 
     int ret1 = k_thread_join(&service->thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
     if (ret1 != 0) {
-        LOG_ERR("Worker thread join failed: %d, aborting", ret1);
-        k_thread_abort(&service->thread);
-        ret1 = k_thread_join(&service->thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+        LOG_ERR("Worker thread join failed: %d", ret1);
     }
 
     int ret2 = k_thread_join(&service->response_thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
     if (ret2 != 0) {
-        LOG_ERR("Dispatcher thread join failed: %d, aborting", ret2);
-        k_thread_abort(&service->response_thread);
-        ret2 = k_thread_join(&service->response_thread, K_MSEC(IPC_SERVICE_THREAD_JOIN_TIMEOUT_MS));
+        LOG_ERR("Dispatcher thread join failed: %d", ret2);
     }
 
-    int stop_err = 0;
     if (ret1 != 0 || ret2 != 0) {
-        LOG_ERR("IPC service '%s': thread did not terminate after abort (worker_ret=%d, disp_ret=%d)", service->name,
-                ret1, ret2);
-        stop_err = -EIO;
+        LOG_ERR("IPC service '%s': thread join timed out (worker_ret=%d, disp_ret=%d)", service->name, ret1, ret2);
+        atomic_set(&service->stop_in_progress, 0);
+        return -EIO;
     }
 
     ipc_drain_queued_messages(service);
@@ -235,12 +250,8 @@ int ipc_service_stop(ipc_service_t* service) {
 
     ipc_service_state_lock(service);
     service->running = false;
-    if (stop_err == 0) {
-        atomic_set(&service->shutdown, 0);
-        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
-    } else {
-        (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_ERROR);
-    }
+    atomic_set(&service->shutdown, 0);
+    (void) zepl_state_machine_try_transition(&service->lifecycle, ZEP_STATE_STOPPED);
     ipc_service_state_unlock(service);
 
     ipc_service_pending_lock(service);
@@ -281,7 +292,9 @@ int ipc_service_stop(ipc_service_t* service) {
     ipc_shm_deinit(service);
 #endif
 
-    LOG_DBG("IPC service '%s' stopped (worker_ret=%d, dispatcher_ret=%d, err=%d)", service->name, ret1, ret2, stop_err);
+    atomic_set(&service->stop_in_progress, 0);
 
-    return stop_err;
+    LOG_DBG("IPC service '%s' stopped", service->name);
+
+    return 0;
 }

@@ -21,7 +21,9 @@
 #include <zephyr/ztest.h>
 #include <string.h>
 
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART)
 #include "example_module_uart.h"
+#endif
 #include "ipc_service.h"
 #include "ztest_sync.h"
 
@@ -83,6 +85,17 @@ static int ipc_delayed_handler(ipc_request_id_t request_id, const void* data, si
     return 0;
 }
 
+static int ipc_stop_timeout_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
+                                    size_t* out_data_size) {
+    (void) request_id;
+    atomic_set(&g_delayed_handler_in_handler, 1);
+    k_msleep(700);
+    *out_data = (void*) data;
+    *out_data_size = data_size;
+    atomic_set(&g_delayed_handler_in_handler, 0);
+    return 0;
+}
+
 /* 返回错误的 handler */
 static int ipc_error_handler(ipc_request_id_t request_id, const void* data, size_t data_size, void** out_data,
                              size_t* out_data_size) {
@@ -126,8 +139,10 @@ static void async_test_callback(ipc_request_id_t request_id, int result, const v
  * ============================================================================= */
 
 static void* test_suite_setup(void) {
+#if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART)
     /* 确保 UART 模块不会在后台运行（避免 spinlock 竞争） */
     example_module_uart_stop();
+#endif
 
     return NULL;
 }
@@ -297,6 +312,11 @@ ZTEST(ipc_service, test_future_call) {
     zassert_equal(result, 0, "result 应为 0");
     zassert_equal(out_size, sizeof(payload), "数据大小应匹配");
     zassert_mem_equal(out_data, payload, sizeof(payload), NULL);
+
+    result = -1;
+    r = ipc_future_wait(&g_ipc, future, &result, &out_data, &out_size, K_NO_WAIT);
+    zassert_equal(r, 0, "completed future should support repeated wait: %d", r);
+    zassert_equal(result, 0, "repeated wait result should remain available");
 
     r = ipc_future_release(&g_ipc, future);
     zassert_equal(r, 0, "ipc_future_release failed: %d", r);
@@ -693,6 +713,40 @@ ZTEST(ipc_service, test_sync_call_timeout) {
     ipc_service_stop(&g_ipc);
 }
 
+ZTEST(ipc_service, test_stop_timeout_can_be_retried) {
+    const char    payload[] = "stop_timeout";
+    ipc_future_t* future = NULL;
+    int           future_result = 0;
+    int           r;
+
+    atomic_set(&g_delayed_handler_in_handler, 0);
+
+    r = ipc_service_init(&g_ipc, "stop_timeout", ipc_stop_timeout_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+    zassert_equal(ipc_service_start(&g_ipc), 0, "ipc_service_start failed");
+
+    r = ipc_call_future(&g_ipc, payload, sizeof(payload),
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+                        0,
+#endif
+                        &future);
+    zassert_equal(r, 0, "ipc_call_future failed: %d", r);
+    zassert_true(ztest_wait_atomic_nonzero(&g_delayed_handler_in_handler, 500U), "handler should have started");
+
+    r = ipc_service_stop(&g_ipc);
+    zassert_equal(r, -EIO, "first stop should report join timeout: %d", r);
+    zassert_true(ipc_service_get_pending_count(&g_ipc) > 0U, "timed-out stop must preserve pending state");
+
+    k_msleep(300);
+    r = ipc_service_stop(&g_ipc);
+    zassert_equal(r, 0, "retry stop should join and clean up: %d", r);
+
+    r = ipc_future_wait(&g_ipc, future, &future_result, NULL, NULL, K_NO_WAIT);
+    zassert_equal(r, 0, "future should be completed during successful retry stop: %d", r);
+    zassert_equal(future_result, -ECANCELED, "pending future should be canceled");
+    zassert_equal(ipc_future_release(&g_ipc, future), 0, "future release failed");
+}
+
 ZTEST(ipc_service, test_async_null_callback) {
     const char       payload[] = "null_cb_test";
     ipc_request_id_t request_id = 0;
@@ -753,6 +807,29 @@ static int ipc_shm_alloc_handler(ipc_request_id_t request_id, const void* data, 
     return 0;
 }
 
+static int ipc_shm_distinct_output_handler(ipc_request_id_t request_id, const void* data, size_t data_size,
+                                           void** out_data, size_t* out_data_size) {
+    (void) request_id;
+    (void) data;
+    (void) data_size;
+
+    ipc_shm_handle_t handle = ipc_shm_alloc(&g_ipc, 32);
+    if (handle == IPC_SHM_HANDLE_INVALID) {
+        return -ENOMEM;
+    }
+
+    void* ptr = ipc_shm_get_ptr(&g_ipc, handle);
+    if (ptr == NULL) {
+        (void) ipc_shm_release(&g_ipc, handle);
+        return -EIO;
+    }
+
+    memcpy(ptr, "distinct_out", sizeof("distinct_out"));
+    *out_data = ptr;
+    *out_data_size = sizeof("distinct_out");
+    return 0;
+}
+
 /* 测试 sync_shm 端到端：service 分配 shm，调用方通过句柄释放 */
 ZTEST(ipc_service, test_sync_call_shm_output) {
     void*            out_data = NULL;
@@ -804,7 +881,7 @@ ZTEST(ipc_service, test_shared_memory_basic) {
     memcpy(ptr, test_data, sizeof(test_data));
 
     /* 测试引用计数 */
-    ipc_shm_acquire(&g_ipc, handle);
+    zassert_equal(ipc_shm_acquire(&g_ipc, handle), 0, "ipc_shm_acquire failed");
     r = ipc_shm_release(&g_ipc, handle);
     zassert_equal(r, 0, "shm_release failed: %d", r);
 
@@ -814,6 +891,56 @@ ZTEST(ipc_service, test_shared_memory_basic) {
 
     /* 验证句柄不再有效 */
     zassert_false(ipc_shm_is_valid(&g_ipc, handle), "handle should be invalid after release");
+
+    ipc_service_stop(&g_ipc);
+}
+
+ZTEST(ipc_service, test_shared_memory_rejects_stale_handle) {
+    int r = ipc_service_init(&g_ipc, "shm_stale", ipc_shm_alloc_handler, 5);
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+
+    ipc_shm_handle_t stale = ipc_shm_alloc(&g_ipc, 32);
+    zassert_not_equal(stale, IPC_SHM_HANDLE_INVALID, "initial allocation failed");
+    zassert_equal(ipc_shm_release(&g_ipc, stale), 0, "initial release failed");
+
+    ipc_shm_handle_t current = ipc_shm_alloc(&g_ipc, 32);
+    zassert_not_equal(current, IPC_SHM_HANDLE_INVALID, "replacement allocation failed");
+    zassert_not_equal(current, stale, "reused slot must have a new generation handle");
+    zassert_false(ipc_shm_is_valid(&g_ipc, stale), "stale handle must remain invalid");
+    zassert_equal(ipc_shm_release(&g_ipc, stale), -EINVAL, "stale release must be rejected");
+    zassert_true(ipc_shm_is_valid(&g_ipc, current), "stale release must not affect current allocation");
+    zassert_equal(ipc_shm_release(&g_ipc, current), 0, "current release failed");
+
+    g_ipc.shm_pool.alloc_counter = 0xFFFFU;
+    ipc_shm_handle_t wrapped = ipc_shm_alloc(&g_ipc, 32);
+    zassert_not_equal(wrapped, IPC_SHM_HANDLE_INVALID, "allocation after 16-bit counter boundary failed");
+    zassert_true(ipc_shm_is_valid(&g_ipc, wrapped), "handle after 16-bit counter boundary must remain valid");
+    zassert_equal(ipc_shm_release(&g_ipc, wrapped), 0, "boundary handle release failed");
+
+    ipc_service_stop(&g_ipc);
+}
+
+ZTEST(ipc_service, test_sync_shm_distinct_output_releases_input) {
+    void*            out_data = NULL;
+    size_t           out_size = 0;
+    ipc_shm_handle_t out_handle = IPC_SHM_HANDLE_INVALID;
+    int              r = ipc_service_init(&g_ipc, "shm_distinct", ipc_shm_distinct_output_handler, 5);
+
+    zassert_equal(r, 0, "ipc_service_init failed: %d", r);
+    zassert_equal(ipc_service_start(&g_ipc), 0, "ipc_service_start failed");
+
+    ipc_shm_handle_t input_handle = ipc_shm_alloc(&g_ipc, 32);
+    zassert_not_equal(input_handle, IPC_SHM_HANDLE_INVALID, "input allocation failed");
+    void* input_data = ipc_shm_get_ptr(&g_ipc, input_handle);
+    zassert_not_null(input_data, "input pointer missing");
+
+    r = ipc_call_sync_shm(&g_ipc, input_data, 32, input_handle, &out_data, &out_size, &out_handle, K_SECONDS(2));
+    zassert_equal(r, 0, "ipc_call_sync_shm failed: %d", r);
+    zassert_not_equal(out_handle, IPC_SHM_HANDLE_INVALID, "output handle missing");
+    zassert_not_equal(out_handle, input_handle, "output should use a distinct block");
+    zassert_false(ipc_shm_is_valid(&g_ipc, input_handle), "transferred input should be released");
+    zassert_mem_equal(out_data, "distinct_out", sizeof("distinct_out"), "unexpected output");
+    zassert_equal(ipc_shm_release(&g_ipc, out_handle), 0, "output release failed");
 
     ipc_service_stop(&g_ipc);
 }

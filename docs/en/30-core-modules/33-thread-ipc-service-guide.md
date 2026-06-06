@@ -399,7 +399,7 @@ typedef enum {
 | Function | Description |
 |----------|-------------|
 | `ipc_shm_handle_t ipc_shm_alloc(ipc_service_t *service, size_t size)` | Allocate block, initial refcount=1; returns `IPC_SHM_HANDLE_INVALID` on failure |
-| `void ipc_shm_acquire(ipc_service_t *service, ipc_shm_handle_t handle)` | Increment refcount (pass block to another consumer) |
+| `int ipc_shm_acquire(ipc_service_t *service, ipc_shm_handle_t handle)` | Increment refcount; returns `-EINVAL` for an invalid or stale handle |
 | `int ipc_shm_release(ipc_service_t *service, ipc_shm_handle_t handle)` | Decrement refcount; auto-recycle when count=0; returns `-EINVAL` (invalid handle), `-EBUSY` (abnormal state) |
 | `void *ipc_shm_get_ptr(ipc_service_t *service, ipc_shm_handle_t handle)` | Get block pointer; returns NULL for invalid handle |
 | `size_t ipc_shm_get_size(ipc_service_t *service, ipc_shm_handle_t handle)` | Get block size |

@@ -46,7 +46,7 @@
 | `stop` 时未完成 future | future 完成，结果 `-ECANCELED` |
 | `cancel` 已完成 SYNC 请求 | `-EALREADY` |
 | `cancel` 不存在的 request_id | `-ENOENT` |
-| join 失败（abort 后仍无法 join） | `-EIO`，状态机 `ZEP_STATE_ERROR` |
+| join 超时 | `-EIO`，保持 `ZEP_STATE_STOPPING` 和资源；线程退出后可重试 `stop` |
 
 ## data_bus
 

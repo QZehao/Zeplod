@@ -69,8 +69,7 @@ static uint32_t shm_handle_salt(const ipc_shm_pool_t* pool) {
 /**
  * @brief 从句柄解码块索引
  *
- * 句柄格式：[31:16] = 校验码, [15:0] = 块索引
- * 校验码 = index ^ shm_handle_salt(pool)
+ * 句柄格式：[31:8] = 分配代次校验码, [7:0] = 块索引
  *
  * @param pool 共享内存池
  * @param handle 共享内存句柄
@@ -81,13 +80,9 @@ static uint32_t decode_block_index(const ipc_shm_pool_t* pool, ipc_shm_handle_t 
         return UINT32_MAX;
     }
 
-    const uint32_t index = handle & 0xFFFFU;
-    const uint32_t checksum = (handle >> 16U) & 0xFFFFU;
-    const uint32_t expected_checksum = index ^ shm_handle_salt(pool);
+    const uint32_t index = handle & 0xFFU;
 
-    if (checksum != expected_checksum) {
-        LOG_ERR("Invalid handle checksum: handle=0x%08X, expected=0x%04X, got=0x%04X", handle, expected_checksum,
-                checksum);
+    if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
         return UINT32_MAX;
     }
 
@@ -101,10 +96,17 @@ static uint32_t decode_block_index(const ipc_shm_pool_t* pool, ipc_shm_handle_t 
  * @param index 块索引
  * @return 编码后的句柄
  */
-static ipc_shm_handle_t encode_handle(const ipc_shm_pool_t* pool, uint32_t index) {
-    const uint32_t checksum = index ^ shm_handle_salt(pool);
+static ipc_shm_handle_t encode_handle(const ipc_shm_pool_t* pool, uint32_t index, uint32_t alloc_id) {
+    const uint32_t generation = (alloc_id ^ shm_handle_salt(pool)) & 0x00FFFFFFU;
 
-    return (ipc_shm_handle_t) ((checksum << 16U) | index);
+    return (ipc_shm_handle_t) ((generation << 8U) | (index & 0xFFU));
+}
+
+static bool handle_matches_block_locked(const ipc_shm_pool_t* pool, uint32_t index, ipc_shm_handle_t handle) {
+    const ipc_shm_block_t* block = &pool->blocks[index];
+
+    return block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID &&
+           handle == encode_handle(pool, index, block->alloc_id);
 }
 
 /**
@@ -328,6 +330,12 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
             block->state = IPC_SHM_STATE_ALLOCATED;
             pool->alloc_counter++;
             block->alloc_id = pool->alloc_counter;
+            handle = encode_handle(pool, i, block->alloc_id);
+            if (handle == 0U || handle == IPC_SHM_HANDLE_INVALID) {
+                pool->alloc_counter++;
+                block->alloc_id = pool->alloc_counter;
+                handle = encode_handle(pool, i, block->alloc_id);
+            }
 
             {
                 uint32_t prev = (uint32_t) atomic_inc(&pool->active_count);
@@ -336,8 +344,6 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
                     pool->peak_count = now;
                 }
             }
-
-            handle = encode_handle(pool, i);
 
             LOG_DBG("Allocated block %u: handle=0x%08X, size=%u, alloc_id=%u", i, handle, size, block->alloc_id);
 
@@ -359,10 +365,10 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
 /**
  * @brief 增加共享内存块的引用计数
  */
-void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
+int ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     /* SIL-2: 验证输入参数 */
     if (service == NULL || handle == IPC_SHM_HANDLE_INVALID) {
-        return;
+        return -EINVAL;
     }
 
     ipc_shm_pool_t* pool = &service->shm_pool;
@@ -370,13 +376,13 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     const uint32_t index = decode_block_index(pool, handle);
 
     if (index == UINT32_MAX) {
-        return; /* 无效句柄，静默忽略 */
+        return -EINVAL;
     }
 
     /* SIL-2: 验证索引范围 */
     if (index >= CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE) {
         LOG_ERR("Block index %u out of range", index);
-        return;
+        return -EINVAL;
     }
 
     ipc_shm_block_t* block = &pool->blocks[index];
@@ -384,11 +390,10 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     /* SIL-2: 使用块锁保护引用计数操作 */
     ipc_shm_block_lock(block);
 
-    /* SIL-2: 验证块状态 */
-    if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
-        LOG_ERR("Cannot acquire free/invalid block %u", index);
+    if (!handle_matches_block_locked(pool, index, handle)) {
+        LOG_ERR("Cannot acquire stale/invalid handle 0x%08X", handle);
         ipc_shm_block_unlock(block);
-        return;
+        return -EINVAL;
     }
 
     /* SIL-2: 原子增加引用计数 */
@@ -402,6 +407,7 @@ void ipc_shm_acquire(ipc_service_t* service, ipc_shm_handle_t handle) {
     LOG_DBG("Acquired block %u: ref_count %u -> %u", index, old_ref, old_ref + 1);
 
     ipc_shm_block_unlock(block);
+    return 0;
 }
 
 /**
@@ -432,10 +438,9 @@ int ipc_shm_release(ipc_service_t* service, ipc_shm_handle_t handle) {
 
     ipc_shm_block_lock(block);
 
-    /* SIL-2: 验证块状态 */
-    if (block->state == IPC_SHM_STATE_FREE || block->state == IPC_SHM_STATE_INVALID) {
-        LOG_ERR("Cannot release free/invalid block %u", index);
-        ret = -EBUSY;
+    if (!handle_matches_block_locked(pool, index, handle)) {
+        LOG_ERR("Cannot release stale/invalid handle 0x%08X", handle);
+        ret = -EINVAL;
         goto unlock;
     }
 
@@ -498,7 +503,7 @@ void* ipc_shm_get_ptr(ipc_service_t* service, ipc_shm_handle_t handle) {
 
     ipc_shm_block_lock(block);
 
-    if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
+    if (handle_matches_block_locked(pool, index, handle)) {
         ptr = block->ptr;
     }
 
@@ -527,7 +532,7 @@ size_t ipc_shm_get_size(ipc_service_t* service, ipc_shm_handle_t handle) {
 
     ipc_shm_block_lock(block);
 
-    if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
+    if (handle_matches_block_locked(pool, index, handle)) {
         size = block->size;
     }
 
@@ -555,7 +560,14 @@ bool ipc_shm_is_valid(ipc_service_t* service, ipc_shm_handle_t handle) {
         return false;
     }
 
-    return is_block_valid(pool, index);
+    ipc_shm_block_t* block = &pool->blocks[index];
+    bool             valid;
+
+    ipc_shm_block_lock(block);
+    valid = handle_matches_block_locked(pool, index, handle) && is_block_valid(pool, index);
+    ipc_shm_block_unlock(block);
+
+    return valid;
 }
 
 /**
@@ -598,7 +610,7 @@ ipc_shm_handle_t ipc_shm_lookup_handle_by_ptr(ipc_service_t* service, const void
 
     ipc_shm_block_lock(block);
     if (block->state != IPC_SHM_STATE_FREE && block->state != IPC_SHM_STATE_INVALID) {
-        handle = encode_handle(pool, index);
+        handle = encode_handle(pool, index, block->alloc_id);
     }
     ipc_shm_block_unlock(block);
 
