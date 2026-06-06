@@ -66,11 +66,9 @@ if (-not (Test-Path $ZEPHYR_SDK_INSTALL_DIR)) {
     exit 1
 }
 
+# Session-only: do not persist to User registry (SetEnvironmentVariable is ~20s per var on Windows).
 $env:ZEPHYR_BASE = $ZEPHYR_BASE
 $env:ZEPHYR_SDK_INSTALL_DIR = $ZEPHYR_SDK_INSTALL_DIR
-
-[Environment]::SetEnvironmentVariable("ZEPHYR_BASE", $ZEPHYR_BASE, "User")
-[Environment]::SetEnvironmentVariable("ZEPHYR_SDK_INSTALL_DIR", $ZEPHYR_SDK_INSTALL_DIR, "User")
 
 $SdkBinPath = Join-Path $ZEPHYR_SDK_INSTALL_DIR "arm-zephyr-eabi\bin"
 $SdkToolsPath = Join-Path $ZEPHYR_SDK_INSTALL_DIR "tools\bin"

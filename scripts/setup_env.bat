@@ -5,8 +5,6 @@ REM ============================================================================
 REM 用法：scripts\setup_env.bat
 REM =============================================================================
 
-setlocal enabledelayedexpansion
-
 echo ============================================
 echo Zephyr 环境设置
 echo ============================================
@@ -45,14 +43,7 @@ if not exist "%ZEPHYR_SDK_INSTALL_DIR%" (
     exit /b 1
 )
 
-REM 设置环境变量
-echo 正在设置环境变量...
-setx ZEPHYR_BASE "%ZEPHYR_BASE%"
-setx ZEPHYR_SDK_INSTALL_DIR "%ZEPHYR_SDK_INSTALL_DIR%"
-
-REM 设置当前会话变量
-set ZEPHYR_BASE=%ZEPHYR_BASE%
-set ZEPHYR_SDK_INSTALL_DIR=%ZEPHYR_SDK_INSTALL_DIR%
+REM Session-only: do not use setx (very slow; writes User registry each run).
 
 REM 添加 Zephyr 工具到 PATH
 if exist "%ZEPHYR_SDK_INSTALL_DIR%\arm-zephyr-eabi\bin" (
@@ -79,5 +70,3 @@ echo.
 echo 现在可以构建项目：
 echo   west build -b %DEFAULT_BOARD% -d build .
 echo.
-
-endlocal
