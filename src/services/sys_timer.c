@@ -239,6 +239,9 @@ int sys_timer_delete(sys_timer_handle_t timer) {
             LOG_ERR("Timer thread join timeout (%d), aborting", ret);
             k_thread_abort(&timer->thread);
         }
+    } else {
+        /* 线程从未启动（处于 suspended 状态），必须 abort 才能安全重用 k_thread 对象 */
+        k_thread_abort(&timer->thread);
     }
 
     k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
@@ -457,9 +460,10 @@ uint32_t sys_timer_get_time_until_expiry(sys_timer_handle_t timer) {
 
     if (timer->is_allocated && timer->magic == TIMER_MAGIC && timer->status == SYS_TIMER_RUNNING) {
         const uint32_t now = k_uptime_get_32();
+        int32_t        diff = (int32_t)(timer->next_fire_time - now);
 
-        if (timer->next_fire_time > now) {
-            remaining = timer->next_fire_time - now;
+        if (diff > 0) {
+            remaining = (uint32_t)diff;
         }
     }
 
@@ -568,84 +572,108 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
     LOG_DBG("Timer thread started: %s", timer->config.name != NULL ? timer->config.name : "unnamed");
 
     for (;;) {
-        if (!timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate) {
+        k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+        bool should_exit = !timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate;
+        sys_timer_status_t status = timer->status;
+        k_mutex_unlock(&g_sys_timer.lock);
+        if (should_exit) {
             break;
         }
 
-        if (timer->status == SYS_TIMER_STOPPED) {
+        if (status == SYS_TIMER_STOPPED) {
             (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
-        if (timer->status == SYS_TIMER_PAUSED) {
+        if (status == SYS_TIMER_PAUSED) {
             (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
-        if (timer->status == SYS_TIMER_EXPIRED) {
+        if (status == SYS_TIMER_EXPIRED) {
             (void) k_sem_take(&timer->sem, K_FOREVER);
             continue;
         }
-        if (timer->status != SYS_TIMER_RUNNING) {
+        if (status != SYS_TIMER_RUNNING) {
             break;
         }
+
+        k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+        uint32_t next_fire = timer->next_fire_time;
+        k_mutex_unlock(&g_sys_timer.lock);
 
         uint32_t now = k_uptime_get_32();
-        uint32_t wait_time = (timer->next_fire_time > now) ? (timer->next_fire_time - now) : 0U;
+        int32_t  diff = (int32_t)(next_fire - now);
+        uint32_t wait_time = (diff > 0) ? (uint32_t)diff : 0U;
 
         if (wait_time > 0U) {
             (void) k_sem_take(&timer->sem, K_MSEC(wait_time));
         }
 
-        if (!timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate) {
+        k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+        should_exit = !timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate;
+        status = timer->status;
+        k_mutex_unlock(&g_sys_timer.lock);
+        if (should_exit) {
             break;
         }
-
-        if (timer->status == SYS_TIMER_STOPPED || timer->status == SYS_TIMER_PAUSED ||
-            timer->status == SYS_TIMER_EXPIRED) {
+        if (status == SYS_TIMER_STOPPED || status == SYS_TIMER_PAUSED || status == SYS_TIMER_EXPIRED) {
             continue;
         }
-
-        if (timer->status != SYS_TIMER_RUNNING) {
+        if (status != SYS_TIMER_RUNNING) {
             break;
         }
 
         now = k_uptime_get_32();
-        if (now >= timer->next_fire_time) {
+        k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+        next_fire = timer->next_fire_time;
+        status = timer->status;
+        sys_timer_callback_t cb = timer->config.callback;
+        void* ud = timer->config.user_data;
+        k_mutex_unlock(&g_sys_timer.lock);
+
+        diff = (int32_t)(next_fire - now);
+        if (diff <= 0 && status == SYS_TIMER_RUNNING) {
             /* k_uptime_get_32 为毫秒分辨率；以下为基于毫秒的粗粒度延迟估计 */
-            uint32_t fire_time_actual = now;
-            uint32_t scheduled_time = timer->next_fire_time;
-            uint32_t latency_us =
-                (fire_time_actual >= scheduled_time) ? ((fire_time_actual - scheduled_time) * 1000U) : 0U;
+            uint32_t scheduled_time = next_fire;
+            uint32_t latency_us = (diff <= 0) ? ((uint32_t)(-diff) * 1000U) : 0U;
 
-            if (timer->config.callback != NULL) {
-                timer->config.callback(timer, timer->config.user_data);
+            if (cb != NULL) {
+                cb(timer, ud);
             }
 
-            timer->fire_count++;
-            timer->last_fire_time = now;
+            k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
+            /* 回调后重新验证：定时器可能已被删除或重启 */
+            if (timer->is_allocated && timer->magic == TIMER_MAGIC && !timer->terminate) {
+                if (timer->status == SYS_TIMER_RUNNING) {
+                    timer->fire_count++;
+                    timer->last_fire_time = now;
 
-            if (timer->fire_count == 1U) {
-                timer->avg_latency_us = latency_us;
-                timer->max_latency_us = latency_us;
-            } else {
-                if (latency_us > timer->max_latency_us) {
-                    timer->max_latency_us = latency_us;
+                    if (timer->fire_count == 1U) {
+                        timer->avg_latency_us = latency_us;
+                        timer->max_latency_us = latency_us;
+                    } else {
+                        if (latency_us > timer->max_latency_us) {
+                            timer->max_latency_us = latency_us;
+                        }
+
+                        uint64_t total = ((uint64_t) timer->avg_latency_us * (timer->fire_count - 1U)) + latency_us;
+                        timer->avg_latency_us = (uint32_t) (total / timer->fire_count);
+                    }
+
+                    if (timer->config.mode == SYS_TIMER_PERIODIC) {
+                        timer->next_fire_time = scheduled_time + timer->config.period_ms;
+                        int32_t nf_diff = (int32_t)(now - timer->next_fire_time);
+                        if (nf_diff >= 0) {
+                            uint32_t periods_behind =
+                                (uint32_t)(nf_diff + timer->config.period_ms) / timer->config.period_ms;
+                            timer->next_fire_time = scheduled_time + ((periods_behind + 1U) * timer->config.period_ms);
+                        }
+                    } else {
+                        timer->status = SYS_TIMER_EXPIRED;
+                        k_sem_give(&timer->sem);
+                    }
                 }
-
-                uint64_t total = (uint64_t) timer->avg_latency_us * (timer->fire_count - 1U) + latency_us;
-                timer->avg_latency_us = (uint32_t) (total / timer->fire_count);
             }
-
-            if (timer->config.mode == SYS_TIMER_PERIODIC) {
-                timer->next_fire_time = scheduled_time + timer->config.period_ms;
-                if (now >= timer->next_fire_time) {
-                    uint32_t periods_behind = (now - scheduled_time) / timer->config.period_ms;
-                    timer->next_fire_time = scheduled_time + (periods_behind + 1U) * timer->config.period_ms;
-                }
-            } else {
-                timer->status = SYS_TIMER_EXPIRED;
-                k_sem_give(&timer->sem);
-                continue;
-            }
+            k_mutex_unlock(&g_sys_timer.lock);
         }
     }
 

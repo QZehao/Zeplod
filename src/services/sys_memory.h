@@ -67,6 +67,11 @@ typedef struct {
     uint32_t fragmentation; ///< 碎片化程度百分比（0-100）
 } sys_mem_stats_t;
 
+/** 分配模块名称最大长度 */
+#ifndef SYS_MEM_MODULE_NAME_LEN
+#define SYS_MEM_MODULE_NAME_LEN 16
+#endif
+
 /**
  * @brief 分配信息结构体（调试用）
  *
@@ -74,11 +79,11 @@ typedef struct {
  * 仅在启用跟踪功能时有效。
  */
 typedef struct {
-    void*       ptr;       ///< 分配的内存指针
-    size_t      size;      ///< 请求的大小（字节）
-    uint32_t    timestamp; ///< 分配时间戳（系统运行毫秒数）
-    const char* module;    ///< 分配模块名称（可选）
-    uint32_t    line;      ///< 源代码行号（可选）
+    void*    ptr;                              ///< 分配的内存指针
+    size_t   size;                             ///< 请求的大小（字节）
+    uint32_t timestamp;                        ///< 分配时间戳（系统运行毫秒数）
+    char     module[SYS_MEM_MODULE_NAME_LEN];  ///< 分配模块名称（可选）
+    uint32_t line;                             ///< 源代码行号（可选）
 } sys_mem_alloc_info_t;
 
 /* =============================================================================
@@ -228,7 +233,7 @@ void sys_mem_reset_stats(sys_mem_pool_type_t type);
  * @return 活跃分配数量
  * @retval 0 池无效或无活跃分配
  *
- * @note 计算公式：alloc_count - free_count
+ * @note 使用独立的 active_count 计数，不受 sys_mem_reset_stats 影响
  */
 uint32_t sys_mem_get_active_allocations(sys_mem_pool_type_t type);
 

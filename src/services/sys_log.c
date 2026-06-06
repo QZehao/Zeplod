@@ -56,7 +56,7 @@ LOG_MODULE_REGISTER(sys_log, CONFIG_SYS_LOG_LEVEL);
 #define CONFIG_SYS_MEMORY_POOL_SIZE 8192
 #endif
 
-#define MAX_LOG_ENTRIES (CONFIG_SYS_MEMORY_POOL_SIZE / sizeof(sys_log_entry_t))
+#define MAX_LOG_ENTRIES MAX(SYS_LOG_MIN_BUFFER_SIZE, (CONFIG_SYS_MEMORY_POOL_SIZE / sizeof(sys_log_entry_t)))
 
 /* ANSI 颜色代码 */
 #define COLOR_RED       "\x1b[31m"
@@ -355,8 +355,10 @@ void sys_log_set_level(const char* module, sys_log_level_t level) {
         }
     }
     if (slot >= 0) {
+        /* 复制最多 SYS_LOG_MAX_MODULE_NAME_LEN 字节，不强制 null 终止；
+         * 数组初始化时已清零，短名称自然以 \0 结尾。
+         * 查找时用 strncmp(..., SYS_LOG_MAX_MODULE_NAME_LEN) 保证一致性。 */
         strncpy(g_sys_log.module_names[slot], module, SYS_LOG_MAX_MODULE_NAME_LEN);
-        g_sys_log.module_names[slot][SYS_LOG_MAX_MODULE_NAME_LEN - 1] = '\0';
         g_sys_log.module_levels[slot] = level;
     } else {
         LOG_WRN("sys_log_set_level: module table full (max 16), ignoring '%s'", module);

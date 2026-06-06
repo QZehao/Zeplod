@@ -62,10 +62,11 @@ typedef struct free_block {
  * @brief 分配块头部结构体（位于用户数据之前）
  */
 typedef struct alloc_header {
-    uint32_t magic;          ///< 魔数，用于验证
-    uint32_t pool_type;      ///< 所属内存池类型
-    size_t   requested_size; ///< 用户请求大小（原始未对齐）
-    size_t   aligned_size;   ///< 实际分配的用户数据大小（已对齐）
+    uint32_t magic;             ///< 魔数，用于验证
+    uint32_t pool_type;         ///< 所属内存池类型
+    size_t   requested_size;    ///< 用户请求大小（原始未对齐）
+    size_t   aligned_size;      ///< 实际分配的用户数据大小（已对齐）
+    size_t   actual_block_size; ///< 实际占用的总块大小（含头部和尾部碎片）
     /* 之后紧跟用户数据 */
 } alloc_header_t;
 
@@ -73,17 +74,18 @@ typedef struct alloc_header {
  * @brief 内存池控制结构
  */
 typedef struct mem_pool {
-    uint8_t*            buffer;      ///< 池内存缓冲区起始地址
-    size_t              total_size;  ///< 池总大小（字节）
-    free_block_t*       free_list;   ///< 空闲块链表头
-    size_t              used_size;   ///< 当前已使用大小（字节）
-    size_t              max_used;    ///< 历史最大使用量（字节）
-    uint32_t            alloc_count; ///< 累计分配次数
-    uint32_t            free_count;  ///< 累计释放次数
-    uint32_t            fail_count;  ///< 分配失败次数
-    sys_mem_pool_type_t type;        ///< 池类型
-    struct k_mutex      lock;        ///< 池互斥锁
-    bool                initialized; ///< 池是否已初始化
+    uint8_t*            buffer;       ///< 池内存缓冲区起始地址
+    size_t              total_size;   ///< 池总大小（字节）
+    free_block_t*       free_list;    ///< 空闲块链表头
+    size_t              used_size;    ///< 当前已使用大小（字节）
+    size_t              max_used;     ///< 历史最大使用量（字节）
+    uint32_t            alloc_count;  ///< 累计分配次数
+    uint32_t            free_count;   ///< 累计释放次数
+    uint32_t            fail_count;   ///< 分配失败次数
+    uint32_t            active_count; ///< 当前活跃分配数（不受统计重置影响）
+    sys_mem_pool_type_t type;         ///< 池类型
+    struct k_mutex      lock;         ///< 池互斥锁
+    bool                initialized;  ///< 池是否已初始化
 } mem_pool_t;
 
 /**
@@ -284,7 +286,11 @@ static void tracker_add(void* ptr, size_t size, const char* module, uint32_t lin
     info->ptr = ptr;
     info->size = size;
     info->timestamp = k_uptime_get_32();
-    info->module = module;
+    info->module[0] = '\0';
+    if (module != NULL) {
+        strncpy(info->module, module, SYS_MEM_MODULE_NAME_LEN - 1);
+        info->module[SYS_MEM_MODULE_NAME_LEN - 1] = '\0';
+    }
     info->line = line;
 
     g_sys_mem.tracker.slot_active[idx] = true;
@@ -451,6 +457,7 @@ static void* pool_alloc_locked(mem_pool_t* pool, size_t req_size, bool zero, con
     header->pool_type = (uint32_t) pool->type;
     header->requested_size = req_size;
     header->aligned_size = aligned_req;
+    header->actual_block_size = (remaining >= MIN_BLOCK_SIZE) ? total_needed : curr->size;
 
     void* user_ptr = block_start + sizeof(alloc_header_t);
 
@@ -460,11 +467,12 @@ static void* pool_alloc_locked(mem_pool_t* pool, size_t req_size, bool zero, con
     }
 
     /* 更新统计 */
-    pool->used_size += total_needed;
+    pool->used_size += header->actual_block_size;
     if (pool->used_size > pool->max_used) {
         pool->max_used = pool->used_size;
     }
     pool->alloc_count++;
+    pool->active_count++;
 
     return user_ptr;
 }
@@ -483,11 +491,12 @@ static void pool_free_locked(mem_pool_t* pool, void* ptr, alloc_header_t* header
 
     /* 将这块内存加入空闲链表 */
     free_block_t* new_free = (free_block_t*) header;
-    new_free->size = sizeof(alloc_header_t) + header->aligned_size;
+    size_t        freed_size = header->actual_block_size;
+    new_free->size = freed_size;
     /* 确保大小对齐 */
     if (!align_up_size(new_free->size, MEMORY_ALIGN_BYTES, &new_free->size)) {
         LOG_ERR("align_up_size failed for freed block");
-        new_free->size = sizeof(alloc_header_t) + header->aligned_size;
+        new_free->size = freed_size;
     }
 
     /* 插入到空闲链表（保持地址顺序，便于合并） */
@@ -508,13 +517,17 @@ static void pool_free_locked(mem_pool_t* pool, void* ptr, alloc_header_t* header
     /* 合并相邻空闲块 */
     coalesce_free_blocks(pool);
 
-    /* 更新统计 */
-    if (pool->used_size >= new_free->size) {
-        pool->used_size -= new_free->size;
+    /* 更新统计：使用合并前保存的本次释放大小 */
+    if (pool->used_size >= freed_size) {
+        pool->used_size -= freed_size;
     } else {
         pool->used_size = 0;
     }
     pool->free_count++;
+    pool->active_count--;
+
+    /* 在池锁保护下移除跟踪记录，防止地址复用后误删新记录 */
+    tracker_remove(ptr);
 }
 
 /**
@@ -573,6 +586,12 @@ int sys_mem_init(const sys_mem_config_t* config) {
         k_mutex_init(&pool->lock);
 
         if (configured_size == 0) {
+            pool->initialized = false;
+            continue;
+        }
+
+        if (configured_size < sizeof(free_block_t)) {
+            LOG_WRN("Pool %d size %u too small (min %zu), disabled", i, (uint32_t) configured_size, sizeof(free_block_t));
             pool->initialized = false;
             continue;
         }
@@ -671,8 +690,6 @@ void sys_mem_free(sys_mem_pool_type_t type, void* ptr) {
 
     pool_free_locked(pool, ptr, header);
     k_mutex_unlock(&pool->lock);
-
-    tracker_remove(ptr);
 }
 
 void* sys_mem_realloc(sys_mem_pool_type_t type, void* ptr, size_t size) {
@@ -772,6 +789,7 @@ void sys_mem_reset_stats(sys_mem_pool_type_t type) {
     pool->alloc_count = 0;
     pool->free_count = 0;
     pool->fail_count = 0;
+    /* active_count 不清零：它反映真实的活跃分配，与累计统计分离 */
     k_mutex_unlock(&pool->lock);
 }
 
@@ -782,7 +800,7 @@ uint32_t sys_mem_get_active_allocations(sys_mem_pool_type_t type) {
     }
 
     k_mutex_lock(&pool->lock, K_FOREVER);
-    uint32_t active = (pool->alloc_count >= pool->free_count) ? (pool->alloc_count - pool->free_count) : 0;
+    uint32_t active = pool->active_count;
     k_mutex_unlock(&pool->lock);
     return active;
 }
@@ -813,33 +831,54 @@ void sys_mem_dump_allocations(sys_mem_pool_type_t type) {
     }
     k_mutex_unlock(&pool->lock);
 
-    /* 打印活跃分配（来自跟踪器） */
+    /* 打印活跃分配（来自跟踪器）
+     *
+     * 锁序约定：全局统一为 pool->lock 先于 tracker.lock（见 pool_free_locked
+     * 在持有池锁时调用 tracker_remove）。因此此处禁止在持有 tracker.lock 的
+     * 同时再去获取 pool->lock，否则会与释放路径形成 AB-BA 死锁。
+     * 解决方式：逐槽在 tracker.lock 下做快照后立即释放，再用池锁验证打印。 */
     if (g_sys_mem.tracker.tracking_enabled) {
+        uint32_t max_r;
+        bool     header_printed = false;
+
         k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
-        if (g_sys_mem.tracker.count > 0) {
-            printk("Active Allocations:\n");
-            const uint32_t max_r = g_sys_mem.tracker.max_records;
-            for (uint32_t i = 0; i < max_r; i++) {
-                if (!g_sys_mem.tracker.slot_active[i]) {
-                    continue;
-                }
-                sys_mem_alloc_info_t* info = &g_sys_mem.tracker.records[i];
-                mem_pool_t*           owner = lock_pool_from_ptr(info->ptr, NULL);
-                if (owner == NULL) {
-                    continue;
-                }
-                alloc_header_t* header = get_alloc_header(info->ptr);
-                if (header != NULL && header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
-                    printk("  [%u] ptr=%p, size=%u, time=%u", i, info->ptr, (uint32_t) info->size, info->timestamp);
-                    if (info->module != NULL) {
-                        printk(" (%s:%u)", info->module, info->line);
-                    }
-                    printk("\n");
-                }
-                k_mutex_unlock(&owner->lock);
-            }
-        }
+        max_r = g_sys_mem.tracker.max_records;
         k_mutex_unlock(&g_sys_mem.tracker.lock);
+
+        for (uint32_t i = 0; i < max_r; i++) {
+            sys_mem_alloc_info_t info_copy;
+            bool                 active = false;
+
+            k_mutex_lock(&g_sys_mem.tracker.lock, K_FOREVER);
+            if (g_sys_mem.tracker.slot_active[i]) {
+                info_copy = g_sys_mem.tracker.records[i];
+                active = true;
+            }
+            k_mutex_unlock(&g_sys_mem.tracker.lock);
+
+            if (!active) {
+                continue;
+            }
+
+            mem_pool_t* owner = lock_pool_from_ptr(info_copy.ptr, NULL);
+            if (owner == NULL) {
+                continue;
+            }
+            alloc_header_t* header = get_alloc_header(info_copy.ptr);
+            if (header != NULL && header->magic == MEMORY_MAGIC && header->pool_type == (uint32_t) type) {
+                if (!header_printed) {
+                    printk("Active Allocations:\n");
+                    header_printed = true;
+                }
+                printk("  [%u] ptr=%p, size=%u, time=%u", i, info_copy.ptr, (uint32_t) info_copy.size,
+                       info_copy.timestamp);
+                if (info_copy.module[0] != '\0') {
+                    printk(" (%s:%u)", info_copy.module, info_copy.line);
+                }
+                printk("\n");
+            }
+            k_mutex_unlock(&owner->lock);
+        }
     }
 
     printk("=== End Dump ===\n\n");
@@ -899,9 +938,7 @@ size_t sys_mem_defrag(sys_mem_pool_type_t type) {
     /* SIL-2: 使用活跃分配计数而非总计数,防止误判
      * 只有当前没有活跃分配时才能安全重置整个池
      */
-    uint32_t active_allocs = (pool->alloc_count >= pool->free_count) ? (pool->alloc_count - pool->free_count) : 0;
-
-    if (active_allocs == 0) {
+    if (pool->active_count == 0) {
         reclaimed = pool->used_size;
         pool->free_list = (free_block_t*) pool->buffer;
         pool->free_list->next = NULL;

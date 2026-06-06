@@ -181,8 +181,6 @@ int sys_wdt_init(const wdt_config_t* config) {
             g_wdt.config.mode = WDT_MODE_SOFTWARE;
         }
     }
-#else
-    g_wdt.wdt_channel = -1;
 #endif
 
     LOG_INF("Watchdog initialized: timeout=%dms, mode=%d", g_wdt.config.timeout_ms, g_wdt.config.mode);
@@ -237,6 +235,13 @@ int sys_wdt_stop(void) {
         return 0;
     }
 
+    /* 硬件看门狗一旦启动通常无法停止；继续喂狗或返回错误 */
+    if (g_wdt.hw_wdt_setup_done) {
+        k_mutex_unlock(&g_wdt.lock);
+        LOG_ERR("Cannot stop hardware watchdog once started");
+        return -ENOTSUP;
+    }
+
     /* SIL-2: 设置停止标志，让线程自行退出 */
     g_wdt.status = WDT_STATUS_STOPPED;
     k_mutex_unlock(&g_wdt.lock);
@@ -276,6 +281,13 @@ int sys_wdt_pause(void) {
     if (g_wdt.status != WDT_STATUS_RUNNING) {
         k_mutex_unlock(&g_wdt.lock);
         return -EPERM;
+    }
+
+    /* 硬件看门狗一旦启动通常无法暂停 */
+    if (g_wdt.hw_wdt_setup_done) {
+        k_mutex_unlock(&g_wdt.lock);
+        LOG_ERR("Cannot pause hardware watchdog");
+        return -ENOTSUP;
     }
 
     g_wdt.status = WDT_STATUS_PAUSED;
@@ -456,16 +468,20 @@ static void wdt_monitor_thread(void* p1, void* p2, void* p3) {
 
     for (;;) {
         k_mutex_lock(&g_wdt.lock, K_FOREVER);
-        if (g_wdt.status != WDT_STATUS_RUNNING) {
+        if (g_wdt.status == WDT_STATUS_STOPPED) {
             k_mutex_unlock(&g_wdt.lock);
             break;
+        }
+        if (g_wdt.status == WDT_STATUS_PAUSED) {
+            k_mutex_unlock(&g_wdt.lock);
+            k_msleep(SYS_WDT_MONITOR_INTERVAL_MS);
+            continue;
         }
 
         uint32_t          now = k_uptime_get_32();
         uint32_t          time_since_feed = now - g_wdt.last_feed_time;
         uint32_t          timeout_ms = g_wdt.config.timeout_ms;
         uint32_t          feed_margin_ms = g_wdt.config.feed_margin_ms;
-        uint32_t          feed_threshold = timeout_ms / 2U;
         uint32_t          expire_threshold = (timeout_ms > feed_margin_ms) ? (timeout_ms - feed_margin_ms) : timeout_ms;
         sys_wdt_user_cb_t pre_cb = g_wdt.config.pre_expire_callback;
         void*             cb_ud = g_wdt.config.callback_user_data;
@@ -489,11 +505,8 @@ static void wdt_monitor_thread(void* p1, void* p2, void* p3) {
                     wdt_expire_handler();
                     break;
                 }
-                wdt_feed_internal();
+                /* 不再自动喂狗：应用必须主动喂狗，否则下次循环将真正超时 */
             }
-            k_mutex_unlock(&g_wdt.lock);
-        } else if (time_since_feed >= feed_threshold) {
-            wdt_feed_internal();
             k_mutex_unlock(&g_wdt.lock);
         } else {
             k_mutex_unlock(&g_wdt.lock);
