@@ -29,7 +29,9 @@
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 
 static atomic_t g_event_type_registered;
+#if CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0
 static atomic_t g_memory_warning_event_type_registered;
+#endif
 
 typedef struct {
     char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
