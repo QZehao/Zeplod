@@ -168,6 +168,7 @@ int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
     ch->next_seq = 0;
     atomic_set(&ch->publish_hold, 0);
     atomic_set(&ch->dispatch_hold, 0);
+    atomic_set(&ch->lifecycle_hold, 0);
     atomic_set(&ch->dispatch_ready, 0);
 
     return 0;
@@ -333,7 +334,8 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
     atomic_set(&ch->active, 0);
     k_spin_unlock(&ch->lock, key);
 
-    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0) {
+    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0 ||
+        atomic_get(&ch->lifecycle_hold) != 0) {
         atomic_set(&ch->active, 1);
         k_mutex_unlock(&g_channels_lock);
         return -EAGAIN;
@@ -353,7 +355,8 @@ int data_bus_channel_destroy(data_bus_channel_t* ch) {
         return -EAGAIN;
     }
 
-    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0) {
+    if (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0 ||
+        atomic_get(&ch->lifecycle_hold) != 0) {
         atomic_set(&ch->active, 1);
         data_bus_ready_resync(ch);
         k_mutex_unlock(&g_channels_lock);
@@ -602,6 +605,18 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
     uint32_t published_seq = 0;
     size_t   published_len = block->len;
 
+    bool warn_memory_fallback = channel_note_block_memory(ch, block);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE) && (CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0)
+    if (warn_memory_fallback && !in_isr) {
+        data_bus_stats_t stats;
+        data_bus_channel_get_stats(ch, &stats);
+        data_bus_event_bridge_notify_memory_warning(ch, stats.malloc_fallback_count, stats.slab_exhausted_count);
+    }
+#else
+    ARG_UNUSED(warn_memory_fallback);
+#endif
+
     if (in_isr) {
         ret = channel_enqueue_block(ch, block, &published_seq);
     } else {
@@ -624,18 +639,6 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
         channel_publish_release(ch);
         return err;
     }
-
-    bool warn_memory_fallback = channel_note_block_memory(ch, block);
-
-#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE) && (CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0)
-    if (warn_memory_fallback && !in_isr) {
-        data_bus_stats_t stats;
-        data_bus_channel_get_stats(ch, &stats);
-        data_bus_event_bridge_notify_memory_warning(ch, stats.malloc_fallback_count, stats.slab_exhausted_count);
-    }
-#else
-    ARG_UNUSED(warn_memory_fallback);
-#endif
 
     LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 

@@ -40,6 +40,10 @@ K_MEM_SLAB_DEFINE(data_bus_slab_256, 256, CONFIG_DATA_BUS_SLAB_256_COUNT, sizeof
 K_MEM_SLAB_DEFINE(data_bus_slab_1k, 1024, CONFIG_DATA_BUS_SLAB_1K_COUNT, sizeof(void*));
 K_MEM_SLAB_DEFINE(data_bus_slab_4k, 4096, CONFIG_DATA_BUS_SLAB_4K_COUNT, sizeof(void*));
 
+BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >=
+                 CONFIG_DATA_BUS_SLAB_256_COUNT + CONFIG_DATA_BUS_SLAB_1K_COUNT + CONFIG_DATA_BUS_SLAB_4K_COUNT,
+             "DATA_BUS_MAX_BLOCKS must be >= total data slab blocks");
+
 #endif /* CONFIG_DATA_BUS_SLAB_ENABLE */
 
 /* ============================================================================

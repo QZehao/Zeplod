@@ -157,14 +157,18 @@ int data_bus_consumer_unregister(data_bus_consumer_t* consumer) {
     if (consumer == NULL) {
         return -EINVAL;
     }
+    if (k_current_get() == &g_dispatcher_thread_data) {
+        return -EDEADLK;
+    }
+
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
 
     data_bus_channel_t* found_ch = consumer->channel;
 
     if (found_ch == NULL) {
+        k_mutex_unlock(&g_channels_lock);
         return -EINVAL;
     }
-
-    k_mutex_lock(&g_channels_lock, K_FOREVER);
 
     if (!channel_in_table_locked(found_ch)) {
         k_mutex_unlock(&g_channels_lock);
@@ -202,17 +206,33 @@ int data_bus_consumer_unregister(data_bus_consumer_t* consumer) {
     char log_name[sizeof(consumer->name_storage)];
     (void) snprintf(log_name, sizeof(log_name), "%s", consumer->name_storage);
 
+    uint32_t recorded_generation = consumer->generation;
     atomic_set(&consumer->active, 0);
+    (void) atomic_inc(&found_ch->lifecycle_hold);
     k_spin_unlock(&found_ch->lock, key);
+
+    /* 释放全局锁后再等待 callback_hold，避免与回调内调用 data_bus_publish() 死锁 */
+    k_mutex_unlock(&g_channels_lock);
 
     while (atomic_get(&consumer->callback_hold) != 0) {
         k_sleep(K_MSEC(1));
     }
 
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+
+    if (!channel_in_table_locked(found_ch)) {
+        (void) atomic_dec(&found_ch->lifecycle_hold);
+        k_mutex_unlock(&g_channels_lock);
+        LOG_WRN("Consumer unregister failed: channel removed during wait");
+        return -EINVAL;
+    }
+
     key = k_spin_lock(&found_ch->lock);
 
     if (found_idx >= CONFIG_DATA_BUS_MAX_CONSUMERS_PER_CHANNEL || !found_ch->consumer_slot_in_use[found_idx] ||
-        &found_ch->consumers[found_idx] != consumer) {
+        &found_ch->consumers[found_idx] != consumer ||
+        found_ch->consumers[found_idx].generation != recorded_generation) {
+        (void) atomic_dec(&found_ch->lifecycle_hold);
         k_spin_unlock(&found_ch->lock, key);
         k_mutex_unlock(&g_channels_lock);
         LOG_WRN("Consumer unregister failed: slot changed on channel '%s'", log_channel);
@@ -223,6 +243,7 @@ int data_bus_consumer_unregister(data_bus_consumer_t* consumer) {
     memset(consumer, 0, sizeof(*consumer));
     found_ch->consumer_slot_in_use[found_idx] = false;
     found_ch->consumer_count--;
+    (void) atomic_dec(&found_ch->lifecycle_hold);
 
     uint32_t remain = found_ch->consumer_count;
 

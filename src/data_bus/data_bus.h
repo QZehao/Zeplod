@@ -132,7 +132,9 @@ int data_bus_init(void);
  *          调用者必须确保所有异步消费者已 release。
  *
  * @return 成功返回 0；从分发线程调用返回 -EINVAL；
- *         分发线程 join 超时返回 -EIO（`g_initialized` / `g_shutting_down` 保持为 1，可重试 deinit）
+ *         分发线程 join 超时返回 -EIO；
+ *         等待通道操作结束超时返回 -EBUSY。
+ *         两种超时均保持关闭状态并拒绝新操作，可重试 data_bus_deinit()。
  */
 int data_bus_deinit(void);
 
@@ -162,7 +164,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel);
  * 调用者必须先注销所有消费者并等待队列排空。
  * 通过检查后会先将通道置为非 active，再从全局表移除，避免销毁窗口内继续 publish。
  *
- * @return 成功返回 0；-EAGAIN 时队列未空、publish_hold 或 dispatch_hold 非零，宜退避重试
+ * @return 成功返回 0；-EAGAIN 时队列未空或仍有发布、分发、生命周期操作，宜退避重试
  */
 int data_bus_channel_destroy(data_bus_channel_t* ch);
 
@@ -241,12 +243,39 @@ int data_bus_consumer_register(data_bus_channel_t* ch, const data_bus_consumer_c
  *
  * 将槽位标记为空闲，不移动其他消费者对象，out_consumer 指针在注销后失效。
  * 若消费者当前正在回调中处理数据（且已 retain 了数据块），后续 release 不受影响。
+ * @return 成功返回 0；从 Data Bus dispatcher 回调中调用返回 -EDEADLK
  */
 int data_bus_consumer_unregister(data_bus_consumer_t* consumer);
 
 /* ============================================================================
  * 内存管理（引用计数）
  * ============================================================================ */
+
+/**
+ * @brief 线程上下文分配数据块（优先 slab，k_malloc 兜底）
+ *
+ * @param len 数据长度（字节）
+ * @return ref_count == 0（尚未进入生命周期）的块，失败返回 NULL
+ * @note 数据缓冲区已分配，可通过 data_bus_block_ptr() 获取并填充
+ */
+data_bus_block_t* data_bus_mem_alloc(size_t len);
+
+/**
+ * @brief ISR 上下文分配数据块（仅 slab，无兜底）
+ *
+ * @param len 数据长度（字节）
+ * @return ref_count == 0 的块，失败返回 NULL
+ * @note slab 耗尽或长度超过最大 slab 大小时返回 NULL
+ */
+data_bus_block_t* data_bus_mem_alloc_isr(size_t len);
+
+/**
+ * @brief 释放尚未进入引用计数生命周期的块（回滚用）
+ *
+ * 仅用于发布失败、尚未入队时释放 data_bus_mem_alloc() / data_bus_mem_alloc_isr() 分配的块。
+ * 已进入队列的块须由 data_bus_block_release() 管理生命周期。
+ */
+void data_bus_mem_free(data_bus_block_t* block);
 
 /** @brief 增加引用计数 */
 void data_bus_block_acquire(data_bus_block_t* block);

@@ -53,10 +53,13 @@
 | 场景 | 预期 |
 | --- | --- |
 | 重复 `data_bus_init` | `0` |
+| `shutting_down` 期间 `data_bus_init` | `-ESHUTDOWN` |
 | 未 init 时 `data_bus_channel_create` 等 | `-ENODEV` |
 | 重复 `data_bus_deinit` | `0` |
 | 从 dispatcher 线程 `data_bus_deinit` | `-EINVAL`（见 `test_deinit_rejected_from_dispatcher_thread`） |
 | 分发线程 join 超时 | `-EIO`（`g_initialized` / `g_shutting_down` 仍为 1，**勿**再 `init`，应重试 `deinit`） |
+| 通道操作 drain 超时 | `-EBUSY`（dispatcher 已停止，保持 `shutting_down=1`，拒绝 publish/init，应重试 `deinit`） |
+| 从 dispatcher 回调注销 consumer | `-EDEADLK` |
 | `shutting_down` 期间 publish | `-ESHUTDOWN`（经 `data_bus_require_initialized`） |
 
 ## 测试编写约定

@@ -75,6 +75,10 @@ ZTEST(test_event_system, test_event_register_type) {
     status = event_register_type(10, "test_event");
     zassert_equal(status, EVENT_OK, "重复注册应返回 OK");
 
+    /* 同一 ID 不允许换名注册，避免不同载荷契约静默冲突 */
+    status = event_register_type(10, "different_event");
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "同一 ID 使用不同名称应被拒绝");
+
     /* 测试无效类型 */
     status = event_register_type(255, "invalid");
     zassert_equal(status, EVENT_OK, "255 应是有效类型");

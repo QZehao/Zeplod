@@ -352,7 +352,7 @@ bool event_system_is_running(void);
  * @param name 事件类型名称（拷贝到内部缓冲，长度 < CONFIG_EVENT_TYPE_NAME_MAX）
  * @return EVENT_OK 成功，其他错误码见 event_status_t
  *
- * @note 重复注册同一类型是幂等的，不会返回错误
+ * @note 使用相同名称重复注册同一类型是幂等的；同一 ID 使用不同名称返回 EVENT_ERR_INVALID_ARG
  * @note 类型 ID 应预先规划，避免冲突
  * @note name 过长返回 EVENT_ERR_INVALID_ARG
  */

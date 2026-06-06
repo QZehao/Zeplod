@@ -95,9 +95,17 @@ event_status_t event_register_type(event_type_t type, const char* name) {
     event_system_entry_lock(entry);
 
     if (entry->name != NULL) {
+        bool same_name = strcmp(entry->name, name) == 0;
+        char registered_name[CONFIG_EVENT_TYPE_NAME_MAX];
+
+        (void) strncpy(registered_name, entry->name, sizeof(registered_name) - 1U);
+        registered_name[sizeof(registered_name) - 1U] = '\0';
         event_system_entry_unlock(entry);
-        LOG_WRN("Event type %d already registered", type);
-        return EVENT_OK;
+        if (same_name) {
+            return EVENT_OK;
+        }
+        LOG_WRN("Event type %d already registered with different name '%s' (new '%s')", type, registered_name, name);
+        return EVENT_ERR_INVALID_ARG;
     }
 
     (void) strncpy(entry->name_storage, name, sizeof(entry->name_storage) - 1U);

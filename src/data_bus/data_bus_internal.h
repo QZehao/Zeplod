@@ -25,6 +25,10 @@
 #define DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS ZEPL_THREAD_SERVICE_JOIN_TIMEOUT_MS
 #endif
 
+#ifndef DATA_BUS_DEINIT_DRAIN_TIMEOUT_MS
+#define DATA_BUS_DEINIT_DRAIN_TIMEOUT_MS CONFIG_DATA_BUS_DEINIT_DRAIN_TIMEOUT_MS
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -80,6 +84,7 @@ struct data_bus_channel {
     uint32_t queue_used;
     atomic_t publish_hold;
     atomic_t dispatch_hold;
+    atomic_t lifecycle_hold;
     atomic_t dispatch_ready;
 };
 

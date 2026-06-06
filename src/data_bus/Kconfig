@@ -20,21 +20,25 @@ config DATA_BUS_CHANNEL_NAME_MAX
 config DATA_BUS_MAX_CHANNELS
     int "Maximum number of channels"
     default 8
+    range 1 64
     depends on DATA_BUS
 
 config DATA_BUS_MAX_CONSUMERS_PER_CHANNEL
     int "Maximum consumers per channel"
     default 4
+    range 1 32
     depends on DATA_BUS
 
 config DATA_BUS_CHANNEL_QUEUE_DEPTH
     int "Channel queue depth (block pointer count)"
     default 16
+    range 1 256
     depends on DATA_BUS
 
 config DATA_BUS_MAX_BLOCKS
     int "Maximum concurrent blocks (data_bus_block_t slab size)"
     default 32
+    range 1 256
     depends on DATA_BUS
     help
       Maximum number of data_bus_block_t structures in the system
@@ -44,12 +48,25 @@ config DATA_BUS_MAX_BLOCKS
 config DATA_BUS_DISPATCHER_STACK_SIZE
     int "Dispatcher thread stack size"
     default 2048
+    range 512 8192
     depends on DATA_BUS
 
 config DATA_BUS_DISPATCHER_PRIORITY
     int "Dispatcher thread priority"
     default 5
+    range 0 15
     depends on DATA_BUS
+
+config DATA_BUS_DEINIT_DRAIN_TIMEOUT_MS
+    int "Deinit channel operation drain timeout (ms)"
+    default 5000
+    range 10 60000
+    depends on DATA_BUS
+    help
+      Maximum time data_bus_deinit() waits for publishers, dispatcher work,
+      and consumer unregister operations after the dispatcher thread exits.
+      A timeout returns -EBUSY and leaves the bus shutting down so deinit can
+      be retried without accepting new publishes.
 
 config DATA_BUS_SLAB_ENABLE
     bool "Enable data bus slab pool"
@@ -59,16 +76,19 @@ config DATA_BUS_SLAB_ENABLE
 config DATA_BUS_SLAB_256_COUNT
     int "256-byte slab block count"
     default 8
+    range 0 256
     depends on DATA_BUS_SLAB_ENABLE
 
 config DATA_BUS_SLAB_1K_COUNT
     int "1KB slab block count"
     default 4
+    range 0 256
     depends on DATA_BUS_SLAB_ENABLE
 
 config DATA_BUS_SLAB_4K_COUNT
     int "4KB slab block count"
     default 2
+    range 0 256
     depends on DATA_BUS_SLAB_ENABLE
 
 config DATA_BUS_EVENT_BRIDGE

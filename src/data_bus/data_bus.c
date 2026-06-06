@@ -43,6 +43,7 @@ uint32_t            g_channel_count;
 struct k_mutex      g_channels_lock;
 atomic_t            g_initialized;
 atomic_t            g_shutting_down;
+static atomic_t     g_dispatcher_joined;
 
 K_MUTEX_DEFINE(g_init_lock);
 
@@ -137,8 +138,9 @@ int data_bus_init(void) {
     k_mutex_lock(&g_init_lock, K_FOREVER);
 
     if (atomic_get(&g_initialized)) {
+        int ret = atomic_get(&g_shutting_down) ? -ESHUTDOWN : 0;
         k_mutex_unlock(&g_init_lock);
-        return 0;
+        return ret;
     }
 
     /* 初始化全局信号量 */
@@ -153,6 +155,7 @@ int data_bus_init(void) {
     g_channel_count = 0;
 
     atomic_set(&g_shutting_down, 0);
+    atomic_set(&g_dispatcher_joined, 0);
 
     /* 创建分发线程 */
     k_tid_t tid = k_thread_create(&g_dispatcher_thread_data, g_dispatcher_stack,
@@ -191,18 +194,23 @@ int data_bus_deinit(void) {
     atomic_set(&g_shutting_down, 1);
     k_mutex_unlock(&g_channels_lock);
 
-    /* 唤醒分发线程使其退出 */
-    k_sem_give(&g_dispatcher_sem);
+    if (!atomic_get(&g_dispatcher_joined)) {
+        /* 唤醒分发线程使其退出 */
+        k_sem_give(&g_dispatcher_sem);
 
-    int jret = k_thread_join(&g_dispatcher_thread_data, K_MSEC(DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS));
+        int jret = k_thread_join(&g_dispatcher_thread_data, K_MSEC(DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS));
 
-    if (jret != 0) {
-        LOG_ERR("Data bus dispatcher join timed out: %d", jret);
-        k_mutex_unlock(&g_init_lock);
-        return -EIO;
+        if (jret != 0) {
+            LOG_ERR("Data bus dispatcher join timed out: %d", jret);
+            k_mutex_unlock(&g_init_lock);
+            return -EIO;
+        }
+        atomic_set(&g_dispatcher_joined, 1);
     }
 
     data_bus_ready_reset();
+
+    int64_t drain_deadline = k_uptime_get() + DATA_BUS_DEINIT_DRAIN_TIMEOUT_MS;
 
     while (true) {
         bool busy = false;
@@ -211,7 +219,8 @@ int data_bus_deinit(void) {
         for (uint32_t i = 0; i < g_channel_count; i++) {
             data_bus_channel_t* ch = g_channels[i];
 
-            if (ch != NULL && (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0)) {
+            if (ch != NULL && (atomic_get(&ch->publish_hold) != 0 || atomic_get(&ch->dispatch_hold) != 0 ||
+                               atomic_get(&ch->lifecycle_hold) != 0)) {
                 busy = true;
                 break;
             }
@@ -220,6 +229,11 @@ int data_bus_deinit(void) {
 
         if (!busy) {
             break;
+        }
+        if (k_uptime_get() > drain_deadline) {
+            LOG_ERR("Data bus deinit drain timeout (channel operations still active)");
+            k_mutex_unlock(&g_init_lock);
+            return -EBUSY;
         }
         k_sleep(K_MSEC(1));
     }
@@ -247,6 +261,7 @@ int data_bus_deinit(void) {
 
     atomic_set(&g_initialized, 0);
     atomic_set(&g_shutting_down, 0);
+    atomic_set(&g_dispatcher_joined, 0);
     LOG_DBG("Data bus deinitialized");
 
     k_mutex_unlock(&g_init_lock);

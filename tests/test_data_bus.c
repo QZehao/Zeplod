@@ -39,6 +39,18 @@ static atomic_t          g_call_count;
 static uint32_t          g_recv_seq = 0;
 static data_bus_block_t* g_retained_block = NULL;
 static uint8_t           g_large_payload[4097];
+static struct k_thread   g_unregister_thread;
+static struct k_thread   g_deinit_thread;
+static K_THREAD_STACK_DEFINE(g_unregister_stack, 1024);
+static K_THREAD_STACK_DEFINE(g_deinit_stack, 1024);
+static struct k_sem         g_concurrent_cb_entered;
+static struct k_sem         g_concurrent_cb_continue;
+static atomic_t             g_concurrent_publish_result;
+static atomic_t             g_concurrent_unregister_result;
+static atomic_t             g_concurrent_deinit_result;
+static data_bus_consumer_t* g_concurrent_consumer;
+static data_bus_consumer_t* g_self_unregister_consumer;
+static atomic_t             g_self_unregister_result;
 
 /* ============================================================================
  * 消费者回调
@@ -77,7 +89,8 @@ static bool data_bus_channel_quiescent(void* ctx) {
     queue_empty = (ch->queue_used == 0U);
     k_spin_unlock(&ch->lock, key);
 
-    return atomic_get(&ch->publish_hold) == 0 && atomic_get(&ch->dispatch_hold) == 0 && queue_empty;
+    return atomic_get(&ch->publish_hold) == 0 && atomic_get(&ch->dispatch_hold) == 0 &&
+           atomic_get(&ch->lifecycle_hold) == 0 && queue_empty;
 }
 
 static void data_bus_test_wait_channel_quiescent(data_bus_channel_t* ch) {
@@ -99,6 +112,47 @@ static void manual_release_consumer_cb(data_bus_channel_t* ch, data_bus_block_t*
     /* manual_release=true：消费者自行管理引用 */
     data_bus_block_release(block);
     k_sem_give(&g_test_sem);
+}
+
+static void concurrent_publish_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
+    ARG_UNUSED(block);
+    ARG_UNUSED(user_data);
+
+    k_sem_give(&g_concurrent_cb_entered);
+    k_sem_take(&g_concurrent_cb_continue, K_FOREVER);
+
+    const uint8_t payload[] = {0xC1};
+    atomic_set(&g_concurrent_publish_result, data_bus_publish(ch, payload, sizeof(payload)));
+}
+
+static void self_unregister_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
+    ARG_UNUSED(ch);
+    ARG_UNUSED(block);
+    ARG_UNUSED(user_data);
+
+    atomic_set(&g_self_unregister_result, data_bus_consumer_unregister(g_self_unregister_consumer));
+    k_sem_give(&g_test_sem);
+}
+
+static void unregister_thread_entry(void* arg1, void* arg2, void* arg3) {
+    ARG_UNUSED(arg2);
+    ARG_UNUSED(arg3);
+
+    atomic_set(&g_concurrent_unregister_result, data_bus_consumer_unregister((data_bus_consumer_t*) arg1));
+}
+
+static void deinit_thread_entry(void* arg1, void* arg2, void* arg3) {
+    ARG_UNUSED(arg1);
+    ARG_UNUSED(arg2);
+    ARG_UNUSED(arg3);
+
+    atomic_set(&g_concurrent_deinit_result, data_bus_deinit());
+}
+
+static bool data_bus_lifecycle_hold_nonzero(void* ctx) {
+    data_bus_channel_t* ch = ctx;
+
+    return atomic_get(&ch->lifecycle_hold) != 0;
 }
 
 /* ============================================================================
@@ -126,6 +180,14 @@ static void data_bus_test_setup(void) {
     g_recv_seq = 0;
     g_retained_block = NULL;
     g_isr_ch = NULL;
+    g_concurrent_consumer = NULL;
+    g_self_unregister_consumer = NULL;
+    k_sem_init(&g_concurrent_cb_entered, 0, 1);
+    k_sem_init(&g_concurrent_cb_continue, 0, 1);
+    atomic_set(&g_concurrent_publish_result, -EINPROGRESS);
+    atomic_set(&g_concurrent_unregister_result, -EINPROGRESS);
+    atomic_set(&g_concurrent_deinit_result, -EINPROGRESS);
+    atomic_set(&g_self_unregister_result, -EINPROGRESS);
 }
 
 /* ============================================================================
@@ -207,6 +269,25 @@ ZTEST(test_data_bus, test_deinit_rejected_from_dispatcher_thread) {
     zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
     data_bus_test_destroy_channel(ch);
     zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+ZTEST(test_data_bus, test_deinit_drain_timeout_keeps_bus_closed) {
+    data_bus_channel_t* ch = NULL;
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("deinit_timeout", &ch), 0, NULL);
+
+    (void) atomic_inc(&ch->publish_hold);
+    zassert_equal(data_bus_deinit(), -EBUSY, "active channel operation should time out deinit");
+    zassert_equal(data_bus_init(), -ESHUTDOWN, "init must not reopen a partially deinitialized bus");
+
+    const uint8_t payload[] = {0xD1};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), -ESHUTDOWN,
+                  "publish must remain rejected after deinit timeout");
+
+    (void) atomic_dec(&ch->publish_hold);
+    zassert_equal(data_bus_deinit(), 0, "deinit retry should finish after the operation releases its hold");
 }
 
 /**
@@ -587,6 +668,102 @@ ZTEST(test_data_bus, test_consumer_unregister) {
 
     data_bus_channel_destroy(ch);
     data_bus_deinit();
+}
+
+ZTEST(test_data_bus, test_unregister_allows_callback_publish_to_finish) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "publish_during_unregister",
+        .manual_release = false,
+        .callback = concurrent_publish_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("unregister_publish", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &g_concurrent_consumer), 0, NULL);
+
+    const uint8_t payload[] = {0xA1};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+    zassert_true(ztest_wait_sem(&g_concurrent_cb_entered, K_MSEC(2000)), "callback should start");
+
+    k_tid_t unregister_tid =
+        k_thread_create(&g_unregister_thread, g_unregister_stack, K_THREAD_STACK_SIZEOF(g_unregister_stack),
+                        unregister_thread_entry, g_concurrent_consumer, NULL, NULL, 5, 0, K_NO_WAIT);
+    zassert_not_null(unregister_tid, NULL);
+    zassert_true(ztest_wait_until(data_bus_lifecycle_hold_nonzero, ch, 2000U),
+                 "unregister should hold the channel lifecycle");
+
+    k_sem_give(&g_concurrent_cb_continue);
+    zassert_equal(k_thread_join(unregister_tid, K_MSEC(2000)), 0, "unregister should not deadlock callback publish");
+    zassert_equal(atomic_get(&g_concurrent_publish_result), 0, NULL);
+    zassert_equal(atomic_get(&g_concurrent_unregister_result), 0, NULL);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+ZTEST(test_data_bus, test_unregister_lifecycle_hold_blocks_deinit_free) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "unregister_deinit",
+        .manual_release = false,
+        .callback = concurrent_publish_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("unregister_deinit", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &g_concurrent_consumer), 0, NULL);
+
+    const uint8_t payload[] = {0xA2};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+    zassert_true(ztest_wait_sem(&g_concurrent_cb_entered, K_MSEC(2000)), "callback should start");
+
+    k_tid_t unregister_tid =
+        k_thread_create(&g_unregister_thread, g_unregister_stack, K_THREAD_STACK_SIZEOF(g_unregister_stack),
+                        unregister_thread_entry, g_concurrent_consumer, NULL, NULL, 5, 0, K_NO_WAIT);
+    zassert_not_null(unregister_tid, NULL);
+    zassert_true(ztest_wait_until(data_bus_lifecycle_hold_nonzero, ch, 2000U),
+                 "unregister should hold the channel lifecycle");
+
+    k_tid_t deinit_tid = k_thread_create(&g_deinit_thread, g_deinit_stack, K_THREAD_STACK_SIZEOF(g_deinit_stack),
+                                         deinit_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+    zassert_not_null(deinit_tid, NULL);
+    zassert_true(ztest_wait_atomic_nonzero(&g_shutting_down, 2000U), "deinit should close the bus");
+
+    k_sem_give(&g_concurrent_cb_continue);
+    zassert_equal(k_thread_join(unregister_tid, K_MSEC(2000)), 0, NULL);
+    zassert_equal(k_thread_join(deinit_tid, K_MSEC(2000)), 0, NULL);
+    zassert_equal(atomic_get(&g_concurrent_unregister_result), 0, NULL);
+    zassert_equal(atomic_get(&g_concurrent_deinit_result), 0, NULL);
+    zassert_equal(atomic_get(&g_concurrent_publish_result), -ESHUTDOWN, NULL);
+}
+
+ZTEST(test_data_bus, test_unregister_rejected_from_dispatcher_callback) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "self_unregister",
+        .manual_release = false,
+        .callback = self_unregister_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("self_unregister", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &g_self_unregister_consumer), 0, NULL);
+
+    const uint8_t payload[] = {0xA3};
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+    zassert_true(ztest_wait_sem(&g_test_sem, K_MSEC(2000)), "callback should attempt unregister");
+    zassert_equal(atomic_get(&g_self_unregister_result), -EDEADLK, NULL);
+
+    zassert_equal(data_bus_consumer_unregister(g_self_unregister_consumer), 0, NULL);
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
 }
 
 /**
