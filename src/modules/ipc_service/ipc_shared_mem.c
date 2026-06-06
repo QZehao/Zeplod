@@ -328,14 +328,13 @@ ipc_shm_handle_t ipc_shm_alloc(ipc_service_t* service, size_t size) {
             block->size = size;
             atomic_set(&block->ref_count, 1); /* 初始引用计数=1（分配者持有） */
             block->state = IPC_SHM_STATE_ALLOCATED;
-            pool->alloc_counter++;
-            block->alloc_id = pool->alloc_counter;
-            handle = encode_handle(pool, i, block->alloc_id);
-            if (handle == 0U || handle == IPC_SHM_HANDLE_INVALID) {
+
+            /* 循环重算直到得到合法句柄（避开保留值 0 与 INVALID），保证 SIL-2 下不返回伪句柄 */
+            do {
                 pool->alloc_counter++;
                 block->alloc_id = pool->alloc_counter;
                 handle = encode_handle(pool, i, block->alloc_id);
-            }
+            } while (handle == 0U || handle == IPC_SHM_HANDLE_INVALID);
 
             {
                 uint32_t prev = (uint32_t) atomic_inc(&pool->active_count);
