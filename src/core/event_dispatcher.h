@@ -49,12 +49,12 @@ extern "C" {
 #define EVENT_DISPATCHER_MAX_STACK_SIZE 65536U
 #endif
 
-/** 最小优先级 (Zephyr: 数值越大优先级越低) */
+/** 优先级数值下界（Zephyr 约定：数值越小优先级越高，0 为最高） */
 #ifndef EVENT_DISPATCHER_MIN_PRIORITY
 #define EVENT_DISPATCHER_MIN_PRIORITY 0
 #endif
 
-/** 最大优先级 */
+/** 优先级数值上界（数值越大优先级越低） */
 #ifndef EVENT_DISPATCHER_MAX_PRIORITY
 #define EVENT_DISPATCHER_MAX_PRIORITY 15
 #endif
@@ -253,6 +253,8 @@ void event_dispatcher_clear_filter(void);
  * @note DISPATCHER_PAUSED 返回 EVENT_ERR_INVALID_ARG
  * @note 返回 EVENT_ERR_QUEUE_EMPTY 表示队列中无事件
  * @note 返回 EVENT_ERR_TIMEOUT 表示在 timeout 内未等到事件
+ * @warning 外部线程手动消费时请使用有限 timeout：阻塞期间会持有分发器生命周期门闩，
+ *          传入 K_FOREVER 会在无事件到达前长期阻塞 init/start/stop/deinit。
  */
 event_status_t event_dispatcher_process_one(k_timeout_t timeout);
 

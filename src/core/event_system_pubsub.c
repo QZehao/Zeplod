@@ -95,15 +95,17 @@ event_status_t event_register_type(event_type_t type, const char* name) {
     event_system_entry_lock(entry);
 
     if (entry->name != NULL) {
-        bool same_name = strcmp(entry->name, name) == 0;
+        if (strcmp(entry->name, name) == 0) {
+            event_system_entry_unlock(entry);
+            return EVENT_OK;
+        }
+
+        /* 仅在名称不一致（异常路径）时才拷贝出快照用于日志，避免幂等重复注册的常见路径做无谓拷贝 */
         char registered_name[CONFIG_EVENT_TYPE_NAME_MAX];
 
         (void) strncpy(registered_name, entry->name, sizeof(registered_name) - 1U);
         registered_name[sizeof(registered_name) - 1U] = '\0';
         event_system_entry_unlock(entry);
-        if (same_name) {
-            return EVENT_OK;
-        }
         LOG_WRN("Event type %d already registered with different name '%s' (new '%s')", type, registered_name, name);
         return EVENT_ERR_INVALID_ARG;
     }

@@ -995,7 +995,9 @@ static void process_event(const event_t* event) {
     if (g_dispatcher.hot_enable_stats) {
         g_dispatcher.stats.events_processed++;
 
-        if (status != EVENT_OK) {
+        /* 「无订阅者」不是处理错误：向已注册但当前无订阅者的类型发布事件属正常情形，
+         * 不应抬高 processing_errors，否则该指标会出现误报。 */
+        if (status != EVENT_OK && status != EVENT_ERR_NO_SUBSCRIBER) {
             g_dispatcher.stats.processing_errors++;
         }
 
