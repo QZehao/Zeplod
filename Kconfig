@@ -480,10 +480,16 @@ config SYS_WATCHDOG_FORCE_RESET
 
 config WATCHDOG
 	bool "Enable Zephyr Watchdog Driver"
-	default y
+	depends on SYS_WATCHDOG_ENABLE
+	default y if SYS_WATCHDOG_DEFAULT_MODE > 0
+	default n
 	help
-	  Enable Zephyr's watchdog driver. This is required for
-	  hardware watchdog support.
+	  Enable Zephyr's watchdog driver. Required only for hardware or
+	  dual watchdog mode (SYS_WATCHDOG_DEFAULT_MODE 1 or 2).
+
+	  Also requires a status=okay watchdog node in devicetree
+	  (e.g. &iwdg with aliases { watchdog0 = &iwdg; }).
+	  Software-only mode does not need this option.
 
 endmenu
 
