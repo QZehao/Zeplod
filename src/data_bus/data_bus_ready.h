@@ -32,6 +32,14 @@ void data_bus_ready_resync(data_bus_channel_t* ch);
 bool data_bus_ready_consume_fallback(void);
 
 /**
+ * @brief 是否仍有待处理工作（就绪环非空或 fallback 待处理）
+ *
+ * 以就绪环作为真相来源；dispatcher 排空信号量后据此判定是否需继续处理，
+ * 避免把对应未处理就绪项的信号量一并吃掉而造成延迟唤醒。
+ */
+bool data_bus_ready_pending(void);
+
+/**
  * @brief 弹出一个待分发 channel（dispatcher 线程调用）
  * @return channel 指针，队列为空返回 NULL
  */

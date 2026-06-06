@@ -149,6 +149,11 @@ bool data_bus_ready_claim(data_bus_channel_t* ch) {
     k_mutex_unlock(&g_channels_lock);
 
     if (!ok) {
+        /*
+         * 不变量：通道一旦入就绪环即 queue_used>0，且仅 dispatcher 排空队列；
+         * destroy 在 queue_used>0 时直接 -EAGAIN，deinit 先 join dispatcher 再释放通道。
+         * 故 dispatcher 持有已 pop 的通道期间 ch 不会被释放，此处写入 ch 安全。
+         */
         (void) atomic_set(&ch->dispatch_ready, 0);
     }
 
@@ -219,4 +224,12 @@ bool data_bus_ready_consume_fallback(void) {
         return true;
     }
     return false;
+}
+
+bool data_bus_ready_pending(void) {
+    k_spinlock_key_t key = k_spin_lock(&g_ready.lock);
+    bool             pending = (g_ready.count > 0U) || (atomic_get(&g_ready_fallback_pending) != 0);
+
+    k_spin_unlock(&g_ready.lock, key);
+    return pending;
 }

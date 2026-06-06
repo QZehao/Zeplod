@@ -105,26 +105,36 @@ static void data_bus_dispatcher_thread(void* arg1, void* arg2, void* arg3) {
             break;
         }
 
-        while (true) {
-            data_bus_channel_t* ch = data_bus_ready_pop();
+        /*
+         * 处理就绪通道，并在排空多余信号量后以就绪环（真相来源）重新判定。
+         * k_sem_give 与 ready_ring_push 非原子：若仅在处理后排空信号量，
+         * 可能把对应「已入环但尚未处理」就绪项的信号量一并吃掉，
+         * 导致该通道数据滞留至下一次 publish 才被分发。
+         * 故排空后通过 data_bus_ready_pending() 复查：仍有待处理工作则继续，
+         * 否则才回到外层 k_sem_take(K_FOREVER) 阻塞等待。
+         */
+        do {
+            while (true) {
+                data_bus_channel_t* ch = data_bus_ready_pop();
 
-            if (ch == NULL) {
-                break;
+                if (ch == NULL) {
+                    break;
+                }
+
+                if (!data_bus_ready_claim(ch)) {
+                    continue;
+                }
+
+                data_bus_ready_finish(ch);
             }
 
-            if (!data_bus_ready_claim(ch)) {
-                continue;
+            (void) data_bus_ready_consume_fallback();
+
+            /* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
+            while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
+                ;
             }
-
-            data_bus_ready_finish(ch);
-        }
-
-        (void) data_bus_ready_consume_fallback();
-
-        /* 消费 publish 累积的多余信号量，避免每轮空转多次 k_sem_take */
-        while (k_sem_take(&g_dispatcher_sem, K_NO_WAIT) == 0) {
-            ;
-        }
+        } while (data_bus_ready_pending());
     }
 }
 
@@ -138,7 +148,7 @@ int data_bus_init(void) {
     k_mutex_lock(&g_init_lock, K_FOREVER);
 
     if (atomic_get(&g_initialized)) {
-        int ret = atomic_get(&g_shutting_down) ? -ESHUTDOWN : 0;
+        ret = atomic_get(&g_shutting_down) ? -ESHUTDOWN : 0;
         k_mutex_unlock(&g_init_lock);
         return ret;
     }
