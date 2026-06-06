@@ -7,6 +7,7 @@
  */
 
 #include <zephyr/logging/log.h>
+#include "event_memory.h"
 #include "event_queue.h"
 #include "event_system_internal.h"
 
@@ -53,6 +54,10 @@ static event_status_t event_validate_for_publish(const event_t* event) {
     }
 
     if (flags & EVENT_FLAG_DATA_INLINE) {
+        if ((flags & (EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK)) != 0U) {
+            LOG_WRN("publish: INLINE data carries slab flags");
+            return EVENT_ERR_INVALID_ARG;
+        }
         if (len > CONFIG_EVENT_INLINE_DATA_SIZE) {
             LOG_WRN("publish: INLINE data_len %u exceeds %u", len, CONFIG_EVENT_INLINE_DATA_SIZE);
             return EVENT_ERR_INVALID_ARG;
@@ -65,9 +70,24 @@ static event_status_t event_validate_for_publish(const event_t* event) {
             LOG_WRN("publish: DYNAMIC with NULL data.ptr");
             return EVENT_ERR_INVALID_ARG;
         }
-        if ((flags & EVENT_FLAG_DATA_FROM_SLAB) && ((flags & EVENT_FLAG_SLAB_MASK) == 0U)) {
-            LOG_WRN("publish: DATA_FROM_SLAB without SLAB_MASK");
+        const uint8_t slab_flags = flags & EVENT_FLAG_SLAB_MASK;
+        if ((flags & EVENT_FLAG_DATA_FROM_SLAB) == 0U && slab_flags != 0U) {
+            LOG_WRN("publish: SLAB_MASK without DATA_FROM_SLAB");
             return EVENT_ERR_INVALID_ARG;
+        }
+        if (flags & EVENT_FLAG_DATA_FROM_SLAB) {
+#if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
+            struct k_mem_slab* marked_slab = event_memory_data_slab_from_flag(slab_flags);
+            struct k_mem_slab* actual_slab = event_memory_resolve_data_slab_for_ptr(event->data.ptr);
+
+            if (marked_slab == NULL || actual_slab != marked_slab) {
+                LOG_WRN("publish: invalid slab ownership for ptr %p (flags=0x%02x)", event->data.ptr, flags);
+                return EVENT_ERR_INVALID_ARG;
+            }
+#else
+            LOG_WRN("publish: DATA_FROM_SLAB while data slabs are disabled");
+            return EVENT_ERR_INVALID_ARG;
+#endif
         }
         return EVENT_OK;
     }

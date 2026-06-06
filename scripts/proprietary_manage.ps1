@@ -53,7 +53,6 @@ Configuration:
     Format: MODULE_NAME=REPOSITORY_URL
 
     Example:
-        EVENT_SYSTEM_PRO_URL=https://gitee.com/your-repo/event_system_pro.git
         MESH_COMMUNICATION_URL=https://gitee.com/your-repo/mesh_communication.git
 
 Description:

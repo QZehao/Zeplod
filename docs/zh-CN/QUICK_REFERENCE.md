@@ -22,13 +22,13 @@ powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 status
 ### 2️⃣ 启用单个模块
 
 ```cmd
-powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 enable event_system_pro
+powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 enable module_manager_pro
 ```
 
 ### 3️⃣ 禁用单个模块
 
 ```cmd
-powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 disable event_system_pro
+powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 disable module_manager_pro
 ```
 
 ### 4️⃣ 启用所有模块
@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File scripts\proprietary_manage.ps1 check
 .\scripts\proprietary_manage.ps1 status
 
 # 2. 启用所需模块
-.\scripts\proprietary_manage.ps1 enable event_system_pro
+.\scripts\proprietary_manage.ps1 enable module_manager_pro
 .\scripts\proprietary_manage.ps1 enable mesh_communication
 
 # 3. 重新构建
@@ -100,7 +100,6 @@ git checkout Kconfig
 
 | 模块名 | 说明 | 依赖 |
 |--------|------|------|
-| `event_system_pro` | 事件系统专业版 | mesh_communication |
 | `mesh_communication` | Mesh 通信框架 | 无 |
 | `module_manager_pro` | 模块管理器专业版 | 无 |
 | `ota_manager` | OTA 升级管理 | 无 |

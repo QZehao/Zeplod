@@ -153,6 +153,14 @@ extern struct k_mem_slab event_slab_data_4k;
 struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority);
 
 /**
+ * @brief 按指针地址反查事件对象所属的 Slab 池
+ *
+ * @param ptr 事件对象指针
+ * @return 所属 Slab 池指针；不属于任何事件 Slab 池时返回 NULL
+ */
+struct k_mem_slab* event_memory_resolve_event_slab_for_ptr(void* ptr);
+
+/**
  * @brief 根据数据大小选择数据 Slab 池
  *
  * @param data_len 数据长度（字节）

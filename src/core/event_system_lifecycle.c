@@ -32,15 +32,16 @@ zepl_state_t event_system_lifecycle_state(void) {
     return zepl_state_machine_get(&g_event_system.lifecycle);
 }
 
-void event_publish_in_flight_wait_zero(void) {
+event_status_t event_publish_in_flight_wait_zero(void) {
     int64_t deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
     while (atomic_get(&g_publish_in_flight) != 0) {
         if (k_uptime_get() >= deadline) {
             LOG_ERR("Timeout waiting publish in-flight to drain: %d", (int) atomic_get(&g_publish_in_flight));
-            break;
+            return EVENT_ERR_TIMEOUT;
         }
         k_sleep(K_MSEC(1));
     }
+    return EVENT_OK;
 }
 
 void event_system_cleanup_event_types(void) {
@@ -228,7 +229,7 @@ event_status_t event_system_stop(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
-    if (atomic_get(&g_event_system.running) == 0) {
+    if (atomic_get(&g_event_system.running) == 0 && event_system_lifecycle_state() != ZEP_STATE_STOPPING) {
         event_system_lifecycle_unlock();
         return EVENT_OK;
     }
@@ -246,7 +247,11 @@ event_status_t event_system_stop(void) {
 
     atomic_set(&g_event_system.running, 0);
 
-    event_publish_in_flight_wait_zero();
+    event_status_t wait_ret = event_publish_in_flight_wait_zero();
+    if (wait_ret != EVENT_OK) {
+        event_system_lifecycle_unlock();
+        return wait_ret;
+    }
 
     if (event_dispatcher_is_initialized()) {
         dispatcher_state_t disp_st = event_dispatcher_get_state();
@@ -296,9 +301,23 @@ event_status_t event_system_shutdown(void) {
         return EVENT_OK;
     }
 
+    {
+        const zepl_state_t lc_state = event_system_lifecycle_state();
+        if (lc_state == ZEP_STATE_RUNNING &&
+            zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPING) != 0) {
+            LOG_ERR("Failed to transition event system to STOPPING");
+            event_system_lifecycle_unlock();
+            return EVENT_ERR_INVALID_ARG;
+        }
+    }
+
     atomic_set(&g_event_system.running, 0);
 
-    event_publish_in_flight_wait_zero();
+    event_status_t wait_ret = event_publish_in_flight_wait_zero();
+    if (wait_ret != EVENT_OK) {
+        event_system_lifecycle_unlock();
+        return wait_ret;
+    }
 
     if (event_dispatcher_is_initialized()) {
         event_status_t dret = event_dispatcher_deinit();
@@ -308,6 +327,10 @@ event_status_t event_system_shutdown(void) {
             event_system_lifecycle_unlock();
             return dret;
         }
+    }
+
+    if (event_system_lifecycle_state() == ZEP_STATE_STOPPING) {
+        (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
     }
 
     event_queue_deinit(g_event_system.event_queue);

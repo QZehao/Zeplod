@@ -258,7 +258,6 @@ python scripts/module_config.py status
 
 # Enable a module
 python scripts/module_config.py enable MODULE_MANAGER_PRO
-python scripts/module_config.py enable EVENT_SYSTEM_PRO
 
 # Disable a module
 python scripts/module_config.py disable MODULE_MANAGER_PRO
@@ -277,7 +276,6 @@ python scripts/module_config.py status
 
 # 2. Enable the required proprietary module
 python scripts/module_config.py enable MODULE_MANAGER_PRO
-python scripts/module_config.py enable EVENT_SYSTEM_PRO
 
 # 3. Confirm configuration has been updated
 python scripts/module_config.py status

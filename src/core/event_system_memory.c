@@ -337,7 +337,11 @@ void event_free(event_t* event) {
 
     if (event->flags & EVENT_FLAG_FROM_SLAB) {
 #if EVENT_SLAB_ENABLED
-        struct k_mem_slab* slab = event_memory_select_event_slab(event->priority);
+        struct k_mem_slab* slab = event_memory_resolve_event_slab_for_ptr(event);
+        if (slab == NULL) {
+            LOG_ERR("Cannot resolve event slab for ptr %p; memory may leak", event);
+            return;
+        }
         k_mem_slab_free(slab, (void*) event);
 #else
         LOG_ERR("Event %p has FROM_SLAB flag but slab is disabled; falling back to k_free", event);

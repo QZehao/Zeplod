@@ -38,7 +38,6 @@ MODULES = {
     # 商业模块
     "MODULE_MANAGER_PRO": {"name": "增强版模块管理器", "default": False, "proprietary": True},
     "MESH_COMMUNICATION": {"name": "Mesh 通信模块", "default": False, "proprietary": True},
-    "EVENT_SYSTEM_PRO": {"name": "增强版事件系统", "default": False, "proprietary": True},
     "SECURITY_CRYPTO": {"name": "加密安全套件", "default": False, "proprietary": True},
     "OTA_MANAGER": {"name": "OTA 升级管理", "default": False, "proprietary": True},
     "CELLULAR_USB_HOST_CDC_ECM": {"name": "USB Host CDC ECM", "default": False, "proprietary": True},

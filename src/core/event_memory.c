@@ -122,6 +122,48 @@ void event_memory_notify_slab_exhausted(event_priority_t priority, const char* s
 
 #if EVENT_SLAB_ENABLED
 
+typedef struct {
+    struct k_mem_slab* slab;
+    size_t             block_size;
+    uint32_t           num_blocks;
+} event_object_slab_meta_t;
+
+static const event_object_slab_meta_t g_event_object_slab_meta[] = {
+#if EVENT_SLAB_CRITICAL_AVAILABLE
+    {&event_slab_critical, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_CRITICAL_COUNT},
+#endif
+#if EVENT_SLAB_HIGH_AVAILABLE
+    {&event_slab_high, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_HIGH_COUNT},
+#endif
+    {&event_slab_normal, CONFIG_EVENT_STRUCT_SIZE, CONFIG_EVENT_SLAB_NORMAL_COUNT},
+};
+
+static bool event_memory_event_ptr_in_pool(const void* ptr, const event_object_slab_meta_t* meta) {
+    if (ptr == NULL || meta == NULL || meta->slab == NULL || meta->num_blocks == 0U || meta->block_size == 0U) {
+        return false;
+    }
+
+    uintptr_t block = (uintptr_t) ptr;
+    uintptr_t base = (uintptr_t) meta->slab->buffer;
+    size_t    total = meta->block_size * meta->num_blocks;
+
+    if (block < base || block >= (base + total)) {
+        return false;
+    }
+
+    return ((block - base) % meta->block_size) == 0U;
+}
+
+struct k_mem_slab* event_memory_resolve_event_slab_for_ptr(void* ptr) {
+    for (size_t i = 0; i < ARRAY_SIZE(g_event_object_slab_meta); i++) {
+        if (event_memory_event_ptr_in_pool(ptr, &g_event_object_slab_meta[i])) {
+            return g_event_object_slab_meta[i].slab;
+        }
+    }
+
+    return NULL;
+}
+
 #if EVENT_SLAB_LARGE_AVAILABLE
 
 typedef struct {
@@ -265,6 +307,11 @@ struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
     return NULL;
 }
 
+struct k_mem_slab* event_memory_resolve_event_slab_for_ptr(void* ptr) {
+    ARG_UNUSED(ptr);
+    return NULL;
+}
+
 struct k_mem_slab* event_memory_select_data_slab(size_t data_len) {
     if (data_len == 0) {
         return NULL;
@@ -385,7 +432,7 @@ typedef struct debug_track_entry {
 static debug_track_entry_t* g_debug_track_head = NULL;
 
 /** 调试跟踪链表锁 */
-static struct k_mutex g_debug_track_lock;
+static struct k_spinlock g_debug_track_lock;
 
 /** 调试跟踪池大小（可配置） */
 #ifndef CONFIG_EVENT_DEBUG_TRACK_COUNT
@@ -395,34 +442,21 @@ static struct k_mutex g_debug_track_lock;
 /** 调试跟踪池 */
 K_MEM_SLAB_DEFINE(debug_track_slab, sizeof(debug_track_entry_t), CONFIG_EVENT_DEBUG_TRACK_COUNT, sizeof(void*));
 
-/** 调试模块是否已初始化 */
-static bool g_debug_initialized = false;
+/** 泄漏报告快照，避免持有自旋锁时输出日志 */
+typedef struct {
+    void*            ptr;
+    size_t           size;
+    event_priority_t priority;
+    uint32_t         timestamp;
+} debug_track_snapshot_t;
 
-/** 调试模块初始化保护标志 */
-static atomic_t g_debug_init_flag = ATOMIC_INIT(0);
+static debug_track_snapshot_t g_debug_track_snapshot[CONFIG_EVENT_DEBUG_TRACK_COUNT];
+K_MUTEX_DEFINE(g_debug_dump_lock);
 
 /** LOW-1: 调试跟踪 slab 耗尽时被丢弃的分配次数。
  * 当 debug_track_slab 满时，event_check_leaks 报告的数量会偏低；
  * 此计数器记录追踪缺口，使诊断者可识别"统计不完整"的情况。 */
 static atomic_t g_debug_track_misses = ATOMIC_INIT(0);
-
-/**
- * @brief 初始化调试模块（内部函数）
- *
- * 使用原子标志保护，防止多线程竞争初始化。
- */
-static void event_debug_init(void) {
-    if (!g_debug_initialized) {
-        while (atomic_test_and_set_bit(&g_debug_init_flag, 0)) {
-            k_yield();
-        }
-        if (!g_debug_initialized) {
-            k_mutex_init(&g_debug_track_lock);
-            g_debug_initialized = true;
-        }
-        atomic_clear_bit(&g_debug_init_flag, 0);
-    }
-}
 
 /**
  * @brief 跟踪内存分配（内部函数）
@@ -436,14 +470,14 @@ void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority) 
         return;
     }
 
-    event_debug_init();
-
     debug_track_entry_t* entry = NULL;
 
     if (k_mem_slab_alloc(&debug_track_slab, (void**) &entry, K_NO_WAIT) != 0) {
         /* LOW-1: 累计追踪缺口，使 dump_leaks 可暴露统计不完整的事实 */
         atomic_inc(&g_debug_track_misses);
-        LOG_WRN("Debug track slab exhausted");
+        if (!k_is_in_isr()) {
+            LOG_WRN("Debug track slab exhausted");
+        }
         return;
     }
 
@@ -452,10 +486,10 @@ void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority) 
     entry->priority = priority;
     entry->timestamp = k_uptime_get_32();
 
-    k_mutex_lock(&g_debug_track_lock, K_FOREVER);
+    k_spinlock_key_t key = k_spin_lock(&g_debug_track_lock);
     entry->next = g_debug_track_head;
     g_debug_track_head = entry;
-    k_mutex_unlock(&g_debug_track_lock);
+    k_spin_unlock(&g_debug_track_lock, key);
 }
 
 /**
@@ -468,9 +502,7 @@ void event_debug_untrack_alloc(void* ptr) {
         return;
     }
 
-    event_debug_init();
-
-    k_mutex_lock(&g_debug_track_lock, K_FOREVER);
+    k_spinlock_key_t key = k_spin_lock(&g_debug_track_lock);
 
     debug_track_entry_t** pp = &g_debug_track_head;
 
@@ -478,29 +510,29 @@ void event_debug_untrack_alloc(void* ptr) {
         if ((*pp)->ptr == ptr) {
             debug_track_entry_t* entry = *pp;
             *pp = entry->next;
+            k_spin_unlock(&g_debug_track_lock, key);
             k_mem_slab_free(&debug_track_slab, entry);
-            k_mutex_unlock(&g_debug_track_lock);
             return;
         }
         pp = &(*pp)->next;
     }
 
-    k_mutex_unlock(&g_debug_track_lock);
-    LOG_WRN("Ptr %p not found in debug track", ptr);
+    k_spin_unlock(&g_debug_track_lock, key);
+    if (!k_is_in_isr()) {
+        LOG_WRN("Ptr %p not found in debug track", ptr);
+    }
 }
 
 uint32_t event_check_leaks(void) {
-    event_debug_init();
-
     uint32_t count = 0;
 
-    k_mutex_lock(&g_debug_track_lock, K_FOREVER);
+    k_spinlock_key_t     key = k_spin_lock(&g_debug_track_lock);
     debug_track_entry_t* entry = g_debug_track_head;
     while (entry != NULL) {
         count++;
         entry = entry->next;
     }
-    k_mutex_unlock(&g_debug_track_lock);
+    k_spin_unlock(&g_debug_track_lock, key);
 
     /* LOW-1: 若曾发生追踪缺口，警告调用方：返回值低估真实泄漏数 */
     uint32_t misses = (uint32_t) atomic_get(&g_debug_track_misses);
@@ -512,39 +544,50 @@ uint32_t event_check_leaks(void) {
 }
 
 void event_dump_leaks(void) {
-    event_debug_init();
+    if (k_is_in_isr()) {
+        return;
+    }
 
-    k_mutex_lock(&g_debug_track_lock, K_FOREVER);
+    k_mutex_lock(&g_debug_dump_lock, K_FOREVER);
 
-    debug_track_entry_t* entry = g_debug_track_head;
     uint32_t             count = 0;
-    /* LOW-1: 在锁外读取原子计数器即可，但放在此处便于与 leak 报告关联输出 */
+    k_spinlock_key_t     key = k_spin_lock(&g_debug_track_lock);
+    debug_track_entry_t* entry = g_debug_track_head;
+    while (entry != NULL && count < ARRAY_SIZE(g_debug_track_snapshot)) {
+        g_debug_track_snapshot[count].ptr = entry->ptr;
+        g_debug_track_snapshot[count].size = entry->size;
+        g_debug_track_snapshot[count].priority = entry->priority;
+        g_debug_track_snapshot[count].timestamp = entry->timestamp;
+        count++;
+        entry = entry->next;
+    }
+    k_spin_unlock(&g_debug_track_lock, key);
+
     uint32_t misses = (uint32_t) atomic_get(&g_debug_track_misses);
 
-    if (entry == NULL) {
+    if (count == 0U) {
         if (misses > 0) {
             LOG_WRN("No tracked leaks, but %u allocations were untracked (slab exhausted)", misses);
         } else {
             LOG_INF("No memory leaks detected");
         }
-        k_mutex_unlock(&g_debug_track_lock);
+        k_mutex_unlock(&g_debug_dump_lock);
         return;
     }
 
     LOG_INF("=== Memory Leak Report ===");
 
-    while (entry != NULL) {
-        LOG_INF("Leak #%u: ptr=%p, size=%zu, priority=%d, time=%u", count + 1, entry->ptr, entry->size, entry->priority,
-                entry->timestamp);
-        entry = entry->next;
-        count++;
+    for (uint32_t i = 0; i < count; i++) {
+        LOG_INF("Leak #%u: ptr=%p, size=%zu, priority=%d, time=%u", i + 1, g_debug_track_snapshot[i].ptr,
+                g_debug_track_snapshot[i].size, g_debug_track_snapshot[i].priority,
+                g_debug_track_snapshot[i].timestamp);
     }
 
     LOG_INF("Total leaks: %u", count);
     if (misses > 0) {
-        LOG_WRN("Untracked allocations (slab exhausted): %u — total leaks may exceed %u", misses, count);
+        LOG_WRN("Untracked allocations (slab exhausted): %u; total leaks may exceed %u", misses, count);
     }
-    k_mutex_unlock(&g_debug_track_lock);
+    k_mutex_unlock(&g_debug_dump_lock);
 }
 
 #endif /* CONFIG_EVENT_DEBUG_MEM */

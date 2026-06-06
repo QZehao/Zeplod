@@ -229,9 +229,6 @@ add_subdirectory(src/modules_examples)
 #   2. 预编译库模式：提供 .a 文件 + 头文件，适合闭源商业分发
 #
 # 切换方式（在主 CMakeLists.txt 开头设置）：
-#   set(PROPRIETARY_MODULE_EVENT_SYSTEM_PRO_USE_PREBUILT ON)
-#   set(PROPRIETARY_MODULE_EVENT_SYSTEM_PRO_LIB_PATH "/path/to/libevent_pro.a")
-#
 # 注意：商业模块目录是可选的，运行 scripts/proprietary_manage.ps1 启用
 #
 # 极限内存模式：当 CONFIG_SIZE_OPTIMIZATIONS=y 且模块禁用时，跳过商业模块框架
@@ -245,8 +242,8 @@ set(PROPRIETARY_MODULES_ENABLED OFF)
 if(CONFIG_SIZE_OPTIMIZATIONS)
     # 检查是否有任何商业模块被启用
     set(SKIP_PROPRIETARY ON)
-    if(CONFIG_MESH_COMMUNICATION OR CONFIG_EVENT_SYSTEM_PRO OR CONFIG_MODULE_MANAGER_PRO OR
-       CONFIG_SECURITY_CRYPTO OR CONFIG_OTA_MANAGER OR CONFIG_CELLULAR_5G_USB OR
+    if(CONFIG_MESH_COMMUNICATION OR CONFIG_MODULE_MANAGER_PRO OR CONFIG_SECURITY_CRYPTO OR
+       CONFIG_OTA_MANAGER OR CONFIG_CELLULAR_5G_USB OR
        CONFIG_USB_HOST_CDC_ECM OR CONFIG_USB_HOST_RNDIS OR CONFIG_CLOUD_CONNECTOR)
         set(SKIP_PROPRIETARY OFF)
     endif()
@@ -286,11 +283,6 @@ if(PROPRIETARY_MODULES_ENABLED)
     # Mesh Communication Module (商业模块)
     if(CONFIG_MESH_COMMUNICATION)
         add_proprietary_module(MESH_COMMUNICATION)
-    endif()
-
-    # Event System Pro Module (商业模块)
-    if(CONFIG_EVENT_SYSTEM_PRO)
-        add_proprietary_module(EVENT_SYSTEM_PRO)
     endif()
 
     # Module Manager Pro Module (商业模块)

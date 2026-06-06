@@ -441,20 +441,17 @@ typedef struct {
 
 ### 2.9 Event System Compatibility Layer (event_system_compat)
 
-Unified abstract interface for commercial and standard versions, supports runtime switching:
+Application lifecycle adapter that wraps the standard event system:
 
 ```c
-// event_system_compat.h
-#if defined(CONFIG_USE_EVENT_SYSTEM_PRO) && defined(CONFIG_EVENT_SYSTEM_PRO)
-#define EVENT_COMPAT_USE_PRO 1
-#else
-#define EVENT_COMPAT_USE_PRO 0
-#endif
+event_compat_init(NULL);
+event_compat_start();
+event_compat_get_statistics(&stats);
+event_compat_stop();
 ```
 
-Usage:
-- Standard version: Default use
-- Commercial version: Set `CONFIG_USE_EVENT_SYSTEM_PRO=y` in `prj.conf`
+Registration, subscription, and publishing use the standard APIs from `event_system.h`.
+The commercial event backend and dual-backend switching have been removed.
 
 ---
 

@@ -620,5 +620,5 @@ rsource "src/data_bus/Kconfig"
 
 endmenu
 
-# 商业模块配置（可选，当 src/proprietary 不存在时自动跳过）
-osource "Kconfig_proprietary"
+# 商业模块配置入口始终存在，具体商业模块由其中的 orsource 可选加载。
+rsource "Kconfig_proprietary"

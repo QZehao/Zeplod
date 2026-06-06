@@ -18,6 +18,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 #include "event_dispatcher.h"
+#include "event_memory.h"
 #include "event_queue.h"
 #include "event_system.h"
 #include "test_event_stubs.h"
@@ -184,6 +185,18 @@ ZTEST(test_event_system, test_event_publish_invalid_payload) {
 
     status = event_publish(&event);
     zassert_equal(status, EVENT_ERR_INVALID_ARG, "DYNAMIC 空指针应拒绝");
+
+    uint8_t payload = 0x5AU;
+    event.data.ptr = &payload;
+    event.flags = EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_SLAB_256;
+
+    status = event_publish(&event);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "缺少 DATA_FROM_SLAB 的 slab 标志应拒绝");
+
+    event.flags = EVENT_FLAG_DATA_DYNAMIC | EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_256;
+
+    status = event_publish(&event);
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "不属于标记 slab 的指针应拒绝");
 
     event_system_stop();
 }
@@ -448,6 +461,27 @@ ZTEST(test_event_system, test_event_create_rt) {
         event_free(event);
     }
 }
+
+#if EVENT_SLAB_ENABLED
+/**
+ * @brief 释放事件时应按实际地址归还 Slab，不受可变优先级影响
+ */
+ZTEST(test_event_system, test_event_free_uses_actual_slab_owner) {
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+
+    struct k_mem_slab* slab = event_memory_select_event_slab(EVENT_PRIORITY_NORMAL);
+    uint32_t           free_before = k_mem_slab_num_free_get(slab);
+    event_t*           event = event_create_rt(124, EVENT_PRIORITY_NORMAL);
+
+    zassert_not_null(event, NULL);
+    zassert_equal(k_mem_slab_num_free_get(slab), free_before - 1U, NULL);
+
+    event->priority = EVENT_PRIORITY_CRITICAL;
+    event_free(event);
+
+    zassert_equal(k_mem_slab_num_free_get(slab), free_before, "事件应归还到实际分配池");
+}
+#endif
 
 /**
  * @brief 测试 event_create_with_data_rt 实时安全带数据创建

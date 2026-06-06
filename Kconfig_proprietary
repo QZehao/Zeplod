@@ -9,9 +9,13 @@ comment "所有商业模块默认禁用，启用后彼此独立，互不影响"
 # 每个模块可以独立启用，不需要启用其他模块
 # 每个模块内部 Kconfig 管理自己的特性开关
 #
-# 注意：使用 osource (optional source) + 通配符
-# 当商业模块目录不存在时自动跳过，不报错
-
-osource "src/proprietary/*/Kconfig"
+# Kconfig 的可选 source 不展开路径通配符，因此逐项列出仍受支持的模块。
+# event_system_pro 已移除，不再暴露对应配置入口。
+orsource "src/proprietary/data_bus_pro/Kconfig"
+orsource "src/proprietary/mesh_communication/Kconfig"
+orsource "src/proprietary/module_manager_pro/Kconfig"
+orsource "src/proprietary/ota_manager/Kconfig"
+orsource "src/proprietary/security_crypto/Kconfig"
+orsource "src/proprietary/usb_host_cdc_ecm/Kconfig"
 
 endmenu

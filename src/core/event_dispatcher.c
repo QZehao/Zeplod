@@ -65,7 +65,7 @@ typedef struct {
     struct k_mutex lock;                              /**< 保护共享数据的互斥锁 */
     uint32_t       events_in_batch;                   /**< 当前批次处理的事件数 */
     uint64_t       last_event_time;                   /**< 上一个事件处理时间 */
-    bool           thread_started;                    /**< 分发线程是否已创建并运行 */
+    atomic_t       thread_started;                    /**< 分发线程是否已创建并运行 */
     bool           ever_started;                      /**< 本轮 init 后是否曾成功 start（用于手动消费判定） */
     uint32_t       thread_gen;                        /**< 当前分发线程世代（stop/join 配对用） */
 } dispatcher_cb_t;
@@ -81,7 +81,7 @@ static dispatcher_cb_t g_dispatcher;
 static struct k_msgq* g_event_queue;
 
 /** init 完成后方可更新 stats（避免 SYS_INIT 顺序导致未初始化 mutex） */
-static bool g_dispatcher_initialized;
+static atomic_t g_dispatcher_initialized = ATOMIC_INIT(0);
 
 /** ISR/线程均可递增；避免在 ISR 路径对 g_dispatcher.lock 调用 mutex */
 static atomic_t g_dispatcher_events_dropped = ATOMIC_INIT(0);
@@ -91,6 +91,9 @@ static atomic_t g_dispatcher_next_gen = ATOMIC_INIT(0);
 
 /** Serializes init-time control-block reset with filter updates. */
 static K_MUTEX_DEFINE(g_dispatcher_api_lock);
+
+/** 串行化 init/start/stop/deinit 以及外部手动消费，避免控制块被并发重置 */
+static K_SEM_DEFINE(g_dispatcher_lifecycle_gate, 1, 1);
 
 /* =============================================================================
  * 前置声明
@@ -165,6 +168,22 @@ static inline void dispatcher_state_store(dispatcher_state_t state) {
     atomic_set(&g_dispatcher.state, (atomic_val_t) state);
 }
 
+static inline bool dispatcher_is_initialized(void) {
+    return atomic_get(&g_dispatcher_initialized) != 0;
+}
+
+static inline bool dispatcher_thread_is_started(void) {
+    return atomic_get(&g_dispatcher.thread_started) != 0;
+}
+
+static inline bool dispatcher_lifecycle_try_lock(void) {
+    return k_sem_take(&g_dispatcher_lifecycle_gate, K_NO_WAIT) == 0;
+}
+
+static inline void dispatcher_lifecycle_unlock(void) {
+    k_sem_give(&g_dispatcher_lifecycle_gate);
+}
+
 static void dispatcher_refresh_hot_config(void) {
     g_dispatcher.hot_max_events_per_cycle = g_dispatcher.config.max_events_per_cycle;
     g_dispatcher.hot_enable_stats = g_dispatcher.config.enable_stats;
@@ -175,13 +194,13 @@ static void dispatcher_set_state_locked(dispatcher_state_t state) {
 }
 
 static void dispatcher_mark_thread_started_locked(void) {
-    g_dispatcher.thread_started = true;
+    atomic_set(&g_dispatcher.thread_started, 1);
     g_dispatcher.ever_started = true;
 }
 
 static void dispatcher_apply_thread_stopped_locked(uint32_t join_gen) {
     if (g_dispatcher.thread_gen == join_gen) {
-        g_dispatcher.thread_started = false;
+        atomic_set(&g_dispatcher.thread_started, 0);
     } else {
         LOG_WRN("Dispatcher generation changed during stop (join_gen=%u current=%u); preserving thread_started",
                 join_gen, g_dispatcher.thread_gen);
@@ -221,14 +240,19 @@ static bool dispatcher_can_process_locked(dispatcher_state_t state, bool thread_
 event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     LOG_DBG("Initializing event dispatcher...");
 
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
     k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
 
     /* HIGH-NEW-1: 防止在分发器线程运行时重新初始化。
      * memset 会清零 stack 等内嵌成员，若线程仍在运行则导致栈损坏。
      * thread_started 在 stop 后会被清零，因此正常重启序列不受限制。 */
-    if (g_dispatcher.thread_started) {
+    if (dispatcher_thread_is_started()) {
         LOG_WRN("Dispatcher thread already running, refusing re-init");
         k_mutex_unlock(&g_dispatcher_api_lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -236,6 +260,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
         event_status_t vret = event_dispatcher_validate_config(config);
         if (vret != EVENT_OK) {
             k_mutex_unlock(&g_dispatcher_api_lock);
+            dispatcher_lifecycle_unlock();
             return vret;
         }
     }
@@ -246,7 +271,7 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     event_filter_t saved_filter = g_dispatcher.filter;
     void*          saved_filter_ud = g_dispatcher.filter_user_data;
 
-    g_dispatcher_initialized = false;
+    atomic_set(&g_dispatcher_initialized, 0);
     memset(&g_dispatcher, 0, sizeof(g_dispatcher));
 
     g_dispatcher.filter = saved_filter;
@@ -273,20 +298,22 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
     dispatcher_state_store(DISPATCHER_STOPPED);
     dispatcher_refresh_hot_config();
     g_dispatcher.last_event_time = k_uptime_get();
-    g_dispatcher.thread_started = false;
+    atomic_set(&g_dispatcher.thread_started, 0);
     g_dispatcher.ever_started = false;
 
     g_event_queue = event_system_get_queue();
     if (g_event_queue == NULL) {
         LOG_ERR("Call event_system_init() before event_dispatcher_init()");
         k_mutex_unlock(&g_dispatcher_api_lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
     atomic_set(&g_dispatcher_events_dropped, 0);
-    g_dispatcher_initialized = true;
+    atomic_set(&g_dispatcher_initialized, 1);
 
     k_mutex_unlock(&g_dispatcher_api_lock);
+    dispatcher_lifecycle_unlock();
 
     LOG_DBG("Event dispatcher initialized");
     return EVENT_OK;
@@ -298,7 +325,12 @@ event_status_t event_dispatcher_init(const dispatcher_config_t* config) {
  * @return EVENT_OK 成功，EVENT_ERR_NO_MEM 线程创建失败
  */
 event_status_t event_dispatcher_start(void) {
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -306,24 +338,28 @@ event_status_t event_dispatcher_start(void) {
 
     if (dispatcher_state_load() == DISPATCHER_RUNNING) {
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_OK;
     }
 
     if (dispatcher_state_load() == DISPATCHER_PAUSED) {
         dispatcher_set_state_locked(DISPATCHER_RUNNING);
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         LOG_DBG("Event dispatcher resumed by start()");
         return EVENT_OK;
     }
 
-    if (g_dispatcher.thread_started) {
+    if (dispatcher_thread_is_started()) {
         if (dispatcher_state_load() == DISPATCHER_STOPPED) {
             k_mutex_unlock(&g_dispatcher.lock);
+            dispatcher_lifecycle_unlock();
             LOG_WRN("Cannot start dispatcher while stop/join is in progress");
             return EVENT_ERR_TIMEOUT;
         }
         dispatcher_set_state_locked(DISPATCHER_RUNNING);
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_OK;
     }
 
@@ -337,8 +373,9 @@ event_status_t event_dispatcher_start(void) {
     /* SIL-2: 验证线程创建结果（IMP-7 修复） */
     if (tid == NULL) {
         dispatcher_set_state_locked(DISPATCHER_STOPPED);
-        g_dispatcher.thread_started = false;
+        atomic_set(&g_dispatcher.thread_started, 0);
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         LOG_ERR("Failed to create dispatcher thread");
         return EVENT_ERR_NO_MEM;
     }
@@ -347,10 +384,11 @@ event_status_t event_dispatcher_start(void) {
         LOG_WRN("Failed to set thread name, continuing anyway");
     }
 
-    k_thread_start(&g_dispatcher.thread);
     dispatcher_mark_thread_started_locked();
+    k_thread_start(&g_dispatcher.thread);
 
     k_mutex_unlock(&g_dispatcher.lock);
+    dispatcher_lifecycle_unlock();
 
     LOG_DBG("Event dispatcher started");
     return EVENT_OK;
@@ -361,11 +399,11 @@ event_status_t event_dispatcher_start(void) {
  *
  * @return EVENT_OK 成功
  */
-event_status_t event_dispatcher_stop(void) {
+static event_status_t event_dispatcher_stop_locked(void) {
     bool     should_join = false;
     uint32_t join_gen = 0U;
 
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_is_initialized()) {
         return EVENT_OK;
     }
 
@@ -377,7 +415,7 @@ event_status_t event_dispatcher_stop(void) {
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
 
     if (dispatcher_state_load() == DISPATCHER_STOPPED) {
-        if (g_dispatcher.thread_started) {
+        if (dispatcher_thread_is_started()) {
             should_join = true;
             join_gen = g_dispatcher.thread_gen;
             k_mutex_unlock(&g_dispatcher.lock);
@@ -390,7 +428,7 @@ event_status_t event_dispatcher_stop(void) {
 
     /* SIL-2: 设置停止状态，线程会在下次循环检查时退出 */
     dispatcher_set_state_locked(DISPATCHER_STOPPED);
-    should_join = g_dispatcher.thread_started;
+    should_join = dispatcher_thread_is_started();
     join_gen = g_dispatcher.thread_gen;
     k_mutex_unlock(&g_dispatcher.lock);
 
@@ -420,21 +458,42 @@ join_thread:
     return EVENT_OK;
 }
 
+event_status_t event_dispatcher_stop(void) {
+    if (event_dispatcher_is_current_thread()) {
+        LOG_ERR("Cannot stop dispatcher from dispatcher thread");
+        return EVENT_ERR_INVALID_ARG;
+    }
+
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    event_status_t ret = event_dispatcher_stop_locked();
+    dispatcher_lifecycle_unlock();
+    return ret;
+}
+
 /**
  * @brief 反初始化分发器
  */
 event_status_t event_dispatcher_deinit(void) {
-    if (!g_dispatcher_initialized) {
-        return EVENT_OK;
-    }
-
     if (event_dispatcher_is_current_thread()) {
         LOG_ERR("Cannot deinit dispatcher from dispatcher thread");
         return EVENT_ERR_INVALID_ARG;
     }
 
-    event_status_t ret = event_dispatcher_stop();
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        dispatcher_lifecycle_unlock();
+        return EVENT_OK;
+    }
+
+    event_status_t ret = event_dispatcher_stop_locked();
     if (ret != EVENT_OK) {
+        dispatcher_lifecycle_unlock();
         return ret;
     }
 
@@ -443,8 +502,9 @@ event_status_t event_dispatcher_deinit(void) {
     g_dispatcher.filter = NULL;
     g_dispatcher.filter_user_data = NULL;
     g_event_queue = NULL;
-    g_dispatcher_initialized = false;
+    atomic_set(&g_dispatcher_initialized, 0);
     k_mutex_unlock(&g_dispatcher_api_lock);
+    dispatcher_lifecycle_unlock();
 
     LOG_DBG("Event dispatcher deinitialized");
     return EVENT_OK;
@@ -456,7 +516,12 @@ event_status_t event_dispatcher_deinit(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确
  */
 event_status_t event_dispatcher_pause(void) {
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -464,11 +529,13 @@ event_status_t event_dispatcher_pause(void) {
 
     if (dispatcher_state_load() != DISPATCHER_RUNNING) {
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
     dispatcher_set_state_locked(DISPATCHER_PAUSED);
     k_mutex_unlock(&g_dispatcher.lock);
+    dispatcher_lifecycle_unlock();
 
     LOG_DBG("Event dispatcher paused");
     return EVENT_OK;
@@ -480,7 +547,12 @@ event_status_t event_dispatcher_pause(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确
  */
 event_status_t event_dispatcher_resume(void) {
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_lifecycle_try_lock()) {
+        return EVENT_ERR_TIMEOUT;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -488,11 +560,13 @@ event_status_t event_dispatcher_resume(void) {
 
     if (dispatcher_state_load() != DISPATCHER_PAUSED) {
         k_mutex_unlock(&g_dispatcher.lock);
+        dispatcher_lifecycle_unlock();
         return EVENT_ERR_INVALID_ARG;
     }
 
     dispatcher_set_state_locked(DISPATCHER_RUNNING);
     k_mutex_unlock(&g_dispatcher.lock);
+    dispatcher_lifecycle_unlock();
 
     LOG_DBG("Event dispatcher resumed");
     return EVENT_OK;
@@ -504,11 +578,11 @@ event_status_t event_dispatcher_resume(void) {
  * @return 当前分发器状态
  */
 bool event_dispatcher_is_initialized(void) {
-    return g_dispatcher_initialized;
+    return dispatcher_is_initialized();
 }
 
 dispatcher_state_t event_dispatcher_get_state(void) {
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_is_initialized()) {
         return DISPATCHER_STOPPED;
     }
 
@@ -521,7 +595,7 @@ dispatcher_state_t event_dispatcher_get_state(void) {
  * @return true 当前线程是分发器线程，false 不是或未初始化
  */
 bool event_dispatcher_is_current_thread(void) {
-    return g_dispatcher_initialized && g_dispatcher.thread_started && (k_current_get() == &g_dispatcher.thread);
+    return dispatcher_is_initialized() && dispatcher_thread_is_started() && (k_current_get() == &g_dispatcher.thread);
 }
 
 /* =============================================================================
@@ -542,7 +616,7 @@ void event_dispatcher_set_filter(event_filter_t filter, void* user_data) {
 
     k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
 
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_is_initialized()) {
         g_dispatcher.filter = filter;
         g_dispatcher.filter_user_data = user_data;
         k_mutex_unlock(&g_dispatcher_api_lock);
@@ -562,7 +636,7 @@ void event_dispatcher_set_filter(event_filter_t filter, void* user_data) {
 void event_dispatcher_clear_filter(void) {
     k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
 
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_is_initialized()) {
         g_dispatcher.filter = NULL;
         g_dispatcher.filter_user_data = NULL;
         k_mutex_unlock(&g_dispatcher_api_lock);
@@ -583,22 +657,33 @@ void event_dispatcher_clear_filter(void) {
  * @return EVENT_OK 成功，EVENT_ERR_INVALID_ARG 状态不正确，
  *         EVENT_ERR_QUEUE_EMPTY 队列为空
  */
-event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
+static event_status_t event_dispatcher_process_one_impl(k_timeout_t timeout, bool manage_lifecycle) {
     dispatcher_state_t state;
     bool               thread_started;
     bool               ever_started;
     event_filter_t     filter;
     void*              filter_user_data;
     bool               enable_stats;
+    bool               lifecycle_locked = false;
 
-    if (!g_dispatcher_initialized) {
+    if (manage_lifecycle && !event_dispatcher_is_current_thread()) {
+        if (!dispatcher_lifecycle_try_lock()) {
+            return EVENT_ERR_TIMEOUT;
+        }
+        lifecycle_locked = true;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        if (lifecycle_locked) {
+            dispatcher_lifecycle_unlock();
+        }
         return EVENT_ERR_INVALID_ARG;
     }
 
     /* SIL-2: 在持有锁的情况下读取所有需要的状态并检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = dispatcher_state_load();
-    thread_started = g_dispatcher.thread_started;
+    thread_started = dispatcher_thread_is_started();
     ever_started = g_dispatcher.ever_started;
 
     if (!dispatcher_can_process_locked(state, thread_started, ever_started)) {
@@ -608,6 +693,9 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
         } else if (thread_started && state == DISPATCHER_RUNNING) {
             LOG_WRN("process_one rejected: dispatcher thread is consuming the queue");
         }
+        if (lifecycle_locked) {
+            dispatcher_lifecycle_unlock();
+        }
         return EVENT_ERR_INVALID_ARG;
     }
 
@@ -616,17 +704,23 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     event_t        event;
     event_status_t dq_st = event_queue_dequeue(g_event_queue, &event, timeout);
     if (dq_st != EVENT_OK) {
+        if (lifecycle_locked) {
+            dispatcher_lifecycle_unlock();
+        }
         return dq_st;
     }
 
     /* SIL-2: 阻塞期间状态可能已改变（如 stop() 被调用），重新检查 */
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     state = dispatcher_state_load();
-    thread_started = g_dispatcher.thread_started;
+    thread_started = dispatcher_thread_is_started();
     ever_started = g_dispatcher.ever_started;
     if (!dispatcher_can_process_locked(state, thread_started, ever_started)) {
         k_mutex_unlock(&g_dispatcher.lock);
         event_free_data(&event);
+        if (lifecycle_locked) {
+            dispatcher_lifecycle_unlock();
+        }
         return EVENT_ERR_INVALID_ARG;
     }
     filter = g_dispatcher.filter;
@@ -646,6 +740,9 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
                 g_dispatcher.stats.events_filtered++;
                 k_mutex_unlock(&g_dispatcher.lock);
             }
+            if (lifecycle_locked) {
+                dispatcher_lifecycle_unlock();
+            }
             return EVENT_OK;
         }
     }
@@ -655,7 +752,14 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
     /* SIL-2: 使用统一接口释放动态数据，正确处理 slab 来源 */
     event_free_data(&event);
 
+    if (lifecycle_locked) {
+        dispatcher_lifecycle_unlock();
+    }
     return EVENT_OK;
+}
+
+event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
+    return event_dispatcher_process_one_impl(timeout, true);
 }
 
 /**
@@ -665,7 +769,19 @@ event_status_t event_dispatcher_process_one(k_timeout_t timeout) {
  * @return 已处理的事件数量
  */
 uint32_t event_dispatcher_process_all(uint32_t max_events) {
-    if (!g_dispatcher_initialized) {
+    bool lifecycle_locked = false;
+
+    if (!event_dispatcher_is_current_thread()) {
+        if (!dispatcher_lifecycle_try_lock()) {
+            return 0U;
+        }
+        lifecycle_locked = true;
+    }
+
+    if (!dispatcher_is_initialized()) {
+        if (lifecycle_locked) {
+            dispatcher_lifecycle_unlock();
+        }
         return 0U;
     }
 
@@ -683,7 +799,7 @@ uint32_t event_dispatcher_process_all(uint32_t max_events) {
 
     uint32_t processed = 0;
     while (processed < max_events) {
-        if (event_dispatcher_process_one(K_NO_WAIT) != EVENT_OK) {
+        if (event_dispatcher_process_one_impl(K_NO_WAIT, false) != EVENT_OK) {
             break; /* 无更多事件 */
         }
         processed++;
@@ -696,6 +812,9 @@ uint32_t event_dispatcher_process_all(uint32_t max_events) {
         k_mutex_unlock(&g_dispatcher.lock);
     }
 
+    if (lifecycle_locked) {
+        dispatcher_lifecycle_unlock();
+    }
     return processed;
 }
 
@@ -713,8 +832,11 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats) {
         return;
     }
 
-    if (!g_dispatcher_initialized) {
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
+    if (!dispatcher_is_initialized()) {
         memset(stats, 0, sizeof(*stats));
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return;
     }
 
@@ -722,14 +844,18 @@ void event_dispatcher_get_stats(dispatcher_stats_t* stats) {
     *stats = g_dispatcher.stats;
     stats->events_dropped += (uint64_t) atomic_get(&g_dispatcher_events_dropped);
     k_mutex_unlock(&g_dispatcher.lock);
+    k_mutex_unlock(&g_dispatcher_api_lock);
 }
 
 /**
  * @brief 重置分发器统计信息
  */
 void event_dispatcher_reset_stats(void) {
-    if (!g_dispatcher_initialized) {
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
+    if (!dispatcher_is_initialized()) {
         atomic_set(&g_dispatcher_events_dropped, 0);
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return;
     }
 
@@ -737,12 +863,13 @@ void event_dispatcher_reset_stats(void) {
     memset(&g_dispatcher.stats, 0, sizeof(g_dispatcher.stats));
     atomic_set(&g_dispatcher_events_dropped, 0);
     k_mutex_unlock(&g_dispatcher.lock);
+    k_mutex_unlock(&g_dispatcher_api_lock);
 
     LOG_DBG("Dispatcher statistics reset");
 }
 
 void event_dispatcher_stats_inc_dropped(void) {
-    if (!g_dispatcher_initialized) {
+    if (!dispatcher_is_initialized()) {
         return;
     }
 
@@ -757,13 +884,17 @@ void event_dispatcher_stats_inc_dropped(void) {
 uint32_t event_dispatcher_get_idle_time_us(void) {
     uint64_t last_event_time;
 
-    if (!g_dispatcher_initialized) {
+    k_mutex_lock(&g_dispatcher_api_lock, K_FOREVER);
+
+    if (!dispatcher_is_initialized()) {
+        k_mutex_unlock(&g_dispatcher_api_lock);
         return 0U;
     }
 
     k_mutex_lock(&g_dispatcher.lock, K_FOREVER);
     last_event_time = g_dispatcher.last_event_time;
     k_mutex_unlock(&g_dispatcher.lock);
+    k_mutex_unlock(&g_dispatcher_api_lock);
 
     return calculate_idle_time_us(last_event_time);
 }

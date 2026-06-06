@@ -100,10 +100,10 @@ void event_system_subscriber_id_unlock(void);
 void event_system_entry_lock(event_type_entry_t* entry);
 void event_system_entry_unlock(event_type_entry_t* entry);
 
-void event_publish_in_flight_wait_zero(void);
-void event_system_init_rollback(void);
-void event_system_cleanup_event_types(void);
-void event_system_reset_control_block(void);
+event_status_t event_publish_in_flight_wait_zero(void);
+void           event_system_init_rollback(void);
+void           event_system_cleanup_event_types(void);
+void           event_system_reset_control_block(void);
 
 bool event_system_type_is_registered(event_type_t type);
 
