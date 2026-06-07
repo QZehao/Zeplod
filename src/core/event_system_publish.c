@@ -30,7 +30,7 @@ LOG_MODULE_DECLARE(event_system, CONFIG_SYS_LOG_LEVEL);
 #define EVENT_PUBLISH_ENQUEUE_TIMEOUT K_NO_WAIT
 #endif
 
-static event_status_t event_validate_for_publish(const event_t* event) {
+static event_status_t event_validate_for_publish(const event_t* event, bool log_failures) {
     if (event == NULL) {
         return EVENT_ERR_INVALID_ARG;
     }
@@ -42,24 +42,32 @@ static event_status_t event_validate_for_publish(const event_t* event) {
 
     if (len == 0U) {
         if (storage != 0U) {
-            LOG_WRN("publish: data_len=0 but storage flags 0x%02x", storage);
+            if (log_failures) {
+                LOG_WRN("publish: data_len=0 but storage flags 0x%02x", storage);
+            }
             return EVENT_ERR_INVALID_ARG;
         }
         return EVENT_OK;
     }
 
     if ((flags & EVENT_FLAG_DATA_INLINE) && (flags & EVENT_FLAG_DATA_DYNAMIC)) {
-        LOG_WRN("publish: both INLINE and DYNAMIC flags set");
+        if (log_failures) {
+            LOG_WRN("publish: both INLINE and DYNAMIC flags set");
+        }
         return EVENT_ERR_INVALID_ARG;
     }
 
     if (flags & EVENT_FLAG_DATA_INLINE) {
         if ((flags & (EVENT_FLAG_DATA_FROM_SLAB | EVENT_FLAG_SLAB_MASK)) != 0U) {
-            LOG_WRN("publish: INLINE data carries slab flags");
+            if (log_failures) {
+                LOG_WRN("publish: INLINE data carries slab flags");
+            }
             return EVENT_ERR_INVALID_ARG;
         }
         if (len > CONFIG_EVENT_INLINE_DATA_SIZE) {
-            LOG_WRN("publish: INLINE data_len %u exceeds %u", len, CONFIG_EVENT_INLINE_DATA_SIZE);
+            if (log_failures) {
+                LOG_WRN("publish: INLINE data_len %u exceeds %u", len, CONFIG_EVENT_INLINE_DATA_SIZE);
+            }
             return EVENT_ERR_INVALID_ARG;
         }
         return EVENT_OK;
@@ -67,12 +75,16 @@ static event_status_t event_validate_for_publish(const event_t* event) {
 
     if (flags & EVENT_FLAG_DATA_DYNAMIC) {
         if (event->data.ptr == NULL) {
-            LOG_WRN("publish: DYNAMIC with NULL data.ptr");
+            if (log_failures) {
+                LOG_WRN("publish: DYNAMIC with NULL data.ptr");
+            }
             return EVENT_ERR_INVALID_ARG;
         }
         const uint8_t slab_flags = flags & EVENT_FLAG_SLAB_MASK;
         if ((flags & EVENT_FLAG_DATA_FROM_SLAB) == 0U && slab_flags != 0U) {
-            LOG_WRN("publish: SLAB_MASK without DATA_FROM_SLAB");
+            if (log_failures) {
+                LOG_WRN("publish: SLAB_MASK without DATA_FROM_SLAB");
+            }
             return EVENT_ERR_INVALID_ARG;
         }
         if (flags & EVENT_FLAG_DATA_FROM_SLAB) {
@@ -81,18 +93,24 @@ static event_status_t event_validate_for_publish(const event_t* event) {
             struct k_mem_slab* actual_slab = event_memory_resolve_data_slab_for_ptr(event->data.ptr);
 
             if (marked_slab == NULL || actual_slab != marked_slab) {
-                LOG_WRN("publish: invalid slab ownership for ptr %p (flags=0x%02x)", event->data.ptr, flags);
+                if (log_failures) {
+                    LOG_WRN("publish: invalid slab ownership for ptr %p (flags=0x%02x)", event->data.ptr, flags);
+                }
                 return EVENT_ERR_INVALID_ARG;
             }
 #else
-            LOG_WRN("publish: DATA_FROM_SLAB while data slabs are disabled");
+            if (log_failures) {
+                LOG_WRN("publish: DATA_FROM_SLAB while data slabs are disabled");
+            }
             return EVENT_ERR_INVALID_ARG;
 #endif
         }
         return EVENT_OK;
     }
 
-    LOG_WRN("publish: data_len=%u without INLINE/DYNAMIC flags", len);
+    if (log_failures) {
+        LOG_WRN("publish: data_len=%u without INLINE/DYNAMIC flags", len);
+    }
     return EVENT_ERR_INVALID_ARG;
 }
 
@@ -140,7 +158,7 @@ static event_status_t event_publish_common(event_t* event, queue_overflow_policy
         goto out;
     }
 
-    status = event_validate_for_publish(event);
+    status = event_validate_for_publish(event, log_failures);
     if (status != EVENT_OK) {
         goto out;
     }

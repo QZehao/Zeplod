@@ -20,6 +20,18 @@
 
 LOG_MODULE_REGISTER(test_event_queue);
 
+static K_THREAD_STACK_DEFINE(g_delayed_enqueue_stack, 1024);
+static struct k_thread g_delayed_enqueue_thread;
+
+static void delayed_enqueue_thread(void* queue_arg, void* event_arg, void* unused) {
+    ARG_UNUSED(unused);
+
+    struct k_msgq* queue = queue_arg;
+    const event_t* event = event_arg;
+
+    (void) event_queue_enqueue(queue, event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT);
+}
+
 /* =============================================================================
  * 测试用例
  * ============================================================================= */
@@ -585,6 +597,31 @@ ZTEST(test_event_queue, test_dequeue_unregistered_queue_does_not_consume) {
 
     zassert_equal(k_msgq_get(&raw_queue, &event_out, K_NO_WAIT), 0, NULL);
     zassert_equal(event_out.type, event_in.type, NULL);
+}
+
+ZTEST(test_event_queue, test_drop_lowest_dequeue_waits_for_msgq_notification) {
+    struct k_msgq test_queue;
+    char          buffer[2 * sizeof(event_t)];
+    event_t       seed = {.type = 92, .priority = EVENT_PRIORITY_LOW};
+    event_t       delayed = {.type = 93, .priority = EVENT_PRIORITY_HIGH};
+    event_t       out = {0};
+
+    zassert_equal(event_queue_init(&test_queue, buffer, 2), EVENT_OK, NULL);
+
+    /* First DROP_LOWEST use allocates scratch and enables reorder_lock serialization. */
+    zassert_equal(event_queue_enqueue(&test_queue, &seed, QUEUE_OVERFLOW_DROP_LOWEST, K_NO_WAIT), EVENT_OK, NULL);
+    zassert_equal(event_queue_dequeue(&test_queue, &out, K_NO_WAIT), EVENT_OK, NULL);
+
+    k_tid_t tid = k_thread_create(&g_delayed_enqueue_thread, g_delayed_enqueue_stack,
+                                  K_THREAD_STACK_SIZEOF(g_delayed_enqueue_stack), delayed_enqueue_thread, &test_queue,
+                                  &delayed, NULL, 7, 0, K_MSEC(20));
+    zassert_not_null(tid, NULL);
+
+    zassert_equal(event_queue_dequeue(&test_queue, &out, K_MSEC(500)), EVENT_OK, NULL);
+    zassert_equal(out.type, delayed.type, NULL);
+    zassert_equal(k_thread_join(tid, K_MSEC(500)), 0, NULL);
+
+    event_queue_deinit(&test_queue);
 }
 
 ZTEST_SUITE(test_event_queue, NULL, NULL, NULL, NULL, NULL);

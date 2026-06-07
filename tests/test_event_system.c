@@ -21,6 +21,7 @@
 #include "event_memory.h"
 #include "event_queue.h"
 #include "event_system.h"
+#include "event_system_internal.h"
 #include "test_event_stubs.h"
 #include "ztest_sync.h"
 
@@ -680,6 +681,25 @@ ZTEST(test_event_system, test_event_system_start_stop_multiple) {
 
     status = event_system_stop();
     zassert_equal(status, EVENT_OK, "重复停止应返回 OK");
+}
+
+ZTEST(test_event_system, test_subscriber_id_wrap_preserves_uniqueness) {
+    uint32_t first_id;
+    uint32_t second_id;
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(161, "subscriber_wrap"), EVENT_OK, NULL);
+
+    atomic_set(&g_event_system.next_subscriber_id, (atomic_val_t) UINT32_MAX);
+    g_event_system.subscriber_id_wrapped = false;
+
+    zassert_equal(event_subscribe(161, test_event_noop_callback, NULL, &first_id), EVENT_OK, NULL);
+    zassert_equal(first_id, UINT32_MAX, NULL);
+    zassert_equal(event_subscribe(161, test_event_noop_callback, NULL, &second_id), EVENT_OK, NULL);
+    zassert_not_equal(second_id, EVENT_SUBSCRIBER_ID_INVALID, NULL);
+    zassert_not_equal(second_id, first_id, NULL);
+    zassert_true(g_event_system.subscriber_id_wrapped, NULL);
 }
 
 /**

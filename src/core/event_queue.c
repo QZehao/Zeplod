@@ -642,7 +642,9 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
     event_status_t st = EVENT_OK;
 
     if (event_queue_use_op_lock(cb)) {
-        k_timepoint_t end = sys_timepoint_calc(timeout);
+        k_timepoint_t       end = sys_timepoint_calc(timeout);
+        struct k_poll_event poll_event =
+            K_POLL_EVENT_INITIALIZER(K_POLL_TYPE_MSGQ_DATA_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, queue);
 
         while (true) {
             k_mutex_lock(&cb->reorder_lock, K_FOREVER);
@@ -669,7 +671,17 @@ event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeo
                 goto out;
             }
 
-            k_sleep(K_MSEC(1));
+            poll_event.state = K_POLL_STATE_NOT_READY;
+            k_timeout_t poll_timeout = K_TIMEOUT_EQ(timeout, K_FOREVER) ? K_FOREVER : sys_timepoint_timeout(end);
+            ret = k_poll(&poll_event, 1, poll_timeout);
+            if (ret == -EAGAIN) {
+                st = EVENT_ERR_TIMEOUT;
+                goto out;
+            }
+            if (ret != 0 && ret != -EINTR) {
+                st = EVENT_ERR_INVALID_ARG;
+                goto out;
+            }
         }
     }
 

@@ -22,7 +22,9 @@ LOG_MODULE_DECLARE(event_system, CONFIG_SYS_LOG_LEVEL);
             return;                                                                                                    \
         }                                                                                                              \
         if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {                                                              \
-            LOG_ERR("Event system magic corruption detected");                                                         \
+            if (!k_is_in_isr()) {                                                                                      \
+                LOG_ERR("Event system magic corruption detected");                                                     \
+            }                                                                                                          \
             return;                                                                                                    \
         }                                                                                                              \
     } while (0)
@@ -59,13 +61,18 @@ static void event_object_init(event_t* event, event_type_t type, event_priority_
 
 static bool event_validate_data_len(size_t data_len) {
     if (data_len > 65535) {
-        LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+        if (!k_is_in_isr()) {
+            LOG_ERR("Event data length %zu exceeds maximum 64KB", data_len);
+        }
         return false;
     }
     return true;
 }
 
 static bool event_attach_inline_payload(event_t* event, const void* data, size_t data_len) {
+    __ASSERT_NO_MSG(event != NULL);
+    __ASSERT_NO_MSG(data != NULL);
+    __ASSERT_NO_MSG(data_len <= CONFIG_EVENT_INLINE_DATA_SIZE);
     memcpy(event->data.inline_data, data, data_len);
     event->data_len = (uint32_t) data_len;
     event->flags |= EVENT_FLAG_DATA_INLINE;
@@ -116,7 +123,9 @@ static bool event_attach_large_payload_slab_only(event_t* event, const void* dat
     }
 
     event_memory_notify_slab_exhausted(priority, "event_slab_data");
-    LOG_WRN("All data slabs exhausted for size %zu", data_len);
+    if (!k_is_in_isr()) {
+        LOG_WRN("All data slabs exhausted for size %zu", data_len);
+    }
     return false;
 }
 
@@ -156,13 +165,17 @@ event_t* event_create_rt(event_type_t type, event_priority_t priority) {
 
     if (ret != 0) {
         event_memory_notify_slab_exhausted(priority, event_slab_name_for_priority(priority));
-        LOG_WRN("Event slab exhausted for priority %d", priority);
+        if (!k_is_in_isr()) {
+            LOG_WRN("Event slab exhausted for priority %d", priority);
+        }
         return NULL;
     }
 
     event_object_init(event, type, priority, EVENT_FLAG_FROM_SLAB);
 #else
-    LOG_DBG("event_create_rt: slab not enabled, returning NULL");
+    if (!k_is_in_isr()) {
+        LOG_DBG("event_create_rt: slab not enabled, returning NULL");
+    }
     return NULL;
 #endif
 
@@ -199,7 +212,9 @@ event_t* event_create_with_data_rt(event_type_t type, event_priority_t priority,
     return NULL;
 #else
     event_free(event);
-    LOG_WRN("Large data requested but no slab configured");
+    if (!k_is_in_isr()) {
+        LOG_WRN("Large data requested but no slab configured");
+    }
     return NULL;
 #endif
 }

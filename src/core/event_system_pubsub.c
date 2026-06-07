@@ -202,9 +202,10 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
             EVENT_OP_RETURN(EVENT_ERR_NO_MEM);
         }
         if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
+            g_event_system.subscriber_id_wrapped = true;
             continue;
         }
-        if (!subscriber_id_in_use(new_id)) {
+        if (!g_event_system.subscriber_id_wrapped || !subscriber_id_in_use(new_id)) {
             break;
         }
     }

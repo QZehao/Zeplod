@@ -113,6 +113,9 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
  * @param event 输出：出队的事件
  * @param timeout 等待超时时间
  * @return EVENT_OK 成功，其他错误码见 event_status_t
+ *
+ * @note DROP_LOWEST scratch 启用后，阻塞等待通过 k_poll 监听 msgq 数据通知；
+ *       等待期间不持有 reorder_lock。
  */
 event_status_t event_queue_dequeue(struct k_msgq* queue, event_t* event, k_timeout_t timeout);
 

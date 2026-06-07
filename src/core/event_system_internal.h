@@ -57,7 +57,9 @@
             return NULL;                                                                                               \
         }                                                                                                              \
         if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {                                                              \
-            LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);                           \
+            if (!k_is_in_isr()) {                                                                                      \
+                LOG_ERR("Event system magic corruption detected: 0x%08x", g_event_system.magic);                       \
+            }                                                                                                          \
             return NULL;                                                                                               \
         }                                                                                                              \
     } while (0)
@@ -78,6 +80,7 @@ typedef struct {
     uint32_t             total_events;
     struct k_mutex       stats_lock;
     atomic_t             next_subscriber_id;
+    bool                 subscriber_id_wrapped;
 } event_system_cb_t;
 
 extern event_system_cb_t g_event_system;

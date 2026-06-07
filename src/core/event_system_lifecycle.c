@@ -93,6 +93,7 @@ void event_system_reset_control_block(void) {
     g_event_system.initialized = false;
     g_event_system.total_events = 0;
     atomic_set(&g_event_system.next_subscriber_id, 1);
+    g_event_system.subscriber_id_wrapped = false;
     g_event_system.event_queue = NULL;
     g_event_system.magic = EVENT_SYSTEM_MAGIC_IDLE;
 }
@@ -162,6 +163,7 @@ event_status_t event_system_init(void) {
 
     g_event_system.magic = EVENT_SYSTEM_MAGIC;
     atomic_set(&g_event_system.next_subscriber_id, 1);
+    g_event_system.subscriber_id_wrapped = false;
     atomic_set(&g_event_system.running, 0);
     g_event_system.initialized = true;
     if (zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_INITED) != 0) {
@@ -287,7 +289,6 @@ event_status_t event_system_stop(void) {
 
     event_status_t wait_ret = event_system_ops_wait_zero();
     if (wait_ret != EVENT_OK) {
-        event_system_ops_open();
         event_system_lifecycle_unlock();
         return wait_ret;
     }

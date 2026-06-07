@@ -10,6 +10,7 @@ menu "Event System Configuration"
 config EVENT_SYSTEM
 	bool "Enable Event System"
 	default y
+	select POLL
 	help
 	  Enable the core event-driven architecture for the application.
 
