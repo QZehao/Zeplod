@@ -96,21 +96,13 @@ function Invoke-West {
     )
 
     # west writes progress to stderr; avoid PowerShell treating it as a terminating error.
+    # Must stream stdout/stderr directly — buffering (2>&1) hides QEMU serial output until exit.
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
     try {
-        $lines = & west @Args 2>&1
-        $exit = $LASTEXITCODE
-        foreach ($line in $lines) {
-            if ($line -is [System.Management.Automation.ErrorRecord]) {
-                Write-Host $line.Exception.Message
-            }
-            else {
-                Write-Host $line
-            }
-        }
-        if ($exit -ne 0) {
-            throw "west $($Args -join ' ') failed (exit $exit)"
+        & west @Args
+        if ($LASTEXITCODE -ne 0) {
+            throw "west $($Args -join ' ') failed (exit $LASTEXITCODE)"
         }
     }
     finally {

@@ -227,27 +227,35 @@ On **`qemu_riscv32`**:
 
 Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**, run **`setup_env`**, then rebuild with **`-p always`**.
 
-### 7.2 `west build -t run` fails in CI / background
+### 7.2 No serial output after `Starting QEMU...`
+
+**Symptom**: Build succeeds but the terminal shows no Zephyr boot log.
+
+**Cause**: An older `run_qemu.ps1` buffered all `west build -t run` output via `2>&1`; QEMU is a long-running foreground process, so logs only appeared after QEMU exited.
+
+**Fix**: Use the updated `run_qemu.ps1` (streams `west` directly). If output is still missing, run in an **interactive** terminal — not a background job or redirected stdio.
+
+### 7.3 `west build -t run` fails in CI / background
 
 Run in a real terminal with stdio attached.
 
-### 7.3 HardFault on `qemu_cortex_m3`
+### 7.4 HardFault on `qemu_cortex_m3`
 
 Upstream `hello_world` works; this app has known issues on ARM Cortex-M QEMU. Prefer **`qemu_riscv32`** on Windows.
 
-### 7.4 `undefined reference to sys_reboot` with `prj_sram.conf`
+### 7.5 `undefined reference to sys_reboot` with `prj_sram.conf`
 
 Use **`prj_qemu.conf`** for QEMU (`CONFIG_SYS_WATCHDOG_ENABLE=n`).
 
-### 7.5 SMP configure fails: `app.overlay` merged
+### 7.6 SMP configure fails: `app.overlay` merged
 
 If the log shows `Found devicetree overlay: .../app.overlay` then configure errors, the SMP qualifier did not match a board overlay and Zephyr fell back to **`app.overlay`** (STM32L4 SRAM — invalid on QEMU). Use the SMP overlay files listed in §5.3.
 
-### 7.6 Wrong SMP board name
+### 7.7 Wrong SMP board name
 
 Use the full qualifier, e.g. `qemu_riscv32/qemu_virt_riscv32/smp` — not `qemu_riscv32_smp`.
 
-### 7.7 `qemu_kvm_arm64`
+### 7.8 `qemu_kvm_arm64`
 
 Requires Linux **KVM**; not available on Windows.
 
