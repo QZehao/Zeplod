@@ -283,13 +283,34 @@ int data_bus_deinit(void) {
  * ============================================================================ */
 
 void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* stats) {
-    if (ch == NULL || stats == NULL) {
+    if (stats == NULL) {
         return;
     }
 
-    /* 移除 const 以进行锁访问 — 安全，因为我们只读取 */
+    memset(stats, 0, sizeof(*stats));
+
+    if (ch == NULL || k_is_in_isr() || data_bus_require_initialized() != 0) {
+        return;
+    }
+
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+
     data_bus_channel_t* ch_rw = (data_bus_channel_t*) ch;
-    k_spinlock_key_t    key = k_spin_lock(&ch_rw->lock);
+    bool                found = false;
+
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        if (g_channels[i] == ch_rw) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found || !atomic_get(&ch_rw->active)) {
+        k_mutex_unlock(&g_channels_lock);
+        return;
+    }
+
+    k_spinlock_key_t key = k_spin_lock(&ch_rw->lock);
     stats->publish_count = ch->publish_count;
     stats->drop_count = ch->drop_count;
     stats->queue_full_count = ch->queue_full_count;
@@ -299,10 +320,27 @@ void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* 
     stats->consumer_count = ch->consumer_count;
     stats->peak_queue_usage = ch->peak_queue_usage;
     k_spin_unlock(&ch_rw->lock, key);
+    k_mutex_unlock(&g_channels_lock);
 }
 
 void data_bus_reset_stats(data_bus_channel_t* ch) {
-    if (ch == NULL) {
+    if (ch == NULL || k_is_in_isr() || data_bus_require_initialized() != 0) {
+        return;
+    }
+
+    k_mutex_lock(&g_channels_lock, K_FOREVER);
+
+    bool found = false;
+
+    for (uint32_t i = 0; i < g_channel_count; i++) {
+        if (g_channels[i] == ch) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found || !atomic_get(&ch->active)) {
+        k_mutex_unlock(&g_channels_lock);
         return;
     }
 
@@ -315,6 +353,7 @@ void data_bus_reset_stats(data_bus_channel_t* ch) {
     ch->slab_exhausted_count = 0;
     ch->peak_queue_usage = 0;
     k_spin_unlock(&ch->lock, key);
+    k_mutex_unlock(&g_channels_lock);
 }
 
 void data_bus_get_overview(data_bus_overview_t* overview) {

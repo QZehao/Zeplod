@@ -45,6 +45,7 @@ struct data_bus_block {
     uint32_t           seq;
     bool               malloc_fallback;
     bool               slab_exhausted;
+    bool               memory_stats_accounted;
 };
 
 struct data_bus_consumer {

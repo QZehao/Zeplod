@@ -107,6 +107,34 @@ typedef struct {
 } data_bus_overview_t;
 
 /* ============================================================================
+ * 事件桥接载荷
+ * ============================================================================ */
+
+/**
+ * @brief DATA_BUS_AVAILABLE 事件载荷
+ *
+ * 当启用 CONFIG_DATA_BUS_EVENT_BRIDGE 时，成功的线程侧发布会发送该载荷。
+ * 事件类型 ID 由 CONFIG_DATA_BUS_EVENT_TYPE_ID 指定。
+ */
+typedef struct {
+    char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
+    uint32_t seq;
+    uint32_t len;
+} data_bus_event_notification_t;
+
+/**
+ * @brief DATA_BUS_MEMORY_WARNING 事件载荷
+ *
+ * 当启用事件桥接且内存回退次数达到配置阈值时发送。
+ * 事件类型 ID 由 CONFIG_DATA_BUS_HEALTH_EVENT_TYPE_ID 指定。
+ */
+typedef struct {
+    char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
+    uint32_t malloc_fallback_count;
+    uint32_t slab_exhausted_count;
+} data_bus_memory_warning_event_t;
+
+/* ============================================================================
  * 生命周期
  * ============================================================================ */
 
@@ -318,11 +346,17 @@ size_t data_bus_block_len(const data_bus_block_t* block);
 
 /**
  * @brief 获取通道统计
- * @note 尽力保证一致性；不保证快照与单个块匹配
+ * @note 尽力保证一致性；不保证快照与单个块匹配。
+ *       通道已失效或 Data Bus 未初始化时，stats 返回全 0。
+ * @note 仅支持线程上下文；ISR 中调用时 stats 返回全 0。
  */
 void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* stats);
 
-/** @brief 重置通道统计 */
+/**
+ * @brief 重置通道统计
+ * @note 通道已失效或 Data Bus 未初始化时不执行任何操作。
+ * @note 仅支持线程上下文；ISR 中调用时不执行任何操作。
+ */
 void data_bus_reset_stats(data_bus_channel_t* ch);
 
 /** @brief 获取 Data Bus 聚合统计；未初始化时返回全 0 */

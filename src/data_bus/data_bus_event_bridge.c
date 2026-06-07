@@ -28,22 +28,15 @@
 
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 
+#if CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0
+BUILD_ASSERT(CONFIG_DATA_BUS_EVENT_TYPE_ID != CONFIG_DATA_BUS_HEALTH_EVENT_TYPE_ID,
+             "Data Bus bridge event type IDs must be different");
+#endif
+
 static atomic_t g_event_type_registered;
 #if CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0
 static atomic_t g_memory_warning_event_type_registered;
 #endif
-
-typedef struct {
-    char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    uint32_t seq;
-    uint32_t len;
-} data_bus_event_notification_t;
-
-typedef struct {
-    char     channel_name[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    uint32_t malloc_fallback_count;
-    uint32_t slab_exhausted_count;
-} data_bus_memory_warning_event_t;
 
 /**
  * @brief 惰性注册事件类型（SYS_INIT 与首次 notify 均可调用）

@@ -36,9 +36,15 @@ K_MEM_SLAB_DEFINE(data_bus_block_slab, sizeof(data_bus_block_t), CONFIG_DATA_BUS
 
 #if CONFIG_DATA_BUS_SLAB_ENABLE
 
+#if CONFIG_DATA_BUS_SLAB_256_COUNT > 0
 K_MEM_SLAB_DEFINE(data_bus_slab_256, 256, CONFIG_DATA_BUS_SLAB_256_COUNT, sizeof(void*));
+#endif
+#if CONFIG_DATA_BUS_SLAB_1K_COUNT > 0
 K_MEM_SLAB_DEFINE(data_bus_slab_1k, 1024, CONFIG_DATA_BUS_SLAB_1K_COUNT, sizeof(void*));
+#endif
+#if CONFIG_DATA_BUS_SLAB_4K_COUNT > 0
 K_MEM_SLAB_DEFINE(data_bus_slab_4k, 4096, CONFIG_DATA_BUS_SLAB_4K_COUNT, sizeof(void*));
+#endif
 
 BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >=
                  CONFIG_DATA_BUS_SLAB_256_COUNT + CONFIG_DATA_BUS_SLAB_1K_COUNT + CONFIG_DATA_BUS_SLAB_4K_COUNT,
@@ -52,13 +58,21 @@ BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >=
 
 static struct k_mem_slab* slab_for_size(size_t len) {
 #if CONFIG_DATA_BUS_SLAB_ENABLE
+#if CONFIG_DATA_BUS_SLAB_256_COUNT > 0
     if (len <= 256) {
         return &data_bus_slab_256;
-    } else if (len <= 1024) {
+    }
+#endif
+#if CONFIG_DATA_BUS_SLAB_1K_COUNT > 0
+    if (len <= 1024) {
         return &data_bus_slab_1k;
-    } else if (len <= 4096) {
+    }
+#endif
+#if CONFIG_DATA_BUS_SLAB_4K_COUNT > 0
+    if (len <= 4096) {
         return &data_bus_slab_4k;
     }
+#endif
 #endif
     return NULL;
 }

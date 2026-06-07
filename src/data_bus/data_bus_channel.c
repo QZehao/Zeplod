@@ -72,13 +72,18 @@ static bool channel_in_table_locked(const data_bus_channel_t* ch) {
     return false;
 }
 
-static bool channel_note_block_memory(data_bus_channel_t* ch, const data_bus_block_t* block) {
+static bool channel_note_block_memory(data_bus_channel_t* ch, data_bus_block_t* block) {
     if (ch == NULL || block == NULL || (!block->malloc_fallback && !block->slab_exhausted)) {
         return false;
     }
 
     bool             should_warn = false;
     k_spinlock_key_t key = k_spin_lock(&ch->lock);
+
+    if (block->memory_stats_accounted) {
+        k_spin_unlock(&ch->lock, key);
+        return false;
+    }
 
     if (block->malloc_fallback) {
         ch->malloc_fallback_count++;
@@ -89,6 +94,7 @@ static bool channel_note_block_memory(data_bus_channel_t* ch, const data_bus_blo
     if (block->slab_exhausted) {
         ch->slab_exhausted_count++;
     }
+    block->memory_stats_accounted = true;
 
     k_spin_unlock(&ch->lock, key);
     return should_warn;

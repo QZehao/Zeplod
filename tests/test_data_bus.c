@@ -30,6 +30,9 @@
 
 LOG_MODULE_REGISTER(test_data_bus);
 
+BUILD_ASSERT(sizeof(((data_bus_event_notification_t*) 0)->channel_name) == CONFIG_DATA_BUS_CHANNEL_NAME_MAX);
+BUILD_ASSERT(sizeof(((data_bus_memory_warning_event_t*) 0)->channel_name) == CONFIG_DATA_BUS_CHANNEL_NAME_MAX);
+
 /* ============================================================================
  * 测试夹具
  * ============================================================================ */
@@ -322,6 +325,28 @@ ZTEST(test_data_bus, test_channel_create_destroy) {
     zassert_is_null(found, "销毁后查找应返回 NULL");
 
     data_bus_deinit();
+}
+
+/**
+ * @brief 销毁后的失效通道指针不得被统计接口解引用
+ */
+ZTEST(test_data_bus, test_stats_reject_destroyed_channel) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+    zassert_equal(data_bus_channel_create("stale_stats", &ch), 0, NULL);
+    zassert_equal(data_bus_channel_destroy(ch), 0, NULL);
+
+    data_bus_stats_t stats;
+    memset(&stats, 0xA5, sizeof(stats));
+    data_bus_channel_get_stats(ch, &stats);
+
+    data_bus_stats_t zero_stats = {0};
+    zassert_mem_equal(&stats, &zero_stats, sizeof(stats), "失效通道统计应返回全 0");
+
+    data_bus_reset_stats(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
 }
 
 /**
@@ -987,6 +1012,41 @@ ZTEST(test_data_bus, test_malloc_fallback_stats) {
         data_bus_mem_free(blocks[i]);
     }
 #endif
+}
+
+/**
+ * @brief 同一预分配块重试发布时，内存降级统计只记录一次
+ */
+ZTEST(test_data_bus, test_publish_block_retry_counts_memory_once) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+    zassert_equal(data_bus_channel_create("retry_stats", &ch), 0, NULL);
+
+    data_bus_block_t* block = data_bus_mem_alloc(sizeof(g_large_payload));
+    zassert_not_null(block, "大块分配失败");
+    zassert_true(block->malloc_fallback, "超过最大 slab 的块应使用 k_malloc");
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    ch->queue_used = CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+    k_spin_unlock(&ch->lock, key);
+
+    zassert_equal(data_bus_publish_block(ch, block), -ENOBUFS, NULL);
+    zassert_equal(data_bus_publish_block(ch, block), -ENOBUFS, NULL);
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_equal(stats.malloc_fallback_count, 1, "同一块重试不应重复统计内存回退");
+    zassert_equal(stats.queue_full_count, 2, "两次入队失败都应计入队列满");
+
+    key = k_spin_lock(&ch->lock);
+    ch->queue_used = 0;
+    k_spin_unlock(&ch->lock, key);
+
+    data_bus_mem_free(block);
+    zassert_equal(data_bus_channel_destroy(ch), 0, NULL);
+    zassert_equal(data_bus_deinit(), 0, NULL);
 }
 
 /**
