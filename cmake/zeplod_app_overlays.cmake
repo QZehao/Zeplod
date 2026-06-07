@@ -1,0 +1,53 @@
+# Append devicetree overlays for APP repos that vendor this framework under framework/.
+# Call from the APP top-level CMakeLists.txt before find_package(Zephyr):
+#   include(${CMAKE_CURRENT_LIST_DIR}/framework/cmake/zeplod_app_overlays.cmake)
+#   zeplod_append_app_devicetree_overlays("${CMAKE_CURRENT_LIST_DIR}")
+
+function(_zeplod_resolve_framework_board_overlay boards_dir board out_var)
+  set(candidate "${boards_dir}/${board}.overlay")
+  if(EXISTS "${candidate}")
+    set(${out_var} "${candidate}" PARENT_SCOPE)
+    return()
+  endif()
+
+  string(REPLACE "/" "_" board_file "${board}")
+  set(candidate "${boards_dir}/${board_file}.overlay")
+  if(EXISTS "${candidate}")
+    set(${out_var} "${candidate}" PARENT_SCOPE)
+    return()
+  endif()
+
+  file(GLOB candidates LIST_DIRECTORIES false "${boards_dir}/${board}*.overlay")
+  if(candidates)
+    list(GET candidates 0 first)
+    set(${out_var} "${first}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(zeplod_append_app_devicetree_overlays app_root)
+  set(fw_dir "${app_root}/framework")
+  set(app_overlay "${fw_dir}/app.overlay")
+  set(boards_dir "${fw_dir}/boards")
+
+  if(DEFINED BOARD AND (BOARD MATCHES "^qemu_" OR BOARD MATCHES "^native_"))
+    message(STATUS "zeplod: skip framework/app.overlay for board '${BOARD}'")
+    if(IS_DIRECTORY "${boards_dir}")
+      _zeplod_resolve_framework_board_overlay("${boards_dir}" "${BOARD}" qemu_overlay)
+      if(qemu_overlay)
+        set(DTC_OVERLAY_FILE "${qemu_overlay}" CACHE STRING "Devicetree overlays" FORCE)
+        message(STATUS "zeplod: DTC overlay ${qemu_overlay}")
+      else()
+        message(WARNING "zeplod: no framework/boards overlay for board '${BOARD}'")
+      endif()
+    endif()
+    return()
+  endif()
+
+  if(NOT EXISTS "${app_overlay}")
+    return()
+  endif()
+
+  list(APPEND DTC_OVERLAY_FILE "${app_overlay}")
+  set(DTC_OVERLAY_FILE "${DTC_OVERLAY_FILE}" CACHE STRING "Devicetree overlays" FORCE)
+  message(STATUS "zeplod: DTC overlay ${app_overlay}")
+endfunction()
