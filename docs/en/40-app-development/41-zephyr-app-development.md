@@ -463,7 +463,7 @@ This application's extended options explained in **[Project Configuration Guide.
 |-------|----------|
 | This template's `sys_*` | [System Services Usage Guide.md](../30-core-modules/36-系统服务使用说明.md) |
 | Events and modules | [Event System Detailed Usage Guide.md](../30-core-modules/31-事件系统详细使用说明.md) · [Module System Detailed Usage Guide.md](../30-core-modules/32-模块系统详细使用说明.md) |
-| Thread IPC | [Thread_IPC Service Usage Guide.md](../30-core-modules/33-Thread_IPC服务使用说明.md) |
+| Thread IPC | [Thread_IPC Service Usage Guide.md](../30-core-modules/33-线程IPC服务使用说明.md) |
 | Memory layout / overlay | [Device Tree and Memory Configuration Manual.md](44-devicetree-memory-config.md) |
 | OTA / Storage / PM | [OTA and Storage Extension Guide.md](../70-release-and-productization/74-OTA-and-storage-extension-guide.md) |
 

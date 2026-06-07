@@ -34,8 +34,8 @@
 - **线程安全**：完整的线程安全操作和正确的同步机制
 - **Shell 命令**：内置调试和监控的 Shell 命令
 - **版本管理**：完整的软件版本跟踪，包含 Git 信息和编译时间
-- **Thread IPC（应用内）**：可选的工作线程 + 分发线程、请求/响应队列，及与事件系统的桥接（见 `docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md`）
-- **Data Bus（数据总线）**：命名通道、引用计数流数据共享，零拷贝多消费者分发，ISR/线程统一发布，自动释放与显式 Retain，可选事件系统桥接（见 `docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md`）
+- **Thread IPC（应用内）**：可选的工作线程 + 分发线程、请求/响应队列，及与事件系统的桥接（见 `docs/zh-CN/30-核心模块/33-线程IPC服务使用说明.md`）
+- **Data Bus（数据总线）**：命名通道、引用计数流数据共享，零拷贝多消费者分发，ISR/线程统一发布，自动释放与显式 Retain，可选事件系统桥接（见 `docs/zh-CN/30-核心模块/37-数据总线使用说明.md`）
 
 ## 适用场景
 
@@ -790,16 +790,16 @@ git commit -m "修复 bug"       # 未说明修复什么
 |------|------|
 | [docs/zh-CN/00-入门/02-文档索引.md](docs/zh-CN/00-入门/02-文档索引.md) | **总入口**：学习路径、全部手册列表 |
 | [docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md](docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md) | 工具链、路径、验证构建 |
-| [docs/zh-CN/10-环境与构建/12-独立应用构建说明.md](docs/zh-CN/10-环境与构建/12-独立应用构建说明.md) | 独立应用、`ZEPHYR_BASE`、overlay |
+| [docs/zh-CN/10-环境与构建/12-Freestanding应用与构建基础.md](docs/zh-CN/10-环境与构建/12-Freestanding应用与构建基础.md) | 独立应用、`ZEPHYR_BASE`、overlay |
 | [docs/zh-CN/00-入门/04-开发者入门指南.md](docs/zh-CN/00-入门/04-开发者入门指南.md) | 日常开发、测试、调试 |
 | [docs/zh-CN/40-应用开发/41-Zephyr应用开发与服务指南.md](docs/zh-CN/40-应用开发/41-Zephyr应用开发与服务指南.md) | Zephyr 通用技术与服务开发纲要 |
 | [docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md](docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md) | Devicetree、SRAM、`app.overlay` |
 | [docs/zh-CN/40-应用开发/42-项目配置项说明.md](docs/zh-CN/40-应用开发/42-项目配置项说明.md) | **Kconfig 与应用配置项集中说明** |
 | [docs/zh-CN/30-核心模块/31-事件系统详细使用说明.md](docs/zh-CN/30-核心模块/31-事件系统详细使用说明.md) | 事件 API 与用法 |
 | [docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md](docs/zh-CN/30-核心模块/32-模块系统详细使用说明.md) | 模块生命周期、运行时依赖 |
-| [docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md](docs/zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md) | Thread IPC 服务 |
+| [docs/zh-CN/30-核心模块/33-线程IPC服务使用说明.md](docs/zh-CN/30-核心模块/33-线程IPC服务使用说明.md) | Thread IPC 服务 |
 | [docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md](docs/zh-CN/30-核心模块/34-Thread_IPC模块集成指南.md) | 在模块中集成 IPC |
-| [docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md](docs/zh-CN/30-核心模块/37-Data_Bus数据总线使用说明.md) | Data Bus：命名通道流数据共享 |
+| [docs/zh-CN/30-核心模块/37-数据总线使用说明.md](docs/zh-CN/30-核心模块/37-数据总线使用说明.md) | Data Bus：命名通道流数据共享 |
 | [docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md](docs/zh-CN/70-发布与产品化/74-OTA与存储扩展指南.md) | OTA、NVS、低功耗（可选） |
 | [docs/zh-CN/70-发布与产品化/71-版本管理.md](docs/zh-CN/70-发布与产品化/71-版本管理.md) | 版本号与构建信息 |
 | [docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md](docs/zh-CN/70-发布与产品化/72-Zephyr版本与CI说明.md) | 与 CI 镜像版本对齐 |

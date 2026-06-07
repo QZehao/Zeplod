@@ -24,3 +24,8 @@ repos:
         entry: python scripts/check_script_docs.py
         language: system
         pass_filenames: false
+      - id: lint-docs
+        name: lint docs (zh-CN)
+        entry: python scripts/lint_docs.py docs/zh-CN --skip-config-check --check-index --check-code-map --check-parity --strict
+        language: system
+        pass_filenames: false

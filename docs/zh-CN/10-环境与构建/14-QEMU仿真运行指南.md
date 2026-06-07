@@ -1,5 +1,8 @@
 > 语言: **中文** | [English](../../en/10-environment-build/14-qemu-simulation-guide.md)
 
+> **本文档范围**：QEMU 编译运行、板型选择、`run_qemu.ps1`、SMP、ztest 在 QEMU 上执行。  
+> **另见**：[63-脚本与工具说明](../60-调试与排错/63-脚本与工具说明.md)（脚本参数表）· [11-环境搭建与配置指南](11-环境搭建与配置指南.md)（`QEMU_BIN_PATH`）· [51-单元测试与持续集成说明](../50-测试与CI/51-单元测试与持续集成说明.md)（CI 概览）
+
 # QEMU 仿真运行指南
 
 本文说明如何在 **Windows / Linux / macOS** 上使用 Zephyr 自带的 **QEMU 板型** 编译并运行本工程，无需真实开发板。适用于快速验证启动流程、日志、模块初始化等逻辑。
@@ -468,7 +471,7 @@ chcp 65001
 
 - [51-单元测试与持续集成说明.md](../50-测试与CI/51-单元测试与持续集成说明.md) — ztest 覆盖范围与 CI 矩阵
 
-- [12-独立应用构建说明.md](12-独立应用构建说明.md) — `west build`、overlay 通用规则
+- [12-Freestanding应用与构建基础.md](12-Freestanding应用与构建基础.md) — `west build`、overlay 通用规则
 - [15-新建APP开发指南.md](15-新建APP开发指南.md) — 创建 APP 仓库、`*_prj_qemu.conf` 与脚本配置
 - [44-设备树与内存配置手册.md](../40-应用开发/44-设备树与内存配置手册.md) — `boards/*.overlay` 合并机制
 - [53-硬件测试运行指南.md](../50-测试与CI/53-硬件测试运行指南.md) — 真实硬件烧录与测试

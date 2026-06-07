@@ -1,6 +1,9 @@
 > 语言: **中文** | [English](../../en/10-environment-build/12-freestanding-app-build.md)
 
-# 独立（Freestanding）Zephyr 应用配置说明
+> **本文档范围**：Freestanding 应用概念、`ZEPHYR_BASE`、常规 `west build`、`BOARD_ROOT` / overlay 规则（概要）。  
+> **另见**：[15-新建APP开发指南](15-新建APP开发指南.md)（APP 子模块仓库）· [14-QEMU仿真运行指南](14-QEMU仿真运行指南.md)（无硬件仿真）· [44-设备树与内存配置手册](../40-应用开发/44-设备树与内存配置手册.md)（overlay 细节）
+
+# Freestanding 应用与构建基础
 
 本文说明本工程如何作为 **独立 Zephyr 应用（freestanding application）** 进行配置与构建。
 
@@ -103,58 +106,11 @@ west build -t pristine
 
 ## QEMU 仿真（无硬件）
 
-在 **Windows 11** 等环境上，可用 Zephyr QEMU 板型代替 `native_sim` 做启动冒烟（`native_sim` 需 Linux/WSL）。仓库提供：
-
-- **`boards/qemu_*.overlay`** — 与 `west build -b qemu_<板型>` 自动合并
-- **`prj_qemu.conf`** — 仿真用精简 Kconfig 叠加
-- **`scripts/run_qemu.ps1`** — Windows 一键构建并运行（默认 `qemu_riscv32`）
-
-快速命令：
-
-```powershell
-. .\scripts\setup_env.ps1
-.\scripts\run_qemu.ps1
-```
-
-手动构建示例：
-
-```bash
-west build -b qemu_riscv32 -d build_qemu . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
-west build -t run --build-dir build_qemu
-```
-
-须在 **`zephyr_config.env`** 中配置 **`QEMU_BIN_PATH`**。板型选择、故障排除与完整说明见 **[14-QEMU仿真运行指南.md](14-QEMU仿真运行指南.md)**。
+Windows 等无 Linux/WSL 环境时，用 QEMU 板型做启动冒烟。完整流程、板型列表、`run_qemu.ps1` 参数与 ztest 见 **[14-QEMU仿真运行指南.md](14-QEMU仿真运行指南.md)**。
 
 ## 基于 framework 子模块的 APP 仓库
 
-> **从零创建 APP 仓库的完整步骤**（目录、CMakeLists 模板、Kconfig/QEMU/脚本配置、验收清单）见 **[15-新建APP开发指南.md](15-新建APP开发指南.md)**。
-
-许多业务工程（如 **zephyr_gateway**）将本框架作为 **`framework/`** Git 子模块，在 APP 根目录提供顶层 `CMakeLists.txt` 与 `*_prj.conf`：
-
-```
-my_app/
-├── CMakeLists.txt          # add_subdirectory(framework)
-├── gateway_prj.conf        # APP 专用 Kconfig 片段
-├── src/                    # 业务源码
-├── modules/                # 树外 Zephyr 模块
-└── framework/              # 本子仓库（子模块）
-    ├── scripts/            # 与 zeplod 相同的脚本
-    ├── zephyr_config.env
-    └── tests/
-```
-
-**构建与脚本**：在 APP 根目录执行 `west build -b <board> .`；仿真、测试、QA 等统一使用 **`framework/scripts/`** 下的脚本（自动识别 app 布局，见 **[63-脚本与工具说明.md](../60-调试与排错/63-脚本与工具说明.md)**）：
-
-```powershell
-.\framework\scripts\setup_env.ps1
-.\framework\scripts\run_qemu.ps1
-.\framework\scripts\qa.ps1 -Mode all
-```
-
-可选在 APP 根目录放置 **`zephyr_app.env`**（模板见框架仓库 `zephyr_app.env.template`）显式指定 `APP_PRJ_CONF`、`QEMU_CONF`。
-
-更新 framework 子模块后，即可获得脚本布局解析等最新能力。
+产品固件推荐独立 APP 仓库 + `framework/` 子模块。目录模板、`zephyr_app.env`、overlay 与验收清单见 **[15-新建APP开发指南.md](15-新建APP开发指南.md)**；脚本布局见 **[63-脚本与工具说明.md](../60-调试与排错/63-脚本与工具说明.md)**。
 
 ## 自定义开发板（可选）
 

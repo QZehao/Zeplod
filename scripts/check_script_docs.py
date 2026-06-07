@@ -11,6 +11,12 @@ from pathlib import Path
 DOC_FILES = [
     Path("docs/zh-CN/60-调试与排错/63-脚本与工具说明.md"),
     Path("docs/en/60-debugging/63-scripts-and-tools.md"),
+    Path("docs/zh-CN/10-环境与构建/11-环境搭建与配置指南.md"),
+    Path("docs/en/10-environment-build/11-environment-setup.md"),
+    Path("docs/zh-CN/10-环境与构建/14-QEMU仿真运行指南.md"),
+    Path("docs/en/10-environment-build/14-qemu-simulation-guide.md"),
+    Path("docs/zh-CN/10-环境与构建/15-新建APP开发指南.md"),
+    Path("docs/en/10-environment-build/15-creating-new-app-guide.md"),
 ]
 
 PATTERN = re.compile(r"`([A-Za-z0-9_.-]+\.(?:ps1|sh|bat|py))`")

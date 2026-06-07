@@ -2,9 +2,9 @@
 
 # Documentation Index and Reading Guide
 
-This page is the **master index** of all documentation under `docs/`: complete manuals, recommended reading order, target audience, and terminology quick reference — making it easy for newcomers to find what they need.
+This page is the **master index** of all documentation under `docs/`. For **task-based lookup**, see **[05-task-navigation.md](05-task-navigation.md)**. Code mapping: **[06-code-doc-map.md](06-code-doc-map.md)**.
 
-Documents are organized into 9 subdirectories by topic, with prefix numbers indicating recommended learning order:
+Documents are organized by topic, with prefix numbers indicating recommended learning order:
 
 ```
 docs/
@@ -13,22 +13,31 @@ docs/
 │   │   ├── 01-5分钟快速体验.md
 │   │   ├── 02-文档索引.md
 │   │   ├── 03-术语速查卡片.md
-│   │   └── 04-开发者入门指南.md
+│   │   ├── 04-开发者入门指南.md
+│   │   ├── 05-任务导航.md
+│   │   ├── 06-代码与文档映射.md
+│   │   └── 07-快速参考卡片.md
 │   ├── 10-环境与构建/
 │   │   ├── 11-环境搭建与配置指南.md
-│   │   ├── 12-独立应用构建说明.md
-│   │   └── 13-板型迁移指南.md
+│   │   ├── 12-Freestanding应用与构建基础.md
+│   │   ├── 13-板型迁移指南.md
+│   │   ├── 14-QEMU仿真运行指南.md
+│   │   └── 15-新建APP开发指南.md
 │   ├── 20-架构设计/
 │   │   ├── 21-模块化软件设计方法论.md
 │   │   ├── 22-模块化软件设计的详细方法.md
-│   │   └── 23-框架核心技术实现细节.md
+│   │   ├── 23-框架核心技术实现细节.md
+│   │   ├── 26-稳定性与可维护性优化建议.md
+│   │   └── 27-核心架构重构路线图.md
 │   ├── 30-核心模块/
 │   │   ├── 31-事件系统详细使用说明.md
 │   │   ├── 32-模块系统详细使用说明.md
-│   │   ├── 33-Thread_IPC服务使用说明.md
+│   │   ├── 33-线程IPC服务使用说明.md
 │   │   ├── 34-Thread_IPC模块集成指南.md
 │   │   ├── 35-IPC服务扩展特性规划.md
-│   │   └── 36-系统服务使用说明.md
+│   │   ├── 36-系统服务使用说明.md
+│   │   ├── 37-数据总线使用说明.md
+│   │   └── 38-线程服务生命周期约定.md
 │   ├── 40-应用开发/
 │   │   ├── 41-Zephyr应用开发与服务指南.md
 │   │   ├── 42-项目配置项说明.md
@@ -38,7 +47,7 @@ docs/
 │   │   ├── 51-单元测试与持续集成说明.md
 │   │   ├── 52-CI平台配置保姆级手册.md
 │   │   ├── 53-硬件测试运行指南.md
-│   │   └── 54-watchdog_test_guide.md
+│   │   └── 54-看门狗测试指南.md
 │   ├── 60-调试与排错/
 │   │   ├── 61-烧录与调试快速指南.md
 │   │   ├── 62-常见问题与故障排除.md
@@ -49,15 +58,10 @@ docs/
 │   │   ├── 73-发布检查清单.md
 │   │   ├── 74-OTA与存储扩展指南.md
 │   │   └── 75-安全与密钥管理说明.md
-│   ├── 80-贡献与维护/
-│   │   ├── 81-参与贡献与代码规范.md
-│   │   └── 82-文档改进建议.md
-│   ├── 90-学习资源/
-│   │   ├── 91-嵌入式AI大模型工程师学习指南.md
-│   │   ├── 92-个人发展规划与项目评估报告.md
-│   │   └── 93-项目全面评审报告.md
-│   └── QUICK_REFERENCE.md
-└── en/
+│   └── 80-贡献与维护/
+│       ├── 81-参与贡献与代码规范.md
+│       └── 82-文档改进建议.md
+└── en/                              ← English canonical subset (zh authoritative)
     ├── 00-getting-started/
     ├── 10-environment-build/
     ├── 20-architecture/
@@ -136,12 +140,14 @@ For a **separate Git repo** with zeplod under `framework/` (e.g. zephyr_gateway)
 2. When security-related, pair with **[75-security-key-management.md](../70-release-productization/75-security-key-management.md)**.
 3. For improving documentation, refer to **[82-doc-improvements.md](../80-contributing/82-doc-improvements.md)**.
 
-### Path F: Architecture Learning, Interview Prep
+### Path F: Architecture Learning, Internal Evolution
 
 1. **[21-modular-design-methodology.md](../20-architecture/21-modular-design-methodology.md)** — Overall methodology of modular design.
 2. **[22-modular-design-detailed.md](../20-architecture/22-modular-design-detailed.md)** — Interface design, dependency management, lifecycle, communication mechanisms, layered architecture.
-3. **[23-framework-internals.md](../20-architecture/23-framework-internals.md)** — In-depth Event System, Module Manager, memory management implementation details, thread safety, performance tradeoffs, interview Q&A.
-4. **[91-embedded-ai-engineer-learning-guide.md](../90-学习资源/91-嵌入式AI大模型工程师学习指南.md)** — Extended learning path for embedded + AI direction.
+3. **[23-framework-internals.md](../20-architecture/23-framework-internals.md)** — Event System, Module Manager, memory management implementation details.
+4. **[26-stability-maintainability.md](../20-architecture/26-stability-maintainability.md)** — Stability and maintainability recommendations (internal).
+5. **[27-architecture-roadmap.md](../20-architecture/27-architecture-roadmap.md)** — Core architecture refactoring roadmap (internal).
+6. **[38-thread-service-lifecycle.md](../30-core-modules/38-thread-service-lifecycle.md)** — Thread service lifecycle conventions.
 
 ---
 
@@ -229,12 +235,6 @@ For a **separate Git repo** with zeplod under `framework/` (e.g. zephyr_gateway)
 | **[81-contributing-code-style.md](../80-contributing/81-contributing-code-style.md)** | Issue/PR, style, CI self-check | Contributors, reviewers |
 | **[82-doc-improvements.md](../80-contributing/82-doc-improvements.md)** | Documentation gap analysis and improvement suggestions | Documentation maintainers |
 
-### 90-Learning Resources
-
-| Document | Main Content | Typical Reader |
-|----------|--------------|----------------|
-| **[91-embedded-ai-engineer-learning-guide.md](../90-学习资源/91-嵌入式AI大模型工程师学习指南.md)** | Extended learning path for embedded + AI direction | Those transitioning to AI-embedded |
-
 ### Proprietary Module Documentation
 
 > **Closed-source commercial modules** — Requires authorization. Contact china_qzh@163.com
@@ -250,7 +250,7 @@ For a **separate Git repo** with zeplod under `framework/` (e.g. zephyr_gateway)
 ### Other
 
 - **`docs/api/html/index.html`** — Doxygen-generated **C API** documentation (run `scripts/generate_docs.ps1` or `generate_docs.sh` to generate).
-- **`docs/zh-CN/QUICK_REFERENCE.md`** — Commercial module management quick reference card.
+- **`docs/zh-CN/07-快速参考卡片.md`** — Commercial module management quick reference card.
 - **`tests/README.md`** — **Detailed** explanation of unit tests (`native_posix`) (complements `51-unit-testing-ci.md`).
 - Root directory **`README.md`** — Project overview and features.
 
@@ -313,7 +313,6 @@ Documents were reorganized by topic in May 2026 into `docs/zh-CN/<NN-category>/N
 | `Security & Key Management.md` | [70-Release & Productization/75-security-key-management.md](../70-release-productization/75-security-key-management.md) |
 | `Contributing & Code Style.md` | [80-Contributing/81-contributing-code-style.md](../80-contributing/81-contributing-code-style.md) |
 | `Documentation Improvements.md` | [80-Contributing/82-doc-improvements.md](../80-contributing/82-doc-improvements.md) |
-| `Embedded AI Engineer Learning Guide.md` | [90-Learning Resources/91-embedded-ai-engineer-learning-guide.md](../90-学习资源/91-嵌入式AI大模型工程师学习指南.md) |
 
 Even older filenames (before first organization):
 

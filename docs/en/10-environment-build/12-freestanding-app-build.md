@@ -1,4 +1,4 @@
-> Language: [中文](../../zh-CN/10-环境与构建/12-独立应用构建说明.md) | **English**
+> Language: [中文](../../zh-CN/10-环境与构建/12-Freestanding应用与构建基础.md) | **English**
 
 # Freestanding Zephyr Application Configuration Guide
 

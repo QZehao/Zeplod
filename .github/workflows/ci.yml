@@ -92,6 +92,15 @@ jobs:
       - name: Check scripts docs consistency
         run: python3 scripts/check_script_docs.py
 
+      - name: Lint docs (zh-CN index, code map, bilingual parity)
+        run: |
+          python3 scripts/lint_docs.py docs/zh-CN \
+            --skip-config-check \
+            --check-index \
+            --check-code-map \
+            --check-parity \
+            --strict
+
   preflight:
     name: Preflight Checks
     runs-on: ubuntu-22.04

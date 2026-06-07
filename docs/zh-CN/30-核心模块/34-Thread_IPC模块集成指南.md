@@ -111,7 +111,7 @@ int ipc_service_init(ipc_service_t *service, const char *name,
 
 ### 4.3 实现 `ipc_service_func_t`
 
-在 **Worker 线程**中执行；返回值为业务结果码（负 errno 风格）；通过 `*out_data` / `*out_data_size` 返回输出，注意 **缓冲区生命周期**（见 **[Thread_IPC服务使用说明.md](33-Thread_IPC服务使用说明.md)**）。
+在 **Worker 线程**中执行；返回值为业务结果码（负 errno 风格）；通过 `*out_data` / `*out_data_size` 返回输出，注意 **缓冲区生命周期**（见 **[线程IPC服务使用说明.md](33-线程IPC服务使用说明.md)**）。
 
 ### 4.4 `start` / `stop`
 
@@ -143,7 +143,7 @@ int ipc_service_init(ipc_service_t *service, const char *name,
 
 - 订阅 **`EVENT_TYPE_THREAD_IPC_RESPONSE`**（定义在 `event_system.h`），载荷类型为 **`thread_ipc_event_result_t`**（见 `ipc_service_event.h`）。  
 - 将 **`EXAMPLE_MODULE_IPC_EVENT_SOURCE_ID`（42）** 与 `thread_ipc_event_publish_result` 的 `source_id` 对应，便于多服务区分。  
-- 详细说明见 **[Thread_IPC服务使用说明.md](33-Thread_IPC服务使用说明.md)** 中「与事件系统联动」章节。
+- 详细说明见 **[线程IPC服务使用说明.md](33-线程IPC服务使用说明.md)** 中「与事件系统联动」章节。
 
 ---
 
@@ -187,5 +187,5 @@ west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_example_module
 
 ## 相关文档
 
-- [Thread_IPC服务使用说明.md](33-Thread_IPC服务使用说明.md) — API、三种调用模式、事件桥 API  
+- [线程IPC服务使用说明.md](33-线程IPC服务使用说明.md) — API、三种调用模式、事件桥 API  
 - [事件系统详细使用说明.md](31-事件系统详细使用说明.md) — 订阅与发布  

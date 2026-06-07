@@ -1,4 +1,4 @@
-> Language: [中文](../../zh-CN/30-核心模块/33-Thread_IPC服务使用说明.md) | **English**
+> Language: [中文](../../zh-CN/30-核心模块/33-线程IPC服务使用说明.md) | **English**
 
 # Thread IPC Service Module Detailed Usage Guide
 

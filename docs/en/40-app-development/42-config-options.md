@@ -136,7 +136,7 @@ Corresponds to menu **"Thread IPC service (in-app)"**, defined in `src/modules/i
 - Default config (64KB SRAM): ~4.7 KB
 - Tiny config (20KB SRAM): ~2.1 KB
 
-**Note**: Architecture and API see **[Thread_IPC Service Usage Guide.md](../30-core-modules/33-Thread_IPC服务使用说明.md)**, **[Thread_IPC Module Integration Guide.md](../30-core-modules/34-Thread_IPC模块集成指南.md)**.
+**Note**: Architecture and API see **[Thread_IPC Service Usage Guide.md](../30-core-modules/33-线程IPC服务使用说明.md)**, **[Thread_IPC Module Integration Guide.md](../30-core-modules/34-Thread_IPC模块集成指南.md)**.
 
 ---
 

@@ -28,7 +28,7 @@
 - `CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_POOL_SIZE` - 内存块池大小
 - `CONFIG_THREAD_IPC_SERVICE_SHARED_MEM_BLOCK_SIZE` - 单块大小
 
-详细 API 见 **[Thread_IPC服务使用说明.md](33-Thread_IPC服务使用说明.md)**「共享内存调用」章节。
+详细 API 见 **[线程IPC服务使用说明.md](33-线程IPC服务使用说明.md)**「共享内存调用」章节。
 
 ---
 
