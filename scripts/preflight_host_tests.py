@@ -40,8 +40,9 @@ def main() -> int:
         print("[preflight] ERROR: native_sim/native_posix require Linux POSIX host.")
         print("[preflight] Use WSL/Linux for host tests, or set a non-POSIX board (e.g. qemu_riscv32).")
         print("[preflight] Suggested next steps:")
-        print("  1) WSL/Linux: source scripts/setup_env.sh && ./scripts/run_tests.sh")
-        print("  2) Windows QEMU: $env:ZEPHYR_TEST_BOARD='qemu_riscv32'; .\\scripts\\run_tests.ps1")
+        print("  1) WSL/Linux: source <scripts>/setup_env.sh && <scripts>/run_tests.sh")
+        print("  2) Windows QEMU: $env:ZEPHYR_TEST_BOARD='qemu_riscv32'; .\\<scripts>\\run_tests.ps1")
+        print("     (<scripts> = scripts/ in framework repo, or framework/scripts/ in app repo)")
         print("     (see docs/zh-CN/10-环境与构建/14-QEMU仿真运行指南.md §6)")
         return 2
 

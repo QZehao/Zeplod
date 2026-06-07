@@ -15,14 +15,15 @@ Write-Host "生成 API 文档" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 获取脚本所在目录和项目根目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
+. (Join-Path $ScriptDir "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $ScriptDir
+$ProjectRoot = $Layout.FrameworkRoot
 
-# 切换到项目根目录
 Set-Location $ProjectRoot
 
-Write-Host "项目根目录：$ProjectRoot" -ForegroundColor Gray
+Write-ZephyrProjectBanner -Layout $Layout
+Write-Host "文档根目录：$ProjectRoot" -ForegroundColor Gray
 Write-Host ""
 
 # 检查 Doxygen 是否安装

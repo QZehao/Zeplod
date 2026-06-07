@@ -3,10 +3,12 @@
 # Usage: ./scripts/run_sanitizers.sh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${ROOT}/scripts/setup_env.sh"
-python "${ROOT}/scripts/preflight_host_tests.py"
+source "${SCRIPT_DIR}/setup_env.sh"
+python "${ZP_SCRIPTS_ROOT}/preflight_host_tests.py"
+ROOT="${ZP_WORK_ROOT}"
+TESTS_DIR="${ZP_TESTS_DIR}"
 
 BUILD_DIR="${ZEPHYR_SAN_BUILD_DIR:-build_sanitizers}"
 CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf}"
@@ -52,8 +54,8 @@ if [ "$(uname -s)" = "MINGW64_NT" ] || [ "$(uname -s)" = "MINGW32_NT" ] || [ "$(
     fi
 fi
 
-cd "${ROOT}/tests"
-echo "Board: ${BOARD}, CONF_FILE: ${CONF_FILE}, Sanitizer: ${SANITIZER}, build-dir: ${BUILD_DIR}"
+cd "${TESTS_DIR}"
+echo "Mode: ${ZP_MODE}, board: ${BOARD}, CONF_FILE: ${CONF_FILE}, Sanitizer: ${SANITIZER}, build-dir: ${BUILD_DIR}"
 west build -b "${BOARD}" . --build-dir "${ROOT}/${BUILD_DIR}" -p always -- \
     -DCONF_FILE="${CONF_FILE}" \
     -DCMAKE_C_FLAGS="${SAN_FLAGS}" \

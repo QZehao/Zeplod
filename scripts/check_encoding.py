@@ -81,7 +81,11 @@ def git_tracked_files() -> list[str]:
 
 
 def main() -> int:
-    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from project_layout import resolve_project_layout
+
+    layout = resolve_project_layout()
+    repo = layout.work_root
     bad_decode: list[str] = []
     bad_bom: list[str] = []
 

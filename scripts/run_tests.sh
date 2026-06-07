@@ -3,10 +3,12 @@
 # Sources scripts/setup_env.sh (requires zephyr_config.env).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${ROOT}/scripts/setup_env.sh"
-python "${ROOT}/scripts/preflight_host_tests.py"
+source "${SCRIPT_DIR}/setup_env.sh"
+python "${ZP_SCRIPTS_ROOT}/preflight_host_tests.py"
+ROOT="${ZP_WORK_ROOT}"
+TESTS_DIR="${ZP_TESTS_DIR}"
 BUILD_DIR="${ZEPHYR_TEST_BUILD_DIR:-build_tests}"
 CONF_FILE="${ZEPHYR_TEST_CONF:-prj.conf;prj_test_extensions.conf}"
 
@@ -23,8 +25,8 @@ pick_board() {
 }
 
 BOARD="$(pick_board)"
-cd "${ROOT}/tests"
+cd "${TESTS_DIR}"
 
-echo "Board: ${BOARD}, CONF_FILE: ${CONF_FILE}, build-dir: ${BUILD_DIR}"
+echo "Mode: ${ZP_MODE}, board: ${BOARD}, CONF_FILE: ${CONF_FILE}, build-dir: ${BUILD_DIR}"
 west build -b "${BOARD}" . --build-dir "${ROOT}/${BUILD_DIR}" -p always -- -DCONF_FILE="${CONF_FILE}"
 west build -t run --build-dir "${ROOT}/${BUILD_DIR}"

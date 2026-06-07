@@ -1,24 +1,24 @@
-# Build and run zeplod in QEMU (Windows).
+# Build and run framework or framework+app project in QEMU (Windows).
 #
 # Usage:
 #   .\scripts\run_qemu.ps1
 #   .\scripts\run_qemu.ps1 -Board qemu_cortex_m3
 #   .\scripts\run_qemu.ps1 -Board qemu_riscv32 -BuildOnly
 #   .\scripts\run_qemu.ps1 -ListBoards
+#   .\scripts\run_qemu.ps1 -Target app      # force app wrapper build
+#   .\scripts\run_qemu.ps1 -Target framework
 
 param(
     [string] $Board = "qemu_riscv32",
     [string] $BuildDir = "",
     [switch] $BuildOnly,
     [switch] $ListBoards,
-    [switch] $NoPristine
+    [switch] $NoPristine,
+    [ValidateSet("auto", "framework", "app")]
+    [string] $Target = "auto"
 )
 
 $ErrorActionPreference = "Stop"
-
-. (Join-Path $PSScriptRoot "setup_env.ps1")
-
-$Root = Split-Path -Parent $PSScriptRoot
 
 $QemuBoards = @(
     "qemu_riscv32",
@@ -66,9 +66,32 @@ if ($Board -eq "qemu_kvm_arm64") {
     throw "qemu_kvm_arm64 requires Linux KVM and cannot run on native Windows."
 }
 
-$ConfFile = "prj.conf;prj_qemu.conf"
+. (Join-Path $PSScriptRoot "project_layout.ps1")
+. (Join-Path $PSScriptRoot "setup_env.ps1")
+
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $PSScriptRoot -Target $(if ($Target -eq "framework") { "framework" } else { "auto" })
+
+if ($Target -eq "framework") {
+    if ($Layout.Mode -eq "app") {
+        $Root = $Layout.AppRoot
+        $WestSource = "framework"
+    } else {
+        $Root = $Layout.FrameworkRoot
+        $WestSource = "."
+    }
+} else {
+    $Root = $Layout.WorkRoot
+    $WestSource = "."
+}
+
+if ($Target -eq "framework" -and $Layout.Mode -eq "app") {
+    $ConfFile = "prj.conf;prj_qemu.conf"
+} else {
+    $ConfFile = Get-ZephyrQemuConfFile -Layout $Layout
+}
 if ($BuildDir -eq "") {
-    $BuildDir = "build_qemu_$($Board -replace '[^a-zA-Z0-9_]', '_')"
+    $prefix = if ($Layout.Mode -eq "app" -and $WestSource -eq ".") { "build_qemu_app" } else { "build_qemu" }
+    $BuildDir = "${prefix}_$($Board -replace '[^a-zA-Z0-9_]', '_')"
 }
 $BuildPath = Join-Path $Root $BuildDir
 
@@ -114,24 +137,29 @@ $QemuDir = Resolve-QemuBinPath
 $env:QEMU_BIN_PATH = $QemuDir
 $env:PATH = "$QemuDir;$env:PATH"
 
+Write-Host "Mode:      $($Layout.Mode)"
 Write-Host "Board:     $Board"
+Write-Host "Source:    $WestSource"
 Write-Host "Build dir: $BuildPath"
 Write-Host "QEMU:      $QemuDir"
-Write-Host "CONF:      $ConfFile"
+if ($ConfFile) {
+    Write-Host "CONF:      $ConfFile"
+} else {
+    Write-Host "CONF:      (CMakeLists default)"
+}
 
 Push-Location $Root
 try {
+    $westExtra = @()
+    if ($ConfFile) {
+        $westExtra = @("--", "-DCONF_FILE=$ConfFile")
+    }
+
     if ($NoPristine) {
-        $westArgs = @(
-            "build", "-b", $Board, "-d", $BuildPath, ".",
-            "--", "-DCONF_FILE=$ConfFile"
-        )
+        $westArgs = @("build", "-b", $Board, "-d", $BuildPath, $WestSource) + $westExtra
     }
     else {
-        $westArgs = @(
-            "build", "-b", $Board, "-d", $BuildPath, ".", "-p", "always",
-            "--", "-DCONF_FILE=$ConfFile"
-        )
+        $westArgs = @("build", "-b", $Board, "-d", $BuildPath, $WestSource, "-p", "always") + $westExtra
     }
 
     Invoke-West -Args $westArgs

@@ -126,6 +126,32 @@ west build -t run --build-dir build_qemu
 
 Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**. See **[14-qemu-simulation-guide.md](14-qemu-simulation-guide.md)** for board matrix and troubleshooting.
 
+## APP repos with a `framework/` submodule
+
+Business projects (e.g. **zephyr_gateway**) vendor this framework under **`framework/`** and add a top-level `CMakeLists.txt` plus `*_prj.conf`:
+
+```
+my_app/
+├── CMakeLists.txt          # add_subdirectory(framework)
+├── gateway_prj.conf
+├── src/
+├── modules/
+└── framework/              # this repo as submodule
+    ├── scripts/
+    ├── zephyr_config.env
+    └── tests/
+```
+
+Build from the APP root: `west build -b <board> .`. For QEMU, tests, and QA, use **`framework/scripts/`** (auto-detects APP layout — see **[63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md)**):
+
+```powershell
+.\framework\scripts\setup_env.ps1
+.\framework\scripts\run_qemu.ps1
+.\framework\scripts\qa.ps1 -Mode all
+```
+
+Optional **`zephyr_app.env`** at the APP root (`zephyr_app.env.template` in the framework repo).
+
 ## Custom Boards (Optional)
 
 You can add custom boards to this repository without modifying the Zephyr upstream tree.

@@ -25,9 +25,11 @@ function Write-Success { Write-Host "[OK] $args" -ForegroundColor Green }
 function Write-Warning { Write-Host "[WARN] $args" -ForegroundColor Yellow }
 function Write-ErrorMsg { Write-Host "[ERROR] $args" -ForegroundColor Red }
 
-# Project paths
+# Project paths (proprietary modules live under framework root)
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
+. (Join-Path $ScriptDir "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $ScriptDir
+$ProjectRoot = $Layout.FrameworkRoot
 $ProprietaryDir = Join-Path $ProjectRoot "src\proprietary"
 $ProprietaryCommonCmake = Join-Path $ProprietaryDir "proprietary_modules_common.cmake"
 $ConfigFile = Join-Path $ProjectRoot "proprietary_modules.conf"

@@ -5,7 +5,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/project_layout.sh"
+initialize_zephyr_project_layout "${SCRIPT_DIR}"
+write_zephyr_project_banner
+
+PROJECT_ROOT="${ZP_WORK_ROOT}"
+WEST_SOURCE="."
 
 echo "============================================"
 echo "Zephyr 批量构建工具"
@@ -80,9 +86,9 @@ for board in "${BOARDS[@]}"; do
     fi
     
     if [ "$CLEAN_BUILD" = true ]; then
-        echo "命令：west build -b $board --build-dir $BUILD_DIR -p always"
+        echo "命令：west build -b $board -d $BUILD_DIR $WEST_SOURCE -p always"
     else
-        echo "命令：west build -b $board --build-dir $BUILD_DIR"
+        echo "命令：west build -b $board -d $BUILD_DIR $WEST_SOURCE"
     fi
     echo ""
 
@@ -90,9 +96,9 @@ for board in "${BOARDS[@]}"; do
 
     set +e
     if [ "$CLEAN_BUILD" = true ]; then
-        west build -b "$board" --build-dir "$BUILD_DIR" -p always
+        west build -b "$board" -d "$BUILD_DIR" "$WEST_SOURCE" -p always
     else
-        west build -b "$board" --build-dir "$BUILD_DIR"
+        west build -b "$board" -d "$BUILD_DIR" "$WEST_SOURCE"
     fi
     build_status=$?
     set -e

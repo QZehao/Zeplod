@@ -6,7 +6,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $PSScriptRoot
+$ScriptsRoot = $Layout.ScriptsRoot
 
 function Run-Step([string]$ScriptPath) {
     & $ScriptPath
@@ -16,12 +18,12 @@ function Run-Step([string]$ScriptPath) {
 }
 
 switch ($Mode) {
-    "test" { Run-Step (Join-Path $Root "scripts\run_tests.ps1") }
-    "san" { Run-Step (Join-Path $Root "scripts\run_sanitizers.ps1") }
-    "twister" { Run-Step (Join-Path $Root "scripts\run_twister.ps1") }
+    "test" { Run-Step (Join-Path $ScriptsRoot "run_tests.ps1") }
+    "san" { Run-Step (Join-Path $ScriptsRoot "run_sanitizers.ps1") }
+    "twister" { Run-Step (Join-Path $ScriptsRoot "run_twister.ps1") }
     "all" {
-        Run-Step (Join-Path $Root "scripts\run_tests.ps1")
-        Run-Step (Join-Path $Root "scripts\run_sanitizers.ps1")
-        Run-Step (Join-Path $Root "scripts\run_twister.ps1")
+        Run-Step (Join-Path $ScriptsRoot "run_tests.ps1")
+        Run-Step (Join-Path $ScriptsRoot "run_sanitizers.ps1")
+        Run-Step (Join-Path $ScriptsRoot "run_twister.ps1")
     }
 }

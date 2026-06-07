@@ -24,9 +24,13 @@ success() { echo -e "${GREEN}[OK]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
-# Project directories
+# Project directories (proprietary modules live under framework root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/project_layout.sh"
+initialize_zephyr_project_layout "${SCRIPT_DIR}"
+
+PROJECT_ROOT="${ZP_FRAMEWORK_ROOT}"
 PROPRIETARY_DIR="$PROJECT_ROOT/src/proprietary"
 PROPRIETARY_COMMON_CMAKE="$PROPRIETARY_DIR/proprietary_modules_common.cmake"
 CONFIG_FILE="$PROJECT_ROOT/proprietary_modules.conf"

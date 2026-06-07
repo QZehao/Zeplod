@@ -4,10 +4,20 @@
 
 This page explains the purpose and usage of scripts under `scripts/`.
 
+Scripts use **`project_layout.ps1` / `project_layout.sh` / `project_layout.py`** to detect two layouts:
+
+| Layout | When | Script path | Work root |
+|---|---|---|---|
+| **framework** | This repo is the framework itself (e.g. zeplod) | `scripts/` | repo root |
+| **app** | Parent `CMakeLists.txt` has `add_subdirectory(framework)` | `framework/scripts/` | APP repo root |
+
+`zephyr_config.env` always lives under **framework** (`framework/zephyr_config.env` in APP repos). Optional **`zephyr_app.env`** at the APP root overrides `APP_PRJ_CONF`, `QEMU_CONF`, etc. (see `zephyr_app.env.template`).
+
 ## 1. Script Groups
 
 | Group | Scripts |
 |---|---|
+| Layout resolver (internal) | `project_layout.ps1` / `project_layout.sh` / `project_layout.py` |
 | Environment setup | `setup_env.ps1` / `setup_env.sh` / `setup_env.bat` |
 | QEMU simulation | `run_qemu.ps1` |
 | Host tests | `run_tests.ps1` / `run_tests.sh` |
@@ -17,14 +27,32 @@ This page explains the purpose and usage of scripts under `scripts/`.
 | Preflight | `preflight_host_tests.py` |
 | Docs and checks | `generate_docs.ps1` / `generate_docs.sh` / `lint_docs.py` / `check_encoding.py` / `check_script_docs.py` |
 | Version and release | `bump_version.py` / `package_release.ps1` / `package_release.sh` |
-| Build analysis | `build_all.bat` / `build_all.sh` / `analyze_map.ps1` / `analyze_map.sh` / `analyze_map.bat` |
+| Build analysis | `build_all.ps1` / `build_all.bat` / `build_all.sh` / `analyze_map.ps1` / `analyze_map.sh` / `analyze_map.bat` |
 | Module/config management | `module_config.py` / `proprietary_manage.ps1` / `proprietary_manage.sh` / `proprietary_manage.bat` |
 
 ## 2. Prerequisites
 
-1. Prepare `zephyr_config.env` from `zephyr_config.env.template`.
+1. Prepare `zephyr_config.env` from `zephyr_config.env.template` (under **`framework/`** in APP repos).
 2. Install west/CMake/Python/Zephyr SDK.
 3. For `native_sim/native_posix`, run on Linux/WSL (native Windows is blocked by script checks).
+
+### 2.1 Command prefix by layout
+
+**Framework repo (zeplod)**:
+
+```powershell
+.\scripts\setup_env.ps1
+.\scripts\run_qemu.ps1
+```
+
+**APP on framework (e.g. zephyr_gateway)**:
+
+```powershell
+.\framework\scripts\setup_env.ps1
+.\framework\scripts\run_qemu.ps1
+```
+
+Examples below use `scripts/`; replace with `framework/scripts/` in APP repos.
 
 ## 3. Usage
 
@@ -44,9 +72,10 @@ source scripts/setup_env.sh
 .\scripts\run_qemu.ps1
 .\scripts\run_qemu.ps1 -Board qemu_riscv32 -ListBoards
 .\scripts\run_qemu.ps1 -Board "qemu_riscv32/qemu_virt_riscv32/smp"
+.\scripts\run_qemu.ps1 -Target framework   # APP repo: build framework/ only
 ```
 
-`-Board` accepts any Zephyr QEMU board name (including SMP qualifiers). See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** §5 for SMP boards.
+`-Board` accepts any Zephyr QEMU board name (including SMP qualifiers). In APP mode, `CONF_FILE` merges `framework/prj.conf`, `*_prj.conf`, and `framework/prj_qemu.conf` unless `ZEPHYR_QEMU_CONF` is set. See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** §5 for SMP boards.
 
 Requires **`QEMU_BIN_PATH`** in **`zephyr_config.env`**. See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)**.
 
@@ -125,3 +154,18 @@ python scripts/check_script_docs.py
 - `native_sim/native_posix` are POSIX-host targets.
 - On Windows, use **QEMU** for the main app (`run_qemu.ps1`) or unit tests (`ZEPHYR_TEST_BOARD=qemu_riscv32` + `run_tests.ps1` — see [14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md) §6), or WSL for host POSIX tests.
 - CI includes preflight, encoding checks, coverage gates, sanitizers, and twister.
+
+## 5. Optional APP manifest (`zephyr_app.env`)
+
+```bash
+APP_PRJ_CONF=gateway_prj.conf
+QEMU_CONF=framework/prj.conf;gateway_prj.conf;framework/prj_qemu.conf
+```
+
+## 6. Advanced environment variables
+
+| Variable | Purpose |
+|---|---|
+| `ZEPHYR_PROJECT_TARGET` | `auto` / `framework` / `app` |
+| `ZEPHYR_APP_ROOT` | Force APP root path |
+| `ZEPHYR_QEMU_CONF` | Override QEMU `CONF_FILE` fragments |

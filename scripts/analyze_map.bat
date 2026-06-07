@@ -7,9 +7,25 @@ REM ============================================================================
 
 setlocal enabledelayedexpansion
 
-REM 获取脚本目录
+REM 获取脚本目录（release 使用 app 根目录或 framework 根目录）
 set "SCRIPT_DIR=%~dp0"
-set "PROJECT_ROOT=%SCRIPT_DIR%.."
+set "ZP_FRAMEWORK_ROOT=%SCRIPT_DIR%.."
+set "ZP_APP_ROOT=%ZP_FRAMEWORK_ROOT%"
+set "ZP_MODE=framework"
+for %%I in ("%ZP_FRAMEWORK_ROOT%..") do set "ZP_PARENT_ROOT=%%~fI"
+if exist "%ZP_PARENT_ROOT%\CMakeLists.txt" (
+    if exist "%ZP_FRAMEWORK_ROOT%prj.conf" (
+        findstr /R /C:"add_subdirectory.*framework" "%ZP_PARENT_ROOT%\CMakeLists.txt" >nul 2>&1
+        if not errorlevel 1 set "ZP_MODE=app" & set "ZP_APP_ROOT=%ZP_PARENT_ROOT%"
+        findstr /R /C:"TOPLEVEL_BOOTSTRAP" "%ZP_PARENT_ROOT%\CMakeLists.txt" >nul 2>&1
+        if not errorlevel 1 set "ZP_MODE=app" & set "ZP_APP_ROOT=%ZP_PARENT_ROOT%"
+    )
+)
+if "%ZP_MODE%"=="app" (
+    set "PROJECT_ROOT=%ZP_APP_ROOT%"
+) else (
+    set "PROJECT_ROOT=%ZP_FRAMEWORK_ROOT%"
+)
 
 REM 帮助信息
 if "%~1"=="-h" goto :help

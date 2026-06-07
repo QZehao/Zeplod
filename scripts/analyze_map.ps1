@@ -22,11 +22,14 @@ if ($Help) {
     exit 0
 }
 
-# 获取脚本目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
+. (Join-Path $ScriptDir "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $ScriptDir
+$ProjectRoot = $Layout.WorkRoot
 
-# 查找 map 文件
+Write-ZephyrProjectBanner -Layout $Layout
+Write-Host ""
+
 if (-not $MapFile) {
     $ReleaseDir = Join-Path $ProjectRoot "release"
     if (Test-Path $ReleaseDir) {

@@ -294,22 +294,33 @@ def main(argv: list[str] | None = None) -> int:
         help="Flag Chinese chars in docs/en/ files (outside code blocks)",
     )
     args = parser.parse_args(argv)
-    roots = [Path(p) for p in args.roots]
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from project_layout import resolve_project_layout
+
+    layout = resolve_project_layout()
+    roots = [
+        layout.framework_root / p if not Path(p).is_absolute() else Path(p)
+        for p in args.roots
+    ]
 
     excludes = [Path(p) for p in (args.exclude or [])]
     issues = check_md_links(roots, excludes=excludes)
     if not args.skip_config_check:
-        kconfig_files = [Path(p) for p in (args.kconfig or [
-            "Kconfig", "Kconfig_proprietary"
-        ])]
+        default_kconfig = [
+            layout.framework_root / "Kconfig",
+            layout.framework_root / "Kconfig_proprietary",
+        ]
+        kconfig_files = [Path(p) for p in (args.kconfig or default_kconfig)]
         issues += check_config_macros(roots, kconfig_files, excludes=excludes)
     if args.check_parity:
         issues += check_bilingual_parity(
-            Path("docs/zh-CN"), Path("docs/en"),
+            layout.framework_root / "docs/zh-CN",
+            layout.framework_root / "docs/en",
             mapping=BILINGUAL_MAPPING,
         )
     if args.check_residual_chinese:
-        issues += check_residual_chinese([Path("docs/en")])
+        issues += check_residual_chinese([layout.framework_root / "docs/en"])
     for issue in issues:
         print(f"{issue.file}:{issue.line}: [{issue.kind}] {issue.message}")
     if args.report:

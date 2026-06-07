@@ -12,8 +12,13 @@ echo "Zephyr environment setup"
 echo "============================================"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONFIG_FILE="$PROJECT_ROOT/zephyr_config.env"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/project_layout.sh"
+initialize_zephyr_project_layout "${SCRIPT_DIR}"
+write_zephyr_project_banner
+
+PROJECT_ROOT="${ZP_FRAMEWORK_ROOT}"
+CONFIG_FILE="${ZP_CONFIG_FILE}"
 
 _exit_script() {
     return "$1" 2>/dev/null || exit "$1"
@@ -110,5 +115,10 @@ echo "ZEPHYR_SDK_INSTALL_DIR=$ZEPHYR_SDK_INSTALL_DIR"
 echo "============================================"
 echo ""
 echo "You can now build:"
-echo "  west build -b ${DEFAULT_BOARD:-<your_board>} -d build ."
+if [ "${ZP_MODE}" = "app" ]; then
+    echo "  west build -b ${DEFAULT_BOARD:-<your_board>} -d build .    # from app root"
+    echo "  west build -b ${DEFAULT_BOARD:-<your_board>} -d build framework   # framework only"
+else
+    echo "  west build -b ${DEFAULT_BOARD:-<your_board>} -d build ."
+fi
 echo ""

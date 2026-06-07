@@ -18,8 +18,11 @@ import re
 import argparse
 from pathlib import Path
 
-# 项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from project_layout import resolve_project_layout
+
+_LAYOUT = resolve_project_layout()
+PROJECT_ROOT = _LAYOUT.framework_root
 
 # 模块定义
 MODULES = {

@@ -8,9 +8,13 @@
 
 set -e
 
-# 获取脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/project_layout.sh"
+initialize_zephyr_project_layout "${SCRIPT_DIR}"
+write_zephyr_project_banner
+
+PROJECT_ROOT="${ZP_WORK_ROOT}"
 
 # 颜色定义
 RED='\033[0;31m'

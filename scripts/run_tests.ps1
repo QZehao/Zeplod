@@ -1,14 +1,18 @@
 # Run ztest suite (native_sim preferred, native_posix fallback).
 # Loads Zephyr/west from zephyr_config.env via setup_env.ps1 (same as manual activation).
+# Supports framework-only repos and app repos with framework/ submodule.
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'project_layout.ps1')
 . (Join-Path $PSScriptRoot 'setup_env.ps1')
 
-$Root = Split-Path -Parent $PSScriptRoot
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $PSScriptRoot
+$Root = $Layout.WorkRoot
+$TestsDir = $Layout.TestsDir
 $BuildDir = if ($env:ZEPHYR_TEST_BUILD_DIR) { $env:ZEPHYR_TEST_BUILD_DIR } else { 'build_tests' }
 $ConfFile = if ($env:ZEPHYR_TEST_CONF) { $env:ZEPHYR_TEST_CONF } else { 'prj.conf;prj_test_extensions.conf' }
 
-python (Join-Path $Root "scripts\preflight_host_tests.py")
+python (Join-Path $Layout.ScriptsRoot "preflight_host_tests.py")
 if ($LASTEXITCODE -ne 0) {
     throw "Host preflight failed. See output above."
 }
@@ -54,8 +58,8 @@ Example (WSL): ./scripts/run_tests.sh
 "@
 }
 
-Write-Host "Board: $Board, CONF_FILE: $ConfFile, build-dir: $BuildPath"
-Push-Location (Join-Path $Root 'tests')
+Write-Host "Mode: $($Layout.Mode), board: $Board, CONF_FILE: $ConfFile, build-dir: $BuildPath"
+Push-Location $TestsDir
 try {
     Invoke-West -Args @('build', '-b', $Board, '.', '--build-dir', $BuildPath, '-p', 'always', '--', "-DCONF_FILE=$ConfFile")
     Invoke-West -Args @('build', '-t', 'run', '--build-dir', $BuildPath)

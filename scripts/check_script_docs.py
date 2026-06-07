@@ -17,8 +17,12 @@ PATTERN = re.compile(r"`([A-Za-z0-9_.-]+\.(?:ps1|sh|bat|py))`")
 
 
 def main() -> int:
-    repo = Path(__file__).resolve().parent.parent
-    scripts_dir = repo / "scripts"
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from project_layout import resolve_project_layout
+
+    layout = resolve_project_layout()
+    repo = layout.framework_root
+    scripts_dir = layout.scripts_root
     existing = {p.name for p in scripts_dir.iterdir() if p.is_file()}
     missing: list[str] = []
 

@@ -3,10 +3,12 @@
 # Usage: ./scripts/run_twister.sh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${ROOT}/scripts/setup_env.sh"
-python "${ROOT}/scripts/preflight_host_tests.py"
+source "${SCRIPT_DIR}/setup_env.sh"
+python "${ZP_SCRIPTS_ROOT}/preflight_host_tests.py"
+ROOT="${ZP_WORK_ROOT}"
+TESTS_DIR="${ZP_TESTS_DIR}"
 
 OUT_DIR="${ZEPHYR_TWISTER_OUT_DIR:-twister-out}"
 PLATFORM="${ZEPHYR_TWISTER_PLATFORM:-native_sim}"
@@ -23,5 +25,12 @@ if ! west twister -h >/dev/null 2>&1; then
     exit 2
 fi
 
+TWISTER_OUT="${OUT_DIR}"
+case "${TWISTER_OUT}" in
+    /*) ;;
+    *) TWISTER_OUT="${ROOT}/${TWISTER_OUT}" ;;
+esac
+
+echo "Mode: ${ZP_MODE}, tests: ${TESTS_DIR}, out: ${TWISTER_OUT}"
 cd "${ROOT}"
-west twister -T tests -p "${PLATFORM}" -O "${OUT_DIR}" --inline-logs "$@"
+west twister -T "${TESTS_DIR}" -p "${PLATFORM}" -O "${TWISTER_OUT}" --inline-logs "$@"

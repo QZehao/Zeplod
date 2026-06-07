@@ -60,13 +60,23 @@ which qemu-system-riscv32
 
 在 **可交互的 PowerShell 终端** 中执行（QEMU 串口绑定到 stdio，自动化终端可能无法附着）：
 
+**框架本体仓库**：
+
 ```powershell
 cd D:\Code\3-Project\zeplod
 . .\scripts\setup_env.ps1
-
-# 默认板型 qemu_riscv32，自动使用 prj.conf + prj_qemu.conf
 .\scripts\run_qemu.ps1
 ```
+
+**基于 framework 的 APP 仓库**（脚本在子模块内，自动合并 APP 的 `*_prj.conf`）：
+
+```powershell
+cd D:\Code\3-Project\zephyr_gateway
+. .\framework\scripts\setup_env.ps1
+.\framework\scripts\run_qemu.ps1
+```
+
+默认板型 `qemu_riscv32`；framework 模式使用 `prj.conf;prj_qemu.conf`，APP 模式使用 `framework/prj.conf;<app>_prj.conf;framework/prj_qemu.conf`（可由 `zephyr_app.env` 覆盖）。
 
 常用参数：
 

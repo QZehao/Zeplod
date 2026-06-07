@@ -5,7 +5,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/project_layout.sh"
+initialize_zephyr_project_layout "${SCRIPT_DIR}"
+write_zephyr_project_banner
+
+PROJECT_ROOT="${ZP_WORK_ROOT}"
+PACKAGE_NAME="$(get_zephyr_package_name)"
 
 echo "============================================"
 echo "Zephyr 固件打包工具"
@@ -50,8 +56,9 @@ done
 
 # 读取 APP_VERSION 文件
 APP_VERSION="unknown"
-if [ -f "$PROJECT_ROOT/APP_VERSION" ]; then
-    APP_VERSION=$(tr -d '[:space:]' < "$PROJECT_ROOT/APP_VERSION")
+APP_VERSION_FILE=""
+if APP_VERSION_FILE="$(get_zephyr_app_version_file)"; then
+    APP_VERSION=$(tr -d '[:space:]' < "$APP_VERSION_FILE")
 fi
 
 # 如果没有指定版本号，优先使用 APP_VERSION，然后尝试从 git 获取
@@ -74,7 +81,9 @@ echo "输出目录：$OUTPUT_DIR"
 echo ""
 
 # 创建输出目录
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$PROJECT_ROOT/$OUTPUT_DIR"
+OUTPUT_DIR="$PROJECT_ROOT/$OUTPUT_DIR"
+BUILD_DIR="$PROJECT_ROOT/$BUILD_DIR"
 
 # 复制固件文件
 echo "正在复制固件文件..."
@@ -119,7 +128,7 @@ MAP_SIZE=$(get_file_size "$OUTPUT_DIR/zephyr_${VERSION}.map")
 
 cat > "$OUTPUT_DIR/release_info.txt" << EOF
 ================================================================================
-Zeplod - Release Package
+${PACKAGE_NAME} - Release Package
 ================================================================================
 
 版本信息
@@ -149,7 +158,7 @@ cp "$PROJECT_ROOT/LICENSE" "$OUTPUT_DIR/" 2>/dev/null && echo "  ✓ LICENSE"
 echo ""
 echo "正在创建压缩包..."
 
-ARCHIVE_NAME="zeplod_${VERSION}"
+ARCHIVE_NAME="${PACKAGE_NAME}_${VERSION}"
 
 cd "$OUTPUT_DIR"
 

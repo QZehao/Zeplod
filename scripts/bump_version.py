@@ -12,7 +12,11 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from project_layout import resolve_project_layout
+
+_LAYOUT = resolve_project_layout()
+ROOT = _LAYOUT.framework_root
 VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -70,7 +74,9 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    vfile = ROOT / "APP_VERSION"
+    vfile = _LAYOUT.app_version_file()
+    if vfile is None:
+        sys.exit("APP_VERSION not found under app or framework root")
     current = read_version(vfile)
     if args.version is None:
         print(current)
@@ -81,7 +87,10 @@ def main() -> None:
 
     write_version(vfile, args.version)
     patch_doxyfile(ROOT / "Doxyfile", args.version)
-    patch_readme(ROOT / "README.md", args.version)
+    readme = _LAYOUT.app_root / "README.md"
+    if not readme.is_file():
+        readme = ROOT / "README.md"
+    patch_readme(readme, args.version)
     print(f"Version set to {args.version} (was {current})")
     print("Next: git diff, commit, and re-run CMake (e.g. west build -t pristine).")
 

@@ -58,11 +58,20 @@ which qemu-system-riscv32
 
 Use an **interactive** PowerShell session (QEMU attaches serial to stdio):
 
+**Framework repo**:
+
 ```powershell
 cd D:\Code\3-Project\zeplod
 . .\scripts\setup_env.ps1
-
 .\scripts\run_qemu.ps1
+```
+
+**APP repo with `framework/` submodule** (merges APP `*_prj.conf` automatically):
+
+```powershell
+cd D:\Code\3-Project\zephyr_gateway
+. .\framework\scripts\setup_env.ps1
+.\framework\scripts\run_qemu.ps1
 ```
 
 Options:

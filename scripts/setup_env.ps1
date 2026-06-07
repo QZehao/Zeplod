@@ -9,9 +9,12 @@ Write-Host "============================================"
 Write-Host "Zephyr environment setup"
 Write-Host "============================================"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
-$ConfigFile = Join-Path $ProjectRoot "zephyr_config.env"
+. (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir (Split-Path -Parent $MyInvocation.MyCommand.Path)
+Write-ZephyrProjectBanner -Layout $Layout
+
+$ProjectRoot = $Layout.FrameworkRoot
+$ConfigFile = $Layout.ConfigFile
 
 if (-not (Test-Path $ConfigFile)) {
     Write-Host "Error: zephyr_config.env not found." -ForegroundColor Red
@@ -118,7 +121,13 @@ if ($env:QEMU_BIN_PATH) {
 Write-Host "============================================"
 Write-Host ""
 Write-Host "You can now build:"
-Write-Host "  west build -b $DEFAULT_BOARD -d $BUILD_DIR ."
+if ($Layout.Mode -eq "app") {
+    Write-Host "  west build -b $DEFAULT_BOARD -d build .    # from app root"
+    Write-Host "  west build -b $DEFAULT_BOARD -d build framework   # framework only"
+} else {
+    Write-Host "  west build -b $DEFAULT_BOARD -d $BUILD_DIR ."
+}
 Write-Host "QEMU simulation (Windows):"
-Write-Host "  .\scripts\run_qemu.ps1"
+Write-Host "  .\framework\scripts\run_qemu.ps1   # when scripts live under framework/"
+Write-Host "  .\scripts\run_qemu.ps1             # framework-only repo"
 Write-Host ""

@@ -11,9 +11,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
-$PROJECT_ROOT = Split-Path -Parent $SCRIPT_DIR
+. (Join-Path $SCRIPT_DIR "project_layout.ps1")
+$Layout = Initialize-ZephyrProjectLayout -ScriptsDir $SCRIPT_DIR
+$PROJECT_ROOT = $Layout.WorkRoot
+$PACKAGE_NAME = Get-ZephyrPackageName -Layout $Layout
 
 Write-Host "============================================"
+Write-ZephyrProjectBanner -Layout $Layout
+Write-Host ""
 Write-Host "Zephyr 固件打包工具"
 Write-Host "============================================"
 Write-Host ""
@@ -32,8 +37,8 @@ if ($Help) {
 
 # 读取 APP_VERSION 文件
 $appVersion = "unknown"
-$appVersionFile = Join-Path $PROJECT_ROOT "APP_VERSION"
-if (Test-Path $appVersionFile) {
+$appVersionFile = Get-ZephyrAppVersionFile -Layout $Layout
+if ($appVersionFile -and (Test-Path $appVersionFile)) {
     $appVersion = Get-Content $appVersionFile -Raw | ForEach-Object { $_.Trim() }
     if ([string]::IsNullOrEmpty($appVersion)) {
         $appVersion = "unknown"
@@ -61,7 +66,7 @@ Write-Host "正在创建版本信息..."
 
 $versionContent = @"
 ================================================================================
-Zeplod - Release Package
+$PACKAGE_NAME - Release Package
 ================================================================================
 
 版本信息
@@ -96,7 +101,7 @@ if (Test-Path (Join-Path $PROJECT_ROOT "LICENSE")) {
 Write-Host ""
 Write-Host "正在创建压缩包..."
 
-$archiveName = "zeplod_${Version}"
+$archiveName = "${PACKAGE_NAME}_${Version}"
 $outputPath = Join-Path $OutputDir $archiveName
 
 # 使用 PowerShell 内置的 Compress-Archive
