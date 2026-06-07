@@ -62,6 +62,7 @@ Write-Host "Mode: $($Layout.Mode), board: $Board, CONF_FILE: $ConfFile, build-di
 Push-Location $TestsDir
 try {
     Invoke-West -Args @('build', '-b', $Board, '.', '--build-dir', $BuildPath, '-p', 'always', '--', "-DCONF_FILE=$ConfFile")
+    Set-ZephyrConsoleUtf8
     Invoke-West -Args @('build', '-t', 'run', '--build-dir', $BuildPath)
 } finally {
     Pop-Location

@@ -395,6 +395,26 @@ Requires Linux **KVM**; not available on Windows.
 2. If RAM is tight, use `prj.conf` only (drop `prj_test_extensions.conf` concurrency stress).
 3. Ensure **`QEMU_BIN_PATH`** is set and reconfigure with `-p always`.
 
+### 8.11 Garbled Chinese log text on Windows
+
+**Symptom**: CJK characters in serial logs look like mojibake; ASCII is fine.
+
+**Cause**: Firmware `LOG_*` / `printk` strings are **UTF-8**. On Chinese Windows, PowerShell often defaults to **GBK (CP936)** while QEMU binds the UART to stdio.
+
+**Fix**:
+
+1. Use an updated **`run_qemu.ps1`** (sets `chcp 65001` and UTF-8 console encoding before launch).
+2. For manual `west build -t run`, run first:
+
+```powershell
+chcp 65001
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+```
+
+3. Prefer **Windows Terminal** or **PowerShell 7+**; optional OS setting: enable **“Beta: Use Unicode UTF-8 for worldwide language support”**.
+4. Set **`ZEPHYR_CONSOLE_UTF8=0`** to skip the script’s UTF-8 switch.
+
 ---
 
 ## 9. Related docs

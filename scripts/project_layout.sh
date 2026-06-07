@@ -256,3 +256,17 @@ write_zephyr_project_banner() {
     fi
     echo "Work root:    ${ZP_WORK_ROOT}"
 }
+
+# Firmware printk/LOG use UTF-8; ensure locale is UTF-8 when piping QEMU stdio.
+# Set ZEPHYR_CONSOLE_UTF8=0 to skip.
+set_zephyr_console_utf8() {
+    if [ "${ZEPHYR_CONSOLE_UTF8:-1}" = "0" ]; then
+        return 0
+    fi
+    if [ -z "${LANG:-}" ]; then
+        export LANG=C.UTF-8
+    fi
+    if [ -z "${LC_ALL:-}" ]; then
+        export LC_ALL="${LANG}"
+    fi
+}

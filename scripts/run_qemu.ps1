@@ -69,6 +69,8 @@ if ($Board -eq "qemu_kvm_arm64") {
 . (Join-Path $PSScriptRoot "project_layout.ps1")
 . (Join-Path $PSScriptRoot "setup_env.ps1")
 
+Set-ZephyrConsoleUtf8
+
 $Layout = Initialize-ZephyrProjectLayout -ScriptsDir $PSScriptRoot -Target $(if ($Target -eq "framework") { "framework" } else { "auto" })
 
 if ($Target -eq "framework") {

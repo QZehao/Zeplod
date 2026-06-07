@@ -245,3 +245,28 @@ function Write-ZephyrProjectBanner {
     }
     Write-Host "Work root:    $($Layout.WorkRoot)"
 }
+
+function Set-ZephyrConsoleUtf8 {
+    <#
+    Firmware printk/LOG strings are UTF-8. On Chinese Windows, PowerShell defaults to
+    GBK (CP936), so QEMU serial-on-stdio shows mojibake unless the console is UTF-8.
+    Set ZEPHYR_CONSOLE_UTF8=0 to skip.
+    #>
+    if ($env:OS -ne "Windows_NT") {
+        return
+    }
+    if ($env:ZEPHYR_CONSOLE_UTF8 -eq "0") {
+        return
+    }
+
+    try {
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [Console]::OutputEncoding = $utf8
+        [Console]::InputEncoding = $utf8
+        $global:OutputEncoding = $utf8
+        $null = chcp 65001
+    }
+    catch {
+        Write-Warning "Could not set UTF-8 console encoding: $_"
+    }
+}

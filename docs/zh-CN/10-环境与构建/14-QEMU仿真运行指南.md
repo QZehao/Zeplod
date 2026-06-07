@@ -442,6 +442,26 @@ Found devicetree overlay: .../boards/qemu_riscv32_qemu_virt_riscv32_smp.overlay
 2. 内存不足时改用 `prj.conf`（去掉 `prj_test_extensions.conf` 中的并发压测）。
 3. 确认 **`QEMU_BIN_PATH`** 已配置并 `-p always` 重新配置构建目录。
 
+### 8.11 Windows 上中文日志乱码
+
+**现象**：串口日志里的中文显示为 `鍒濆鍖` 一类乱码，英文正常。
+
+**原因**：固件 `LOG_*` / `printk` 字符串为 **UTF-8**；中文 Windows 上 PowerShell 默认代码页常为 **GBK（CP936）**，QEMU 将串口绑定到 stdio 时字节被按错误编码解释。
+
+**处理**：
+
+1. 使用已更新的 **`run_qemu.ps1`**（启动前自动 `chcp 65001` 并设置控制台 UTF-8）。
+2. 手动运行 `west build -t run` 时，先执行：
+
+```powershell
+chcp 65001
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+```
+
+3. 推荐使用 **Windows Terminal** 或 **PowerShell 7+**；可在「设置 → 时间和语言 → 语言和区域 → 管理语言设置」中启用 **“Beta: 使用 Unicode UTF-8 提供全球语言支持”**（系统级，可选）。
+4. 若需恢复默认编码，设置环境变量 **`ZEPHYR_CONSOLE_UTF8=0`** 跳过脚本中的 UTF-8 切换。
+
 ---
 
 ## 9. 相关文档
