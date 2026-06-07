@@ -78,6 +78,31 @@ function Get-AppPrjConfName {
     return $null
 }
 
+function Get-AppPrjQemuConfName {
+    param(
+        [string] $AppRoot,
+        [string] $AppPrj,
+        [hashtable] $Manifest = @{}
+    )
+
+    if ($Manifest.ContainsKey("APP_PRJ_QEMU_CONF") -and $Manifest["APP_PRJ_QEMU_CONF"]) {
+        return $Manifest["APP_PRJ_QEMU_CONF"]
+    }
+
+    if ($AppPrj -and $AppPrj -match '^(.+)_prj\.conf$') {
+        $candidate = "$($Matches[1])_prj_qemu.conf"
+        if (Test-Path (Join-Path $AppRoot $candidate)) {
+            return $candidate
+        }
+    }
+
+    $matches = @(Get-ChildItem -Path $AppRoot -Filter "*_prj_qemu.conf" -File -ErrorAction SilentlyContinue)
+    if ($matches.Count -eq 1) {
+        return $matches[0].Name
+    }
+    return $null
+}
+
 function Get-ZephyrQemuConfFile {
     param([hashtable] $Layout)
 
@@ -95,12 +120,15 @@ function Get-ZephyrQemuConfFile {
     }
 
     $appPrj = Get-AppPrjConfName -AppRoot $Layout.AppRoot -Manifest $manifest
-    $fwQemu = Join-Path $Layout.AppRoot "framework/prj_qemu.conf"
-    if ($appPrj -and (Test-Path $fwQemu)) {
-        return "framework/prj.conf;$appPrj;framework/prj_qemu.conf"
+    $appPrjQemu = Get-AppPrjQemuConfName -AppRoot $Layout.AppRoot -AppPrj $appPrj -Manifest $manifest
+    $parts = @("framework/prj.conf")
+    if ($appPrj) { $parts += $appPrj }
+    if ($appPrjQemu) { $parts += $appPrjQemu }
+    if (Test-Path (Join-Path $Layout.AppRoot "framework/prj_qemu.conf")) {
+        $parts += "framework/prj_qemu.conf"
     }
-    if ($appPrj) {
-        return "framework/prj.conf;$appPrj"
+    if ($parts.Count -gt 1) {
+        return ($parts -join ";")
     }
     return $null
 }

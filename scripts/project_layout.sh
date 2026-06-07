@@ -158,7 +158,42 @@ initialize_zephyr_project_layout() {
     export ZEPHYR_WORK_ROOT="${ZP_WORK_ROOT}"
 }
 
+_zp_get_app_prj_qemu_conf() {
+    local app_root="$1"
+    local app_prj="$2"
+    local manifest_file="${app_root}/zephyr_app.env"
+    local candidate count=0 picked=""
+
+    _zp_read_kv_file "$manifest_file"
+    if [ -n "${ZP_MANIFEST_APP_PRJ_QEMU_CONF:-}" ]; then
+        printf '%s' "${ZP_MANIFEST_APP_PRJ_QEMU_CONF}"
+        return 0
+    fi
+
+    if [ -n "$app_prj" ] && [[ "$app_prj" == *_prj.conf ]]; then
+        candidate="${app_prj%_prj.conf}_prj_qemu.conf"
+        if [ -f "${app_root}/${candidate}" ]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    fi
+
+    shopt -s nullglob
+    for candidate in "${app_root}"/*_prj_qemu.conf; do
+        picked="$(basename "$candidate")"
+        count=$((count + 1))
+    done
+    shopt -u nullglob
+    if [ "$count" -eq 1 ]; then
+        printf '%s' "$picked"
+        return 0
+    fi
+    return 1
+}
+
 get_zephyr_qemu_conf_file() {
+    local app_prj="" app_prj_qemu="" parts="framework/prj.conf"
+
     if [ -n "${ZEPHYR_QEMU_CONF:-}" ]; then
         printf '%s' "${ZEPHYR_QEMU_CONF}"
         return 0
@@ -175,16 +210,17 @@ get_zephyr_qemu_conf_file() {
         return 0
     fi
 
-    local app_prj=""
     if app_prj="$(_zp_get_app_prj_conf "${ZP_APP_ROOT}")"; then
-        if [ -f "${ZP_APP_ROOT}/framework/prj_qemu.conf" ]; then
-            printf '%s' "framework/prj.conf;${app_prj};framework/prj_qemu.conf"
-            return 0
-        fi
-        printf '%s' "framework/prj.conf;${app_prj}"
-        return 0
+        parts="${parts};${app_prj}"
     fi
-    return 1
+    if app_prj_qemu="$(_zp_get_app_prj_qemu_conf "${ZP_APP_ROOT}" "$app_prj")"; then
+        parts="${parts};${app_prj_qemu}"
+    fi
+    if [ -f "${ZP_APP_ROOT}/framework/prj_qemu.conf" ]; then
+        parts="${parts};framework/prj_qemu.conf"
+    fi
+    printf '%s' "$parts"
+    return 0
 }
 
 get_zephyr_package_name() {
