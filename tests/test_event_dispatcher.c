@@ -24,11 +24,14 @@ LOG_MODULE_REGISTER(test_event_dispatcher);
 
 #define DISPATCHER_STOP_FROM_CALLBACK_EVENT_TYPE 230U
 #define DISPATCHER_SLOW_CALLBACK_EVENT_TYPE      231U
+#define DISPATCHER_SLOW_FILTER_EVENT_TYPE        232U
 
 static atomic_t       g_dispatcher_stop_from_callback_seen;
 static event_status_t g_dispatcher_stop_from_callback_status;
 static atomic_t       g_dispatcher_slow_callback_started;
 static atomic_t       g_dispatcher_slow_callback_done;
+static atomic_t       g_dispatcher_slow_filter_started;
+static atomic_t       g_dispatcher_slow_filter_done;
 static atomic_t       g_filter_call_count;
 static atomic_t       g_filter_block_count;
 
@@ -59,6 +62,16 @@ static void dispatcher_slow_callback_handler(const event_t* event, void* user_da
     atomic_set(&g_dispatcher_slow_callback_started, 1);
     k_msleep(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 300U);
     atomic_set(&g_dispatcher_slow_callback_done, 1);
+}
+
+static bool dispatcher_slow_filter(const event_t* event, void* user_data) {
+    ARG_UNUSED(event);
+    ARG_UNUSED(user_data);
+
+    atomic_set(&g_dispatcher_slow_filter_started, 1);
+    k_msleep(EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 300U);
+    atomic_set(&g_dispatcher_slow_filter_done, 1);
+    return false;
 }
 
 ZTEST(event_dispatcher, test_init_start_stop) {
@@ -601,6 +614,36 @@ ZTEST(event_dispatcher, test_dispatcher_stop_timeout_does_not_abort_callback) {
         "callback should complete naturally");
     zassert_equal(atomic_get(&g_dispatcher_slow_callback_done), 1, "callback should complete naturally");
     zassert_equal(event_dispatcher_stop(), EVENT_OK, "second stop should join completed dispatcher thread");
+    zassert_equal(event_system_stop(), EVENT_OK, NULL);
+}
+
+ZTEST(event_dispatcher, test_event_system_stop_retries_dispatcher_join_after_timeout) {
+    atomic_set(&g_dispatcher_slow_filter_started, 0);
+    atomic_set(&g_dispatcher_slow_filter_done, 0);
+
+    zassert_equal(event_system_init(), EVENT_OK, NULL);
+    zassert_equal(event_system_start(), EVENT_OK, NULL);
+    zassert_equal(event_register_type(DISPATCHER_SLOW_FILTER_EVENT_TYPE, "disp_slow_filter"), EVENT_OK, NULL);
+    zassert_equal(event_dispatcher_init(NULL), EVENT_OK, NULL);
+    event_dispatcher_set_filter(dispatcher_slow_filter, NULL);
+    zassert_equal(event_dispatcher_start(), EVENT_OK, NULL);
+
+    zassert_equal(event_publish_copy(DISPATCHER_SLOW_FILTER_EVENT_TYPE, EVENT_PRIORITY_NORMAL, NULL, 0), EVENT_OK,
+                  NULL);
+    zassert_true(ztest_wait_atomic_nonzero(&g_dispatcher_slow_filter_started, 2000U),
+                 "slow filter should have started");
+
+    zassert_equal(event_system_stop(), EVENT_ERR_TIMEOUT, "first stop should time out while filter is running");
+    zassert_false(event_system_is_running(), "system must reject new publishes after stop begins");
+
+    zassert_true(
+        ztest_wait_atomic_nonzero(&g_dispatcher_slow_filter_done, EVENT_DISPATCHER_THREAD_JOIN_TIMEOUT_MS + 500U),
+        "slow filter should finish naturally");
+    zassert_equal(event_system_stop(), EVENT_OK, "second stop should retry and complete dispatcher join");
+
+    event_dispatcher_clear_filter();
+    zassert_equal(event_system_start(), EVENT_OK, "system should be restartable after retrying stop");
+    zassert_equal(event_dispatcher_get_state(), DISPATCHER_RUNNING, NULL);
     zassert_equal(event_system_stop(), EVENT_OK, NULL);
 }
 

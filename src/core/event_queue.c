@@ -20,7 +20,6 @@
  */
 
 #include "event_queue.h"
-#include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/util.h>
@@ -50,6 +49,8 @@ typedef struct {
     atomic_t       overflow_count;             /**< 溢出（队列满）计数（ISR 安全） */
     atomic_t       drop_count;                 /**< 显式丢弃计数（DROP_LOWEST/purge） */
     atomic_t       high_watermark;             /**< 队列深度历史最大值（CAS 更新） */
+    atomic_t       reordering;                 /**< 线程侧排空/回灌正在进行中 */
+    atomic_t       isr_ops_in_flight;          /**< reordering 之前已准入的 ISR 操作数 */
     uint32_t       capacity;                   /**< 队列容量 */
     struct k_mutex reorder_lock;               /**< DROP_LOWEST 时串行化线程侧 msgq 操作 */
     event_t*       drop_lowest_scratch;        /**< DROP_LOWEST 独立临时缓冲区 */
@@ -58,10 +59,7 @@ typedef struct {
 
 /* 静态队列控制块数组，用于跟踪统计信息 */
 /* SIL-2: 增加数组大小以支持更多测试场景和并发队列 */
-#define MAX_QUEUE_CB_ENTRIES              32
-
-/** DROP_LOWEST purge 时每处理若干条消息后短暂开中断，避免长时间屏蔽 ISR */
-#define EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH 16U
+#define MAX_QUEUE_CB_ENTRIES 32
 
 static event_queue_cb_t g_queue_cb[MAX_QUEUE_CB_ENTRIES];
 
@@ -71,6 +69,36 @@ static K_MUTEX_DEFINE(g_queue_cb_lock);
 /** scratch 已就绪时，线程侧 msgq 操作须串行化（含单元测试运行时指定 DROP_LOWEST 策略） */
 static inline bool event_queue_use_op_lock(const event_queue_cb_t* cb) {
     return (cb != NULL) && (cb->drop_lowest_scratch != NULL);
+}
+
+static bool event_queue_isr_op_enter(event_queue_cb_t* cb) {
+    if (atomic_get(&cb->reordering) != 0) {
+        return false;
+    }
+
+    /* 自增后重新检查，以便关闭准入的线程能在每个 CPU 上等待所有更早的 ISR 完成 */
+    (void) atomic_inc(&cb->isr_ops_in_flight);
+    if (atomic_get(&cb->reordering) != 0) {
+        atomic_dec(&cb->isr_ops_in_flight);
+        return false;
+    }
+
+    return true;
+}
+
+static void event_queue_isr_op_exit(event_queue_cb_t* cb) {
+    atomic_dec(&cb->isr_ops_in_flight);
+}
+
+static void event_queue_reorder_begin(event_queue_cb_t* cb) {
+    atomic_set(&cb->reordering, 1);
+    while (atomic_get(&cb->isr_ops_in_flight) != 0) {
+        k_yield();
+    }
+}
+
+static void event_queue_reorder_end(event_queue_cb_t* cb) {
+    atomic_set(&cb->reordering, 0);
 }
 
 /**
@@ -232,10 +260,10 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
     }
 
     /* 排空/回灌期间屏蔽 ISR 入队，避免与 scratch 算法并发修改 k_msgq */
-    unsigned int irq_key = irq_lock();
-    uint32_t     restore_free_count = 0U;
-    bool         free_worst = false;
-    event_t      worst_ev = {0};
+    event_queue_reorder_begin(cb);
+    uint32_t restore_free_count = 0U;
+    bool     free_worst = false;
+    event_t  worst_ev = {0};
 
     for (uint32_t i = 0; i < n; i++) {
         if (k_msgq_get(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT) != 0) {
@@ -248,7 +276,7 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
                     event_system_inc_dropped_count();
                 }
             }
-            irq_unlock(irq_key);
+            event_queue_reorder_end(cb);
             for (uint32_t k = 0U; k < restore_free_count; k++) {
                 event_free_queued_payload(&cb->drop_lowest_restore_failed[k]);
             }
@@ -268,7 +296,7 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
         for (uint32_t i = 0; i < n; i++) {
             (void) k_msgq_put(queue, &cb->drop_lowest_scratch[i], K_NO_WAIT);
         }
-        irq_unlock(irq_key);
+        event_queue_reorder_end(cb);
         atomic_inc(&cb->drop_count);
         event_system_inc_dropped_count();
         LOG_DBG("Queue full, incoming lower than worst queued; drop newest");
@@ -289,7 +317,7 @@ static event_status_t enqueue_drop_lowest_locked(struct k_msgq* queue, const eve
 
     int ret = k_msgq_put(queue, event, K_NO_WAIT);
 
-    irq_unlock(irq_key);
+    event_queue_reorder_end(cb);
     if (free_worst) {
         event_free_queued_payload(&worst_ev);
     }
@@ -436,6 +464,8 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
     atomic_set(&cb->overflow_count, 0);
     atomic_set(&cb->drop_count, 0);
     atomic_set(&cb->high_watermark, 0);
+    atomic_set(&cb->reordering, 0);
+    atomic_set(&cb->isr_ops_in_flight, 0);
     k_mutex_init(&cb->reorder_lock);
 
     k_mutex_unlock(&g_queue_cb_lock);
@@ -471,6 +501,12 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
             return EVENT_ERR_INVALID_ARG;
         }
 
+        if (!event_queue_isr_op_enter(cb)) {
+            atomic_inc(&cb->overflow_count);
+            event_system_inc_dropped_count();
+            return EVENT_ERR_QUEUE_FULL;
+        }
+
         int ret = k_msgq_put(queue, event, K_NO_WAIT);
         if (ret == 0) {
             atomic_inc(&cb->enqueue_count);
@@ -484,6 +520,7 @@ event_status_t event_queue_enqueue(struct k_msgq* queue, const event_t* event, q
             st = EVENT_ERR_TIMEOUT;
         }
 
+        event_queue_isr_op_exit(cb);
         event_queue_cb_release(cb);
         return st;
     }
@@ -749,42 +786,18 @@ void event_queue_purge(struct k_msgq* queue) {
         return;
     }
 
-    if (cb != NULL) {
-        k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    k_mutex_lock(&cb->reorder_lock, K_FOREVER);
+    event_queue_reorder_begin(cb);
+
+    while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
+        event_free_queued_payload(&ev);
+        purged++;
     }
 
-    if (!event_queue_use_op_lock(cb)) {
-        while (k_msgq_get(queue, &ev, K_NO_WAIT) == 0) {
-            event_free_queued_payload(&ev);
-            purged++;
-        }
-    } else {
-        while (true) {
-            uint32_t     batch = 0U;
-            unsigned int irq_key = irq_lock();
+    event_queue_reorder_end(cb);
+    k_mutex_unlock(&cb->reorder_lock);
 
-            while (batch < EVENT_QUEUE_PURGE_IRQ_YIELD_BATCH &&
-                   k_msgq_get(queue, &cb->drop_lowest_scratch[batch], K_NO_WAIT) == 0) {
-                batch++;
-            }
-            irq_unlock(irq_key);
-
-            if (batch == 0U) {
-                break;
-            }
-
-            for (uint32_t i = 0U; i < batch; i++) {
-                event_free_queued_payload(&cb->drop_lowest_scratch[i]);
-                purged++;
-            }
-        }
-    }
-
-    if (cb != NULL) {
-        k_mutex_unlock(&cb->reorder_lock);
-    }
-
-    if (cb != NULL && purged > 0U) {
+    if (purged > 0U) {
         atomic_add(&cb->drop_count, (atomic_val_t) purged);
     }
 
@@ -885,6 +898,8 @@ void event_queue_deinit(struct k_msgq* queue) {
     atomic_set(&cb->overflow_count, 0);
     atomic_set(&cb->drop_count, 0);
     atomic_set(&cb->high_watermark, 0);
+    atomic_set(&cb->reordering, 0);
+    atomic_set(&cb->isr_ops_in_flight, 0);
 
     LOG_DBG("Event queue deinitialized");
     event_queue_cb_release(cb);

@@ -616,6 +616,7 @@ void event_free(event_t* event);
  *
  * @note 如果类型未注册，返回 "UNREGISTERED"
  * @note 如果类型 ID 无效，返回 "UNKNOWN"
+ * @note 已注册名称在本次 event_system_init()/shutdown() 生命周期内保持不变；返回指针不得跨 shutdown 使用
  */
 const char* event_get_type_name(event_type_t type);
 

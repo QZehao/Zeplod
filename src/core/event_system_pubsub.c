@@ -15,6 +15,18 @@ LOG_MODULE_DECLARE(event_system, CONFIG_SYS_LOG_LEVEL);
 
 static K_MUTEX_DEFINE(g_subscriber_id_lock);
 
+#define EVENT_OP_RETURN(value)                                                                                         \
+    do {                                                                                                               \
+        event_system_op_exit();                                                                                        \
+        return (value);                                                                                                \
+    } while (0)
+
+#define EVENT_OP_RETURN_VOID()                                                                                         \
+    do {                                                                                                               \
+        event_system_op_exit();                                                                                        \
+        return;                                                                                                        \
+    } while (0)
+
 void event_system_subscriber_id_lock(void) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_TABLE, (uintptr_t) &g_subscriber_id_lock);
     k_mutex_lock(&g_subscriber_id_lock, K_FOREVER);
@@ -67,26 +79,28 @@ bool event_system_type_is_registered(event_type_t type) {
 }
 
 event_status_t event_register_type(event_type_t type, const char* name) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized) {
+    if (!event_system_op_enter()) {
         return EVENT_ERR_INVALID_ARG;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     if ((uint32_t) type > MAX_EVENT_TYPE_ID) {
         LOG_ERR("Invalid event type: %d", type);
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     if (name == NULL) {
         LOG_ERR("event_register_type: name cannot be NULL");
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     {
         size_t name_len = strlen(name);
         if (name_len == 0U || name_len >= CONFIG_EVENT_TYPE_NAME_MAX) {
             LOG_ERR("Event type name invalid length %zu (max %d)", name_len, CONFIG_EVENT_TYPE_NAME_MAX - 1);
-            return EVENT_ERR_INVALID_ARG;
+            EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
         }
     }
 
@@ -94,20 +108,22 @@ event_status_t event_register_type(event_type_t type, const char* name) {
 
     event_system_entry_lock(entry);
 
-    if (entry->name != NULL) {
-        if (strcmp(entry->name, name) == 0) {
+    if (entry->name_storage[0] != '\0') {
+        if (strcmp(entry->name_storage, name) == 0) {
+            entry->name = entry->name_storage;
+            atomic_set(&entry->registered, 1);
             event_system_entry_unlock(entry);
-            return EVENT_OK;
+            EVENT_OP_RETURN(EVENT_OK);
         }
 
         /* 仅在名称不一致（异常路径）时才拷贝出快照用于日志，避免幂等重复注册的常见路径做无谓拷贝 */
         char registered_name[CONFIG_EVENT_TYPE_NAME_MAX];
 
-        (void) strncpy(registered_name, entry->name, sizeof(registered_name) - 1U);
+        (void) strncpy(registered_name, entry->name_storage, sizeof(registered_name) - 1U);
         registered_name[sizeof(registered_name) - 1U] = '\0';
         event_system_entry_unlock(entry);
         LOG_WRN("Event type %d already registered with different name '%s' (new '%s')", type, registered_name, name);
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     (void) strncpy(entry->name_storage, name, sizeof(entry->name_storage) - 1U);
@@ -120,53 +136,56 @@ event_status_t event_register_type(event_type_t type, const char* name) {
     event_system_entry_unlock(entry);
 
     LOG_DBG("Registered event type: %s (%d)", name, type);
-    return EVENT_OK;
+    EVENT_OP_RETURN(EVENT_OK);
 }
 
 event_status_t event_unregister_type(event_type_t type) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized) {
+    if (!event_system_op_enter()) {
         return EVENT_ERR_INVALID_ARG;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     if ((uint32_t) type > MAX_EVENT_TYPE_ID) {
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
 
     event_system_entry_lock(entry);
 
-    if (entry->name == NULL) {
+    if (atomic_get(&entry->registered) == 0) {
         event_system_entry_unlock(entry);
-        return EVENT_ERR_NOT_FOUND;
+        EVENT_OP_RETURN(EVENT_ERR_NOT_FOUND);
     }
 
     if (entry->subscriber_count > 0) {
         event_system_entry_unlock(entry);
         LOG_WRN("Cannot unregister type %d with active subscribers", type);
-        return EVENT_ERR_NO_SUBSCRIBER;
+        EVENT_OP_RETURN(EVENT_ERR_NO_SUBSCRIBER);
     }
 
     atomic_set(&entry->registered, 0);
     entry->name = NULL;
-    entry->name_storage[0] = '\0';
     entry->subscriber_count = 0;
 
     event_system_entry_unlock(entry);
 
     LOG_DBG("Unregistered event type: %d", type);
-    return EVENT_OK;
+    EVENT_OP_RETURN(EVENT_OK);
 }
 
 event_status_t event_subscribe(event_type_t type, event_callback_t callback, void* user_data, uint32_t* subscriber_id) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized) {
+    if (!event_system_op_enter()) {
         return EVENT_ERR_INVALID_ARG;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     if ((uint32_t) type > MAX_EVENT_TYPE_ID || callback == NULL || subscriber_id == NULL) {
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
@@ -180,7 +199,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
         if (++attempts > UINT16_MAX) {
             LOG_ERR("Subscriber ID space exhausted after %u attempts", attempts);
             event_system_subscriber_id_unlock();
-            return EVENT_ERR_NO_MEM;
+            EVENT_OP_RETURN(EVENT_ERR_NO_MEM);
         }
         if (new_id == EVENT_SUBSCRIBER_ID_INVALID) {
             continue;
@@ -191,10 +210,10 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
     }
 
     event_system_entry_lock(entry);
-    if (entry->name == NULL) {
+    if (atomic_get(&entry->registered) == 0) {
         event_system_entry_unlock(entry);
         event_system_subscriber_id_unlock();
-        return EVENT_ERR_NOT_FOUND;
+        EVENT_OP_RETURN(EVENT_ERR_NOT_FOUND);
     }
 
     uint32_t free_slot = CONFIG_EVENT_MAX_SUBSCRIBERS;
@@ -209,7 +228,7 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
         event_system_entry_unlock(entry);
         event_system_subscriber_id_unlock();
         LOG_ERR("No room for more subscribers on event type %d", type);
-        return EVENT_ERR_QUEUE_FULL;
+        EVENT_OP_RETURN(EVENT_ERR_QUEUE_FULL);
     }
 
     entry->subscribers[free_slot].callback = callback;
@@ -222,17 +241,19 @@ event_status_t event_subscribe(event_type_t type, event_callback_t callback, voi
     event_system_entry_unlock(entry);
     event_system_subscriber_id_unlock();
     LOG_DBG("Subscriber %d registered for event type %d", new_id, type);
-    return EVENT_OK;
+    EVENT_OP_RETURN(EVENT_OK);
 }
 
 event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
-    EVENT_SYSTEM_VALIDATE();
-    if (!g_event_system.initialized) {
+    if (!event_system_op_enter()) {
         return EVENT_ERR_INVALID_ARG;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     if ((uint32_t) type > MAX_EVENT_TYPE_ID || subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
@@ -244,7 +265,7 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
     if (sub == NULL) {
         event_system_entry_unlock(entry);
         event_system_subscriber_id_unlock();
-        return EVENT_ERR_NOT_FOUND;
+        EVENT_OP_RETURN(EVENT_ERR_NOT_FOUND);
     }
 
     sub->is_active = false;
@@ -255,13 +276,16 @@ event_status_t event_unsubscribe(event_type_t type, uint32_t subscriber_id) {
     event_system_entry_unlock(entry);
     event_system_subscriber_id_unlock();
     LOG_DBG("Subscriber %d removed from event type %d", subscriber_id, type);
-    return EVENT_OK;
+    EVENT_OP_RETURN(EVENT_OK);
 }
 
 void event_unsubscribe_all(uint32_t subscriber_id) {
-    EVENT_SYSTEM_VALIDATE_VOID();
-    if (!g_event_system.initialized || subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
+    if (!event_system_op_enter()) {
         return;
+    }
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized ||
+        subscriber_id == EVENT_SUBSCRIBER_ID_INVALID) {
+        EVENT_OP_RETURN_VOID();
     }
 
     event_system_subscriber_id_lock();
@@ -289,29 +313,32 @@ void event_unsubscribe_all(uint32_t subscriber_id) {
     event_system_subscriber_id_unlock();
 
     LOG_DBG("Subscriber %d removed from all event types", subscriber_id);
+    EVENT_OP_RETURN_VOID();
 }
 
 const char* event_get_type_name(event_type_t type) {
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+    if (!event_system_op_enter()) {
         return "UNKNOWN";
     }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        return "CORRUPTED";
-    }
-    if (!g_event_system.initialized || (uint32_t) type > MAX_EVENT_TYPE_ID) {
-        return "UNKNOWN";
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized ||
+        (uint32_t) type > MAX_EVENT_TYPE_ID) {
+        EVENT_OP_RETURN("UNKNOWN");
     }
 
-    const char* name = g_event_system.event_types[type].name;
-    return name != NULL ? name : "UNREGISTERED";
+    event_type_entry_t* entry = &g_event_system.event_types[type];
+    event_system_entry_lock(entry);
+    const char* name = atomic_get(&entry->registered) != 0 ? entry->name_storage : "UNREGISTERED";
+    event_system_entry_unlock(entry);
+    EVENT_OP_RETURN(name);
 }
 
 uint32_t event_get_subscriber_count(event_type_t type) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+    if (!event_system_op_enter()) {
         return 0;
     }
-    if (!g_event_system.initialized || (uint32_t) type > MAX_EVENT_TYPE_ID) {
-        return 0;
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized ||
+        (uint32_t) type > MAX_EVENT_TYPE_ID) {
+        EVENT_OP_RETURN(0);
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[type];
@@ -319,19 +346,19 @@ uint32_t event_get_subscriber_count(event_type_t type) {
     uint32_t count = entry->subscriber_count;
     event_system_entry_unlock(entry);
 
-    return count;
+    EVENT_OP_RETURN(count);
 }
 
 event_status_t event_notify_subscribers(const event_t* event) {
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+    if (!event_system_op_enter()) {
         return EVENT_ERR_INVALID_ARG;
     }
     if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
         LOG_ERR("Event system magic corruption detected");
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
     if (event == NULL || (uint32_t) event->type > MAX_EVENT_TYPE_ID) {
-        return EVENT_ERR_INVALID_ARG;
+        EVENT_OP_RETURN(EVENT_ERR_INVALID_ARG);
     }
 
     event_type_entry_t* entry = &g_event_system.event_types[event->type];
@@ -351,7 +378,7 @@ event_status_t event_notify_subscribers(const event_t* event) {
         event_system_stats_lock();
         g_event_system.total_events++;
         event_system_stats_unlock();
-        return EVENT_ERR_NO_SUBSCRIBER;
+        EVENT_OP_RETURN(EVENT_ERR_NO_SUBSCRIBER);
     }
 
     for (uint32_t i = 0; i < CONFIG_EVENT_MAX_SUBSCRIBERS; i++) {
@@ -378,5 +405,8 @@ event_status_t event_notify_subscribers(const event_t* event) {
     g_event_system.total_events++;
     event_system_stats_unlock();
 
-    return EVENT_OK;
+    EVENT_OP_RETURN(EVENT_OK);
 }
+
+#undef EVENT_OP_RETURN_VOID
+#undef EVENT_OP_RETURN

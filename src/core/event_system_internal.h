@@ -62,8 +62,8 @@
         }                                                                                                              \
     } while (0)
 
-/** stop/shutdown 等待 in-flight publish 归零的最大等待时间（毫秒） */
-#define EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS 5000U
+/** stop/shutdown 等待已准入事件 API 退出的最大时间（毫秒） */
+#define EVENT_SYSTEM_OP_WAIT_TIMEOUT_MS 5000U
 
 /**
  * @brief 事件系统控制块
@@ -86,7 +86,9 @@ extern char              g_event_msgq_buffer[];
 extern atomic_t          g_event_system_init_lock;
 extern atomic_t          g_restart_dispatcher_on_start;
 extern atomic_t          g_event_dropped_count;
-extern atomic_t          g_publish_in_flight;
+extern atomic_t          g_event_ops_accepting;
+extern atomic_t          g_event_ops_epoch;
+extern atomic_t          g_event_ops_in_flight;
 
 void         event_system_lifecycle_lock_wait(void);
 bool         event_system_lifecycle_try_lock(void);
@@ -100,7 +102,11 @@ void event_system_subscriber_id_unlock(void);
 void event_system_entry_lock(event_type_entry_t* entry);
 void event_system_entry_unlock(event_type_entry_t* entry);
 
-event_status_t event_publish_in_flight_wait_zero(void);
+bool           event_system_op_enter(void);
+void           event_system_op_exit(void);
+void           event_system_ops_close(void);
+void           event_system_ops_open(void);
+event_status_t event_system_ops_wait_zero(void);
 void           event_system_init_rollback(void);
 void           event_system_cleanup_event_types(void);
 void           event_system_reset_control_block(void);

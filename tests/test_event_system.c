@@ -315,12 +315,14 @@ ZTEST(test_event_system, test_event_unsubscribe_all) {
 ZTEST(test_event_system, test_event_unregister_type) {
     event_status_t status;
     uint32_t       subscriber_id;
+    const char*    registered_name;
 
     event_system_init();
 
     /* 注册事件类型 */
     status = event_register_type(80, "unregister_test");
     zassert_equal(status, EVENT_OK, "注册失败");
+    registered_name = event_get_type_name(80);
 
     /* 订阅事件 */
     status = event_subscribe(80, test_event_noop_callback, NULL, &subscriber_id);
@@ -339,6 +341,13 @@ ZTEST(test_event_system, test_event_unregister_type) {
 
     /* 验证类型已注销 */
     zassert_equal(event_get_subscriber_count(80), 0, "注销后订阅者数应为 0");
+    zassert_str_equal(event_get_type_name(80), "UNREGISTERED", "注销后查询应返回 UNREGISTERED");
+    zassert_str_equal(registered_name, "unregister_test", "注销不得改写此前返回的类型名存储");
+
+    status = event_register_type(80, "renamed_type");
+    zassert_equal(status, EVENT_ERR_INVALID_ARG, "同一生命周期内注销后不得换名注册");
+    status = event_register_type(80, "unregister_test");
+    zassert_equal(status, EVENT_OK, "注销后使用原名称重新注册应成功");
 }
 
 /**

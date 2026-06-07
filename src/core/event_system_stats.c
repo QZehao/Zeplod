@@ -41,10 +41,11 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
         *dropped_events = 0U;
     }
 
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+    if (!event_system_op_enter()) {
         return;
     }
-    if (!g_event_system.initialized) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        event_system_op_exit();
         return;
     }
 
@@ -52,6 +53,7 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
 
     if (!g_event_system.initialized) {
         event_system_stats_unlock();
+        event_system_op_exit();
         return;
     }
 
@@ -66,16 +68,15 @@ void event_get_statistics(uint32_t* total_events, uint32_t* queue_depth, uint32_
     }
 
     event_system_stats_unlock();
+    event_system_op_exit();
 }
 
 void event_system_reset_statistics(void) {
-    if (g_event_system.magic == EVENT_SYSTEM_MAGIC_IDLE) {
+    if (!event_system_op_enter()) {
         return;
     }
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
-        return;
-    }
-    if (!g_event_system.initialized) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        event_system_op_exit();
         return;
     }
 
@@ -91,4 +92,5 @@ void event_system_reset_statistics(void) {
     event_dispatcher_reset_stats();
 
     LOG_DBG("Event system statistics reset");
+    event_system_op_exit();
 }

@@ -28,20 +28,28 @@ char g_event_msgq_buffer[CONFIG_EVENT_QUEUE_SIZE * sizeof(event_t)] __aligned(__
 
 atomic_t g_event_dropped_count;
 
-atomic_t g_publish_in_flight;
+atomic_t g_event_ops_accepting;
+
+atomic_t g_event_ops_epoch;
+
+atomic_t g_event_ops_in_flight;
 
 atomic_t g_event_system_init_lock = ATOMIC_INIT(0);
 
 atomic_t g_restart_dispatcher_on_start;
 
 struct k_msgq* event_system_get_queue(void) {
-    if (g_event_system.magic != EVENT_SYSTEM_MAGIC) {
+    if (!event_system_op_enter()) {
         return NULL;
     }
-    if (!g_event_system.initialized) {
+    if (g_event_system.magic != EVENT_SYSTEM_MAGIC || !g_event_system.initialized) {
+        event_system_op_exit();
         return NULL;
     }
-    return g_event_system.event_queue;
+
+    struct k_msgq* queue = g_event_system.event_queue;
+    event_system_op_exit();
+    return queue;
 }
 
 /*

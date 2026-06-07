@@ -32,11 +32,42 @@ zepl_state_t event_system_lifecycle_state(void) {
     return zepl_state_machine_get(&g_event_system.lifecycle);
 }
 
-event_status_t event_publish_in_flight_wait_zero(void) {
-    int64_t deadline = k_uptime_get() + (int64_t) EVENT_PUBLISH_IN_FLIGHT_WAIT_TIMEOUT_MS;
-    while (atomic_get(&g_publish_in_flight) != 0) {
+bool event_system_op_enter(void) {
+    atomic_val_t epoch = atomic_get(&g_event_ops_epoch);
+
+    if (atomic_get(&g_event_ops_accepting) == 0) {
+        return false;
+    }
+
+    /* epoch 重新检查用于拒绝那些观察到旧的开放 gate、在 shutdown 和重新 init 之后才恢复执行的调用者 */
+    (void) atomic_inc(&g_event_ops_in_flight);
+    if (atomic_get(&g_event_ops_accepting) == 0 || atomic_get(&g_event_ops_epoch) != epoch) {
+        atomic_dec(&g_event_ops_in_flight);
+        return false;
+    }
+
+    return true;
+}
+
+void event_system_op_exit(void) {
+    atomic_dec(&g_event_ops_in_flight);
+}
+
+void event_system_ops_close(void) {
+    atomic_set(&g_event_ops_accepting, 0);
+    /* 在等待前先推进 epoch，防止上一个生命周期的迟到者在 gate 重新打开后通过 */
+    (void) atomic_inc(&g_event_ops_epoch);
+}
+
+void event_system_ops_open(void) {
+    atomic_set(&g_event_ops_accepting, 1);
+}
+
+event_status_t event_system_ops_wait_zero(void) {
+    int64_t deadline = k_uptime_get() + (int64_t) EVENT_SYSTEM_OP_WAIT_TIMEOUT_MS;
+    while (atomic_get(&g_event_ops_in_flight) != 0) {
         if (k_uptime_get() >= deadline) {
-            LOG_ERR("Timeout waiting publish in-flight to drain: %d", (int) atomic_get(&g_publish_in_flight));
+            LOG_ERR("Timeout waiting event operations to drain: %d", (int) atomic_get(&g_event_ops_in_flight));
             return EVENT_ERR_TIMEOUT;
         }
         k_sleep(K_MSEC(1));
@@ -69,7 +100,6 @@ void event_system_reset_control_block(void) {
 void event_system_init_rollback(void) {
     event_queue_deinit(&g_event_msgq);
     memset(&g_event_system, 0, sizeof(g_event_system));
-    atomic_set(&g_publish_in_flight, 0);
     atomic_clear(&g_restart_dispatcher_on_start);
 }
 
@@ -102,8 +132,14 @@ event_status_t event_system_init(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    event_system_ops_close();
+    event_status_t wait_ret = event_system_ops_wait_zero();
+    if (wait_ret != EVENT_OK) {
+        event_system_lifecycle_unlock();
+        return wait_ret;
+    }
+
     memset(&g_event_system, 0, sizeof(g_event_system));
-    atomic_set(&g_publish_in_flight, 0);
     zepl_state_machine_init(&g_event_system.lifecycle, ZEP_STATE_UNINIT);
 
     k_mutex_init(&g_event_system.stats_lock);
@@ -135,6 +171,7 @@ event_status_t event_system_init(void) {
         return EVENT_ERR_INVALID_ARG;
     }
 
+    event_system_ops_open();
     event_system_lifecycle_unlock();
     LOG_DBG("Event system initialized successfully");
     return EVENT_OK;
@@ -246,9 +283,11 @@ event_status_t event_system_stop(void) {
     }
 
     atomic_set(&g_event_system.running, 0);
+    event_system_ops_close();
 
-    event_status_t wait_ret = event_publish_in_flight_wait_zero();
+    event_status_t wait_ret = event_system_ops_wait_zero();
     if (wait_ret != EVENT_OK) {
+        event_system_ops_open();
         event_system_lifecycle_unlock();
         return wait_ret;
     }
@@ -257,13 +296,14 @@ event_status_t event_system_stop(void) {
         dispatcher_state_t disp_st = event_dispatcher_get_state();
         if (disp_st == DISPATCHER_RUNNING || disp_st == DISPATCHER_PAUSED) {
             atomic_set(&g_restart_dispatcher_on_start, 1);
-            event_status_t dret = event_dispatcher_stop();
-            if (dret != EVENT_OK) {
-                LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
-                (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
-                event_system_lifecycle_unlock();
-                return dret;
-            }
+        }
+
+        event_status_t dret = event_dispatcher_stop();
+        if (dret != EVENT_OK) {
+            LOG_WRN("event_dispatcher_stop during event_system_stop: %d", dret);
+            event_system_ops_open();
+            event_system_lifecycle_unlock();
+            return dret;
         }
     }
 
@@ -271,6 +311,7 @@ event_status_t event_system_stop(void) {
 
     (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_STOPPED);
 
+    event_system_ops_open();
     event_system_lifecycle_unlock();
     LOG_DBG("Event system stopped");
     return EVENT_OK;
@@ -312,8 +353,9 @@ event_status_t event_system_shutdown(void) {
     }
 
     atomic_set(&g_event_system.running, 0);
+    event_system_ops_close();
 
-    event_status_t wait_ret = event_publish_in_flight_wait_zero();
+    event_status_t wait_ret = event_system_ops_wait_zero();
     if (wait_ret != EVENT_OK) {
         event_system_lifecycle_unlock();
         return wait_ret;
@@ -323,7 +365,6 @@ event_status_t event_system_shutdown(void) {
         event_status_t dret = event_dispatcher_deinit();
         if (dret != EVENT_OK) {
             LOG_ERR("Failed to deinit dispatcher during shutdown: %d", dret);
-            (void) zepl_state_machine_try_transition(&g_event_system.lifecycle, ZEP_STATE_ERROR);
             event_system_lifecycle_unlock();
             return dret;
         }
