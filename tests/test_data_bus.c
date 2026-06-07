@@ -176,7 +176,24 @@ static void isr_timer_handler(struct k_timer* timer) {
  * 设置 / 清理
  * ============================================================================ */
 
+static void data_bus_test_force_reset(void) {
+    for (int attempt = 0; attempt < 30; attempt++) {
+        int ret = data_bus_deinit();
+
+        if (ret == 0) {
+            return;
+        }
+        if (ret == -ENODEV) {
+            return;
+        }
+        k_sleep(K_MSEC(50));
+    }
+    zassert_unreachable("data_bus_deinit 无法在超时内完成清理");
+}
+
 static void data_bus_test_setup(void) {
+    data_bus_test_force_reset();
+
     k_sem_init(&g_test_sem, 0, K_SEM_MAX_LIMIT);
     atomic_set(&g_call_count, 0);
     atomic_set(&g_manual_release_count, 0);
@@ -698,7 +715,7 @@ ZTEST(test_data_bus, test_consumer_unregister) {
 ZTEST(test_data_bus, test_unregister_allows_callback_publish_to_finish) {
     data_bus_channel_t*     ch = NULL;
     data_bus_consumer_cfg_t cfg = {
-        .name = "publish_during_unregister",
+        .name = "pub_unreg",
         .manual_release = false,
         .callback = concurrent_publish_consumer_cb,
         .user_data = NULL,
@@ -706,7 +723,7 @@ ZTEST(test_data_bus, test_unregister_allows_callback_publish_to_finish) {
 
     data_bus_test_setup();
     zassert_equal(data_bus_init(), 0, NULL);
-    zassert_equal(data_bus_channel_create("unregister_publish", &ch), 0, NULL);
+    zassert_equal(data_bus_channel_create("unreg_publish", &ch), 0, NULL);
     zassert_equal(data_bus_consumer_register(ch, &cfg, &g_concurrent_consumer), 0, NULL);
 
     const uint8_t payload[] = {0xA1};
@@ -732,7 +749,7 @@ ZTEST(test_data_bus, test_unregister_allows_callback_publish_to_finish) {
 ZTEST(test_data_bus, test_unregister_lifecycle_hold_blocks_deinit_free) {
     data_bus_channel_t*     ch = NULL;
     data_bus_consumer_cfg_t cfg = {
-        .name = "unregister_deinit",
+        .name = "unreg_deinit",
         .manual_release = false,
         .callback = concurrent_publish_consumer_cb,
         .user_data = NULL,
@@ -740,7 +757,7 @@ ZTEST(test_data_bus, test_unregister_lifecycle_hold_blocks_deinit_free) {
 
     data_bus_test_setup();
     zassert_equal(data_bus_init(), 0, NULL);
-    zassert_equal(data_bus_channel_create("unregister_deinit", &ch), 0, NULL);
+    zassert_equal(data_bus_channel_create("unreg_deinit", &ch), 0, NULL);
     zassert_equal(data_bus_consumer_register(ch, &cfg, &g_concurrent_consumer), 0, NULL);
 
     const uint8_t payload[] = {0xA2};
@@ -1160,4 +1177,9 @@ ZTEST(test_data_bus, test_requires_init) {
  * 测试套件
  * ============================================================================ */
 
-ZTEST_SUITE(test_data_bus, NULL, NULL, NULL, NULL, NULL);
+static void data_bus_test_after(void* fixture) {
+    ARG_UNUSED(fixture);
+    data_bus_test_force_reset();
+}
+
+ZTEST_SUITE(test_data_bus, NULL, NULL, NULL, data_bus_test_after, NULL);

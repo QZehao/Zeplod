@@ -134,6 +134,9 @@ ZTEST(concurrency_stress, test_module_manager_concurrent_readers) {
     }
 
     zassert_equal(atomic_get(&g_module_reader_errors), 0, NULL);
+
+    /* 避免后续 module_manager 套件 setup 遇到 ALREADY_RUNNING */
+    module_manager_shutdown();
 }
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE)

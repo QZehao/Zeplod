@@ -123,5 +123,5 @@ python scripts/check_script_docs.py
 ## 4. Platform Notes
 
 - `native_sim/native_posix` are POSIX-host targets.
-- On Windows, use **QEMU** (`run_qemu.ps1`, see [14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)) or WSL for host tests.
+- On Windows, use **QEMU** for the main app (`run_qemu.ps1`) or unit tests (`ZEPHYR_TEST_BOARD=qemu_riscv32` + `run_tests.ps1` — see [14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md) §6), or WSL for host POSIX tests.
 - CI includes preflight, encoding checks, coverage gates, sanitizers, and twister.

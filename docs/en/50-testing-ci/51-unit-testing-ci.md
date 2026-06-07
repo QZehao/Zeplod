@@ -21,6 +21,8 @@ This document describes how to build and run **ztest unit tests** in this reposi
 # .\scripts\run_tests.ps1   # Windows
 ```
 
+- **Native Windows (no WSL)**: set `ZEPHYR_TEST_BOARD=qemu_riscv32` and run the scripts above — see **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md) §6**.
+
 - **Manual** (Zephyr 4.x):
 
 ```bash

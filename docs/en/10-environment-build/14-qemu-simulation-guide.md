@@ -97,7 +97,7 @@ See [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md) for scrip
 | **`qemu_riscv32`** | ✅ Recommended | Plenty of RAM; app boot verified |
 | **`qemu_riscv64`** | ✅ | RISC-V 64-bit virt |
 | **`qemu_x86`** / **`qemu_x86_64`** | ✅ | x86 emulation; **`qemu_x86_64`** is 2-core SMP by default |
-| **`qemu_cortex_m3`** / **`qemu_cortex_m0`** | ⚠️ | Builds; app may HardFault on ARM M QEMU — see §7.3 |
+| **`qemu_cortex_m3`** / **`qemu_cortex_m0`** | ⚠️ | Builds; app may HardFault on ARM M QEMU — see §8.4 |
 | **`qemu_kvm_arm64`** | ❌ | Linux KVM only |
 
 Use overlay config **`prj_qemu.conf`** on top of **`prj.conf`** for simulation (reduced RAM/stacks, watchdog off).
@@ -208,7 +208,118 @@ SMP board defconfigs usually disable `CONFIG_QEMU_ICOUNT` (incompatible with SMP
 
 ---
 
-## 6. Expected output (excerpt)
+## 6. Unit tests (ztest) on QEMU
+
+Native Windows cannot run `native_sim` / `native_posix`, but you can build and run the **`tests/`** ztest suite on a QEMU board via **`ZEPHYR_TEST_BOARD`** — no WSL required. Linux / macOS can use the same approach.
+
+> Test layout, coverage, and authoring rules: **[51-unit-testing-ci.md](../50-testing-ci/51-unit-testing-ci.md)** and **`tests/README.md`**.
+
+### 6.1 Prerequisites
+
+Same as §1: **`QEMU_BIN_PATH`** configured, and an **interactive** terminal (QEMU serial on stdio).
+
+### 6.2 Script (recommended)
+
+```powershell
+. .\scripts\setup_env.ps1
+
+# Default: prj.conf;prj_test_extensions.conf (P0/P1 extensions + concurrency stress)
+$env:ZEPHYR_TEST_BOARD = 'qemu_riscv32'
+$env:ZEPHYR_TEST_BUILD_DIR = 'build_tests_qemu_riscv32'
+.\scripts\run_tests.ps1
+```
+
+Variants:
+
+```powershell
+# IPC smoke (prj.conf;prj_native_sim.conf)
+$env:ZEPHYR_TEST_BOARD = 'qemu_riscv32'
+$env:ZEPHYR_TEST_BUILD_DIR = 'build_tests_ipc_qemu'
+.\scripts\run_tests_ipc.ps1
+
+# Full matrix (+ example modules A/B/GPIO/Multi)
+$env:ZEPHYR_TEST_BOARD = 'qemu_riscv32'
+$env:ZEPHYR_TEST_BUILD_DIR = 'build_tests_full_qemu'
+.\scripts\run_tests_full.ps1
+
+# Other QEMU board
+$env:ZEPHYR_TEST_BOARD = 'qemu_x86_64'
+$env:ZEPHYR_TEST_BUILD_DIR = 'build_tests_qemu_x86_64'
+.\scripts\run_tests.ps1
+```
+
+> **Note**: Without **`ZEPHYR_TEST_BOARD`**, `run_tests.ps1` defaults to `native_sim` and fails on native Windows. Sanitizers (`run_sanitizers.ps1`) and Twister still require host POSIX boards only.
+
+**Linux / macOS / WSL**:
+
+```bash
+source scripts/setup_env.sh
+
+ZEPHYR_TEST_BOARD=qemu_riscv32 ZEPHYR_TEST_BUILD_DIR=build_tests_qemu \
+  ./scripts/run_tests.sh
+
+ZEPHYR_TEST_BOARD=qemu_riscv32 ZEPHYR_TEST_BUILD_DIR=build_tests_ipc_qemu \
+  ./scripts/run_tests_ipc.sh
+```
+
+### 6.3 Manual West commands
+
+```powershell
+. .\scripts\setup_env.ps1
+
+west build -b qemu_riscv32 tests/ --build-dir build_tests_qemu -p always `
+  -- "-DCONF_FILE=prj.conf;prj_test_extensions.conf"
+west build -t run --build-dir build_tests_qemu
+```
+
+```bash
+source scripts/setup_env.sh
+
+west build -b qemu_riscv32 tests/ --build-dir build_tests_qemu -p always \
+  -- "-DCONF_FILE=prj.conf;prj_test_extensions.conf"
+west build -t run --build-dir build_tests_qemu
+```
+
+### 6.4 Test config matrix
+
+| CONF_FILE (under `tests/`) | Script | Purpose |
+|----------------------------|--------|---------|
+| `prj.conf;prj_test_extensions.conf` | `run_tests.ps1` / `run_tests.sh` | Default; P0/P1 extensions + concurrency stress |
+| `prj.conf;prj_native_sim.conf` | `run_tests_ipc.ps1` / `run_tests_ipc.sh` | IPC + larger heap |
+| `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | `run_tests_full.ps1` / `run_tests_full.sh` | + example modules |
+| `prj.conf` | manual `-DCONF_FILE` | Minimal smoke (no extension overlay) |
+
+Tests use **`tests/prj.conf`**, not the main app's **`prj_qemu.conf`**. `tests/prj.conf` is already trimmed for simulation (smaller heaps, watchdog off).
+
+### 6.5 vs. main-app QEMU simulation
+
+| Item | Main app (`run_qemu.ps1`) | Unit tests (`run_tests.ps1` + QEMU board) |
+|------|---------------------------|-------------------------------------------|
+| Source dir | repo root `.` | `tests/` |
+| Default CONF | `prj.conf;prj_qemu.conf` | `tests/prj.conf` + overlays |
+| Entry | `app_main` | ztest |
+| Devicetree overlay | root `boards/qemu_*.overlay` auto-merged | app root is `tests/` — root overlays **not** auto-merged; default `qemu_riscv32` RAM is usually enough |
+
+### 6.6 Expected ztest output (excerpt)
+
+On **`qemu_riscv32`**:
+
+```text
+*** Booting Zephyr OS build ...
+Running TESTSUITE event_system
+...
+PROJECT EXECUTION SUCCESSFUL
+```
+
+### 6.7 SMP and board choice
+
+- **Recommended**: **`qemu_riscv32`** (see §3.1).
+- **SMP experiment**: `ZEPHYR_TEST_BOARD=qemu_riscv32/qemu_virt_riscv32/smp` (see §5).
+- **Avoid**: `qemu_cortex_m3` and other ARM M QEMU boards (see §8.4).
+
+---
+
+## 7. Main-app expected output (excerpt)
 
 On **`qemu_riscv32`**:
 
@@ -221,13 +332,13 @@ On **`qemu_riscv32`**:
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
-### 7.1 `QEMU-NOTFOUND`
+### 8.1 `QEMU-NOTFOUND`
 
 Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**, run **`setup_env`**, then rebuild with **`-p always`**.
 
-### 7.2 No serial output after `Starting QEMU...`
+### 8.2 No serial output after `Starting QEMU...`
 
 **Symptom**: Build succeeds but the terminal shows no Zephyr boot log.
 
@@ -235,33 +346,51 @@ Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**, run **`setup_env`**, then re
 
 **Fix**: Use the updated `run_qemu.ps1` (streams `west` directly). If output is still missing, run in an **interactive** terminal — not a background job or redirected stdio.
 
-### 7.3 `west build -t run` fails in CI / background
+### 8.3 `west build -t run` fails in CI / background
 
 Run in a real terminal with stdio attached.
 
-### 7.4 HardFault on `qemu_cortex_m3`
+### 8.4 HardFault on `qemu_cortex_m3`
 
 Upstream `hello_world` works; this app has known issues on ARM Cortex-M QEMU. Prefer **`qemu_riscv32`** on Windows.
 
-### 7.5 `undefined reference to sys_reboot` with `prj_sram.conf`
+### 8.5 `undefined reference to sys_reboot` with `prj_sram.conf`
 
 Use **`prj_qemu.conf`** for QEMU (`CONFIG_SYS_WATCHDOG_ENABLE=n`).
 
-### 7.6 SMP configure fails: `app.overlay` merged
+### 8.6 SMP configure fails: `app.overlay` merged
 
 If the log shows `Found devicetree overlay: .../app.overlay` then configure errors, the SMP qualifier did not match a board overlay and Zephyr fell back to **`app.overlay`** (STM32L4 SRAM — invalid on QEMU). Use the SMP overlay files listed in §5.3.
 
-### 7.7 Wrong SMP board name
+### 8.7 Wrong SMP board name
 
 Use the full qualifier, e.g. `qemu_riscv32/qemu_virt_riscv32/smp` — not `qemu_riscv32_smp`.
 
-### 7.8 `qemu_kvm_arm64`
+### 8.8 `qemu_kvm_arm64`
 
 Requires Linux **KVM**; not available on Windows.
 
+### 8.9 `run_tests.ps1` fails with POSIX board on Windows
+
+**Symptom**: Error that `native_sim` / `native_posix` cannot run on Windows when **`ZEPHYR_TEST_BOARD`** is unset.
+
+**Fix**: Set `$env:ZEPHYR_TEST_BOARD = 'qemu_riscv32'` (or another QEMU board) per §6.2, then run `run_tests.ps1`. Or use WSL for host tests.
+
+### 8.10 Unit tests on QEMU: no `PROJECT EXECUTION SUCCESSFUL`
+
+**Symptom**: QEMU boots but ztest does not finish, or link fails.
+
+**Fix**:
+
+1. Run `west build -t run` in an interactive terminal (§8.3).
+2. If RAM is tight, use `prj.conf` only (drop `prj_test_extensions.conf` concurrency stress).
+3. Ensure **`QEMU_BIN_PATH`** is set and reconfigure with `-p always`.
+
 ---
 
-## 8. Related docs
+## 9. Related docs
+
+- [51-unit-testing-ci.md](../50-testing-ci/51-unit-testing-ci.md) — ztest coverage and CI matrix
 
 - [12-freestanding-app-build.md](12-freestanding-app-build.md)
 - [44-devicetree-memory-config.md](../40-app-development/44-devicetree-memory-config.md)

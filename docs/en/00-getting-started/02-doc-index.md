@@ -153,7 +153,7 @@ The five paths below are organized by common use cases. **You don't need to read
 | **[11-environment-setup.md](../10-environment-build/11-environment-setup.md)** | SDK, West, path config, verify build | New members, new machines |
 | **[12-freestanding-app-build.md](../10-environment-build/12-freestanding-app-build.md)** | Freestanding app, `ZEPHYR_BASE`, BOARD_ROOT, overlay rules | Build and integration leads |
 | **[13-board-porting-guide.md](../10-environment-build/13-board-porting-guide.md)** | Complete flow for switching boards, Devicetree, memory, CI config | Board-level porting, migration engineers |
-| **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** | QEMU build/run, `-Board`, **SMP multi-core**, `prj_qemu.conf` | Simulation without hardware |
+| **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** | QEMU build/run, `-Board`, **SMP multi-core**, **ztest on QEMU**, `prj_qemu.conf` | Simulation without hardware |
 
 ### 20-Architecture
 

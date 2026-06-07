@@ -21,23 +21,32 @@ def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
+def is_posix_host_board(board: str) -> bool:
+    name = board.strip().lower()
+    if not name:
+        return True
+    return name in ("native_sim", "native_posix")
+
+
 def main() -> int:
-    board = os.environ.get("ZEPHYR_TEST_BOARD", "").strip()
-    if not board:
-        board = "native_sim (auto)"
+    board_env = os.environ.get("ZEPHYR_TEST_BOARD", "").strip()
+    board = board_env if board_env else "native_sim (auto)"
 
     host = platform.platform()
     print(f"[preflight] host={host}")
     print(f"[preflight] requested_board={board}")
 
-    if is_windows() and not in_wsl():
+    if is_windows() and not in_wsl() and is_posix_host_board(board_env):
         print("[preflight] ERROR: native_sim/native_posix require Linux POSIX host.")
-        print("[preflight] Use WSL/Linux for host tests, or set a non-POSIX hardware board.")
+        print("[preflight] Use WSL/Linux for host tests, or set a non-POSIX board (e.g. qemu_riscv32).")
         print("[preflight] Suggested next steps:")
-        print("  1) Open WSL terminal in this repo")
-        print("  2) source scripts/setup_env.sh")
-        print("  3) ./scripts/run_tests.sh")
+        print("  1) WSL/Linux: source scripts/setup_env.sh && ./scripts/run_tests.sh")
+        print("  2) Windows QEMU: $env:ZEPHYR_TEST_BOARD='qemu_riscv32'; .\\scripts\\run_tests.ps1")
+        print("     (see docs/zh-CN/10-环境与构建/14-QEMU仿真运行指南.md §6)")
         return 2
+
+    if is_windows() and not in_wsl() and board_env:
+        print("[preflight] non-POSIX board on Windows; ensure QEMU_BIN_PATH is set for QEMU boards.")
 
     west = run(["west", "--version"])
     if west.returncode != 0:

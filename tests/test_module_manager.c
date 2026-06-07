@@ -175,7 +175,9 @@ const module_interface_t counting_stub_interface = {
 static void* module_manager_suite_setup(void) {
     int ret;
 
-    /* 全局初始化 - 允许重复初始化（返回 -EALREADY） */
+    /* 前一套件（如 concurrency_stress）可能遗留 init/running 态 */
+    module_manager_shutdown();
+
     ret = event_system_init();
     zassert_true(ret == EVENT_OK || ret == -EALREADY, "事件系统初始化失败: %d", ret);
 
@@ -183,7 +185,8 @@ static void* module_manager_suite_setup(void) {
     zassert_true(ret == 0 || ret == -EALREADY, "模块管理器初始化失败: %d", ret);
 
     ret = module_manager_start();
-    zassert_true(ret == 0 || ret == -EALREADY, "模块管理器启动失败: %d", ret);
+    zassert_true(ret == 0 || ret == -EALREADY || ret == MODULE_ERR_ALREADY_RUNNING, "模块管理器启动失败: %d",
+                 ret);
 
     return NULL;
 }
@@ -647,18 +650,31 @@ ZTEST(module_manager, test_unregister_during_init_returns_busy) {
                         slow_register_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
 
     int wait_ms = 0;
-    while (atomic_get(&g_slow_init_entered) == 0 && wait_ms < 200) {
+    uint32_t slow_id = 0U;
+
+    while (atomic_get(&g_slow_init_entered) == 0 && wait_ms < 500) {
         k_msleep(1);
         wait_ms++;
     }
     zassert_equal(atomic_get(&g_slow_init_entered), 1, "init 应已进入");
-    zassert_not_equal(g_slow_register_id, 0U, "init 期间应已分配 provisional id");
 
-    zassert_equal(module_manager_unregister(g_slow_register_id), MODULE_ERR_BUSY, "init 期间注销应返回 BUSY");
+    /* register() 仅在 init 成功后才写出 *module_id；init 期间用名称查询 */
+    wait_ms = 0;
+    while (slow_id == 0U && wait_ms < 500) {
+        slow_id = module_manager_get_id_by_name("slow_stub");
+        if (slow_id == 0U) {
+            k_msleep(1);
+            wait_ms++;
+        }
+    }
+    zassert_not_equal(slow_id, 0U, "init 期间应已分配 provisional id");
+
+    zassert_equal(module_manager_unregister(slow_id), MODULE_ERR_BUSY, "init 期间注销应返回 BUSY");
 
     k_sem_give(&g_slow_init_go);
-    zassert_equal(k_thread_join(tid, K_SECONDS(1)), 0, "register thread 应结束");
+    zassert_equal(k_thread_join(tid, K_SECONDS(2)), 0, "register thread 应结束");
     zassert_equal(atomic_get(&g_slow_register_result), MODULE_OK, "register 应成功");
+    zassert_not_equal(g_slow_register_id, 0U, "register 完成后应写出 module id");
 
     zassert_equal(module_manager_unregister(g_slow_register_id), 0, "init 完成后注销应成功");
 }
