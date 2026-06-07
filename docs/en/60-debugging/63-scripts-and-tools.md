@@ -157,6 +157,8 @@ python scripts/check_script_docs.py
 
 ## 5. Optional APP manifest (`zephyr_app.env`)
 
+See **[15-creating-new-app-guide.md](../10-environment-build/15-creating-new-app-guide.md)** for the full APP repo bootstrap guide.
+
 ```bash
 APP_PRJ_CONF=gateway_prj.conf
 QEMU_CONF=framework/prj.conf;gateway_prj.conf;framework/prj_qemu.conf

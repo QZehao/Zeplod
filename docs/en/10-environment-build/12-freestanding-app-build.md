@@ -128,6 +128,8 @@ Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**. See **[14-qemu-simulation-gu
 
 ## APP repos with a `framework/` submodule
 
+> **Step-by-step guide** to create a new APP repo (layout, CMakeLists template, Kconfig/QEMU/scripts, checklist): **[15-creating-new-app-guide.md](15-creating-new-app-guide.md)**.
+
 Business projects (e.g. **zephyr_gateway**) vendor this framework under **`framework/`** and add a top-level `CMakeLists.txt` plus `*_prj.conf`:
 
 ```

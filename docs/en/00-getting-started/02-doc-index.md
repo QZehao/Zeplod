@@ -95,6 +95,16 @@ The five paths below are organized by common use cases. **You don't need to read
 7. After successful build, to **flash and view serial**: **[61-flash-debug-quickstart.md](../60-debugging/61-flash-debug-quickstart.md)**.
 8. When stuck, first check **[62-troubleshooting.md](../60-debugging/62-troubleshooting.md)**; for script purposes see **[63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md)**.
 
+### Path A2: Create a New APP Repo (framework Submodule)
+
+For a **separate Git repo** with zeplod under `framework/` (e.g. zephyr_gateway):
+
+1. **[15-creating-new-app-guide.md](../10-environment-build/15-creating-new-app-guide.md)** — Layout, CMakeLists template, Kconfig/QEMU/scripts, checklist.
+2. **[11-environment-setup.md](../10-environment-build/11-environment-setup.md)** — `framework/zephyr_config.env`.
+3. **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** — Windows smoke tests without hardware.
+4. **[63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md)** — `framework/scripts/`.
+5. Business development: **[04-developer-guide.md](04-developer-guide.md)** and **30-core-modules** docs.
+
 ### Path B: Modify Business Features (Events, Modules, IPC)
 
 0. (Optional but recommended) **[41-zephyr-app-development.md](../40-app-development/41-zephyr-app-development.md)** — Zephyr general techniques: threads, synchronization, timers, memory, `LOG`, device model, ISR notes, service writing patterns.
@@ -154,6 +164,7 @@ The five paths below are organized by common use cases. **You don't need to read
 | **[12-freestanding-app-build.md](../10-environment-build/12-freestanding-app-build.md)** | Freestanding app, `ZEPHYR_BASE`, BOARD_ROOT, overlay rules | Build and integration leads |
 | **[13-board-porting-guide.md](../10-environment-build/13-board-porting-guide.md)** | Complete flow for switching boards, Devicetree, memory, CI config | Board-level porting, migration engineers |
 | **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** | QEMU build/run, `-Board`, **SMP multi-core**, **ztest on QEMU**, `prj_qemu.conf` | Simulation without hardware |
+| **[15-creating-new-app-guide.md](../10-environment-build/15-creating-new-app-guide.md)** | Bootstrap APP repo with framework submodule, CMake/Kconfig/overlay/scripts, checklist | New products, standalone business repos |
 
 ### 20-Architecture
 

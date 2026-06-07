@@ -422,6 +422,7 @@ chcp 65001
 - [51-unit-testing-ci.md](../50-testing-ci/51-unit-testing-ci.md) — ztest coverage and CI matrix
 
 - [12-freestanding-app-build.md](12-freestanding-app-build.md)
+- [15-creating-new-app-guide.md](15-creating-new-app-guide.md)
 - [44-devicetree-memory-config.md](../40-app-development/44-devicetree-memory-config.md)
 - [53-hardware-testing.md](../50-testing-ci/53-hardware-testing.md)
 - [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md)
