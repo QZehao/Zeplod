@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * qemu_riscv64/qemu_virt_riscv64/smp 设备树覆盖（QEMU SMP）
+ */
+
+/ {
+	aliases {
+	};
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};

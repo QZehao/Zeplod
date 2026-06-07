@@ -30,6 +30,7 @@
 /* 受 CONFIG_APP_ENABLE_SHELL 控制（该选项 depends on SHELL）；关闭时不注册任何 app 命令。 */
 #ifdef CONFIG_APP_ENABLE_SHELL
 
+#if APP_CONFIG_ENABLE_APP_KV
 static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size_t first_idx) {
     size_t pos = 0U;
 
@@ -51,6 +52,7 @@ static int kv_join_argv(char* out, size_t out_sz, size_t argc, char** argv, size
     out[pos] = '\0';
     return 0;
 }
+#endif /* APP_CONFIG_ENABLE_APP_KV */
 
 static int cmd_app_kv_set(const struct shell* shell, size_t argc, char** argv) {
 #if !APP_CONFIG_ENABLE_APP_KV
@@ -130,10 +132,12 @@ static int cmd_app_kv_del(const struct shell* shell, size_t argc, char** argv) {
 #endif
 }
 
+#if APP_CONFIG_ENABLE_APP_KV
 static int cmd_app_kv_list_cb(const char* k, const char* v, void* user) {
     shell_print((const struct shell*) user, "  %s = %s", k, v);
     return 0;
 }
+#endif /* APP_CONFIG_ENABLE_APP_KV */
 
 static int cmd_app_kv_list(const struct shell* shell, size_t argc, char** argv) {
     ARG_UNUSED(argc);

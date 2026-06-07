@@ -87,13 +87,38 @@ if (Test-Path $ZephyrEnvScript) {
     & $ZephyrEnvScript
 }
 
+# QEMU (west build -t run): CMake caches QEMU path at configure time.
+if (-not $QEMU_BIN_PATH) {
+    $qemuCandidates = @(
+        "C:\Program Files\qemu",
+        "${env:ProgramFiles}\qemu"
+    )
+    foreach ($dir in $qemuCandidates) {
+        if (Test-Path (Join-Path $dir "qemu-system-arm.exe")) {
+            $QEMU_BIN_PATH = $dir
+            break
+        }
+    }
+}
+if ($QEMU_BIN_PATH -and (Test-Path $QEMU_BIN_PATH)) {
+    $env:QEMU_BIN_PATH = $QEMU_BIN_PATH
+    if ($env:PATH -notlike "*$QEMU_BIN_PATH*") {
+        $env:PATH = "$QEMU_BIN_PATH;$env:PATH"
+    }
+}
+
 Write-Host "============================================"
 Write-Host "Environment configured successfully." -ForegroundColor Green
 Write-Host "============================================"
 Write-Host "ZEPHYR_BASE=$ZEPHYR_BASE"
 Write-Host "ZEPHYR_SDK_INSTALL_DIR=$ZEPHYR_SDK_INSTALL_DIR"
+if ($env:QEMU_BIN_PATH) {
+    Write-Host "QEMU_BIN_PATH=$($env:QEMU_BIN_PATH)"
+}
 Write-Host "============================================"
 Write-Host ""
 Write-Host "You can now build:"
 Write-Host "  west build -b $DEFAULT_BOARD -d $BUILD_DIR ."
+Write-Host "QEMU simulation (Windows):"
+Write-Host "  .\scripts\run_qemu.ps1"
 Write-Host ""

@@ -1,0 +1,17 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * qemu_riscv32/qemu_virt_riscv32/smp 设备树覆盖（QEMU SMP）
+ * Zephyr 按完整 qualifier 名匹配 overlay，不可仅用 qemu_riscv32.overlay
+ */
+
+/ {
+	aliases {
+	};
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};

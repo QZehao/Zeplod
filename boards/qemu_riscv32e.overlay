@@ -1,0 +1,19 @@
+﻿/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * qemu_riscv32e 设备树覆盖（QEMU 仿真）
+ * Note: RISC-V 32-bit embedded
+ */
+
+/ {
+	aliases {
+	};
+
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};
+

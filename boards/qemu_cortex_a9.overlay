@@ -1,0 +1,19 @@
+﻿/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * qemu_cortex_a9 设备树覆盖（QEMU 仿真）
+ * Note: ARM Cortex-A9, Xilinx Zynq
+ */
+
+/ {
+	aliases {
+	};
+
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};
+

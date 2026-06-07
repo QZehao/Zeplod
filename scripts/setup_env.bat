@@ -60,13 +60,28 @@ if exist "%ZEPHYR_BASE%\scripts\env.bat" (
     call "%ZEPHYR_BASE%\scripts\env.bat"
 )
 
+REM QEMU（west build -t run 需在 CMake 配置时找到 qemu-system-*）
+if not defined QEMU_BIN_PATH (
+    if exist "C:\Program Files\qemu\qemu-system-arm.exe" (
+        set "QEMU_BIN_PATH=C:\Program Files\qemu"
+    )
+)
+if defined QEMU_BIN_PATH (
+    if exist "%QEMU_BIN_PATH%\qemu-system-arm.exe" (
+        set "PATH=%QEMU_BIN_PATH%;%PATH%"
+    )
+)
+
 echo ============================================
 echo 环境配置成功！
 echo ============================================
 echo ZEPHYR_BASE=%ZEPHYR_BASE%
 echo ZEPHYR_SDK_INSTALL_DIR=%ZEPHYR_SDK_INSTALL_DIR%
+if defined QEMU_BIN_PATH echo QEMU_BIN_PATH=%QEMU_BIN_PATH%
 echo ============================================
 echo.
 echo 现在可以构建项目：
 echo   west build -b %DEFAULT_BOARD% -d build .
+echo QEMU 仿真：
+echo   scripts\run_qemu.ps1
 echo.

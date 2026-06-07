@@ -1,0 +1,19 @@
+﻿/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: GPL-3.0
+ *
+ * qemu_rx 设备树覆盖（QEMU 仿真）
+ * Note: Renesas RX, sci0 as console
+ */
+
+/ {
+	aliases {
+	};
+
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+};
+

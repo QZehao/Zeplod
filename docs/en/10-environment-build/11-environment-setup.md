@@ -183,8 +183,11 @@ west build -b <your_board> . --clean
 |----------|-------------|---------|
 | `ZEPHYR_BASE` | Path to Zephyr source root directory | `D:/zephyrproject/zephyr` |
 | `ZEPHYR_SDK_INSTALL_DIR` | Path to Zephyr SDK | `C:/zephyr-sdk` |
+| `QEMU_BIN_PATH` | QEMU binaries directory (`west build -t run`) | `C:/Program Files/qemu` |
 | `DEFAULT_BOARD` | Default build board | `native_posix` |
 | `BUILD_DIR` | Build output directory | `build` |
+
+See **[14-qemu-simulation-guide.md](14-qemu-simulation-guide.md)** for QEMU build and run commands.
 
 ## Special Notes for Windows Users
 

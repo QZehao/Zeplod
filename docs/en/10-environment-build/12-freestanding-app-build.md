@@ -101,6 +101,31 @@ west build -t pristine
 
 After modifying **`prj.conf`**, **`app.overlay`**, etc., if behavior is abnormal, use **`west build ... -p always`** or **`pristine`** before rebuilding.
 
+## QEMU simulation (no hardware)
+
+On **Windows 11** and other hosts, Zephyr QEMU boards can replace `native_sim` for boot smoke tests (`native_sim` requires Linux/WSL). This repo provides:
+
+- **`boards/qemu_*.overlay`** — auto-merged for `west build -b qemu_<board>`
+- **`prj_qemu.conf`** — slim Kconfig overlay for simulation
+- **`scripts/run_qemu.ps1`** — one-shot build and run on Windows (default `qemu_riscv32`)
+
+Quick start:
+
+```powershell
+. .\scripts\setup_env.ps1
+.\scripts\run_qemu.ps1
+```
+
+Manual build:
+
+```bash
+west build -b qemu_riscv32 -d build_qemu . -p always \
+  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+west build -t run --build-dir build_qemu
+```
+
+Set **`QEMU_BIN_PATH`** in **`zephyr_config.env`**. See **[14-qemu-simulation-guide.md](14-qemu-simulation-guide.md)** for board matrix and troubleshooting.
+
 ## Custom Boards (Optional)
 
 You can add custom boards to this repository without modifying the Zephyr upstream tree.
