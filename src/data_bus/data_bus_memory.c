@@ -36,8 +36,17 @@ K_MEM_SLAB_DEFINE(data_bus_block_slab, sizeof(data_bus_block_t), CONFIG_DATA_BUS
 
 #if CONFIG_DATA_BUS_SLAB_ENABLE
 
+#if CONFIG_DATA_BUS_SLAB_64_COUNT > 0
+K_MEM_SLAB_DEFINE(data_bus_slab_64, 64, CONFIG_DATA_BUS_SLAB_64_COUNT, sizeof(void*));
+#endif
+#if CONFIG_DATA_BUS_SLAB_128_COUNT > 0
+K_MEM_SLAB_DEFINE(data_bus_slab_128, 128, CONFIG_DATA_BUS_SLAB_128_COUNT, sizeof(void*));
+#endif
 #if CONFIG_DATA_BUS_SLAB_256_COUNT > 0
 K_MEM_SLAB_DEFINE(data_bus_slab_256, 256, CONFIG_DATA_BUS_SLAB_256_COUNT, sizeof(void*));
+#endif
+#if CONFIG_DATA_BUS_SLAB_512_COUNT > 0
+K_MEM_SLAB_DEFINE(data_bus_slab_512, 512, CONFIG_DATA_BUS_SLAB_512_COUNT, sizeof(void*));
 #endif
 #if CONFIG_DATA_BUS_SLAB_1K_COUNT > 0
 K_MEM_SLAB_DEFINE(data_bus_slab_1k, 1024, CONFIG_DATA_BUS_SLAB_1K_COUNT, sizeof(void*));
@@ -46,8 +55,9 @@ K_MEM_SLAB_DEFINE(data_bus_slab_1k, 1024, CONFIG_DATA_BUS_SLAB_1K_COUNT, sizeof(
 K_MEM_SLAB_DEFINE(data_bus_slab_4k, 4096, CONFIG_DATA_BUS_SLAB_4K_COUNT, sizeof(void*));
 #endif
 
-BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >=
-                 CONFIG_DATA_BUS_SLAB_256_COUNT + CONFIG_DATA_BUS_SLAB_1K_COUNT + CONFIG_DATA_BUS_SLAB_4K_COUNT,
+BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >= CONFIG_DATA_BUS_SLAB_64_COUNT + CONFIG_DATA_BUS_SLAB_128_COUNT +
+                                               CONFIG_DATA_BUS_SLAB_256_COUNT + CONFIG_DATA_BUS_SLAB_512_COUNT +
+                                               CONFIG_DATA_BUS_SLAB_1K_COUNT + CONFIG_DATA_BUS_SLAB_4K_COUNT,
              "DATA_BUS_MAX_BLOCKS must be >= total data slab blocks");
 
 #endif /* CONFIG_DATA_BUS_SLAB_ENABLE */
@@ -58,9 +68,24 @@ BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >=
 
 static struct k_mem_slab* slab_for_size(size_t len) {
 #if CONFIG_DATA_BUS_SLAB_ENABLE
+#if CONFIG_DATA_BUS_SLAB_64_COUNT > 0
+    if (len <= 64) {
+        return &data_bus_slab_64;
+    }
+#endif
+#if CONFIG_DATA_BUS_SLAB_128_COUNT > 0
+    if (len <= 128) {
+        return &data_bus_slab_128;
+    }
+#endif
 #if CONFIG_DATA_BUS_SLAB_256_COUNT > 0
     if (len <= 256) {
         return &data_bus_slab_256;
+    }
+#endif
+#if CONFIG_DATA_BUS_SLAB_512_COUNT > 0
+    if (len <= 512) {
+        return &data_bus_slab_512;
     }
 #endif
 #if CONFIG_DATA_BUS_SLAB_1K_COUNT > 0
@@ -119,8 +144,8 @@ static data_bus_block_t* mem_alloc_impl(size_t len, bool isr) {
         slab_candidate_exhausted = (data_ptr == NULL);
     }
 
-    if (data_ptr == NULL && !isr) {
-        /* 线程路径：k_malloc 兜底（仅 slab 禁用或耗尽时） */
+    if (data_ptr == NULL && !isr && !IS_ENABLED(CONFIG_DATA_BUS_NO_MALLOC)) {
+        /* 线程路径：k_malloc 兜底（slab 禁用或耗尽时；NO_MALLOC 时跳过） */
         LOG_WRN("Data slab exhausted, falling back to k_malloc (len=%zu)", len);
         data_ptr = k_malloc(len);
         used_malloc_fallback = (data_ptr != NULL);

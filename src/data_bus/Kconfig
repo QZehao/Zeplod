@@ -73,6 +73,27 @@ config DATA_BUS_SLAB_ENABLE
     default y
     depends on DATA_BUS
 
+config DATA_BUS_NO_MALLOC
+    bool "Disallow k_malloc fallback for data buffers"
+    default n
+    depends on DATA_BUS && DATA_BUS_SLAB_ENABLE
+    help
+      When enabled, thread-context allocation behaves like the ISR path:
+      slab exhaustion returns NULL and publish returns -ENOMEM.
+      Recommended for hard real-time robot/motor control profiles.
+
+config DATA_BUS_SLAB_64_COUNT
+    int "64-byte slab block count"
+    default 0
+    range 0 256
+    depends on DATA_BUS_SLAB_ENABLE
+
+config DATA_BUS_SLAB_128_COUNT
+    int "128-byte slab block count"
+    default 0
+    range 0 256
+    depends on DATA_BUS_SLAB_ENABLE
+
 config DATA_BUS_SLAB_256_COUNT
     int "256-byte slab block count"
     default 8
@@ -82,6 +103,12 @@ config DATA_BUS_SLAB_256_COUNT
 config DATA_BUS_SLAB_1K_COUNT
     int "1KB slab block count"
     default 4
+    range 0 256
+    depends on DATA_BUS_SLAB_ENABLE
+
+config DATA_BUS_SLAB_512_COUNT
+    int "512-byte slab block count"
+    default 0
     range 0 256
     depends on DATA_BUS_SLAB_ENABLE
 

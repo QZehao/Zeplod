@@ -17,7 +17,6 @@
 #ifndef DATA_BUS_INTERNAL_H
 #define DATA_BUS_INTERNAL_H
 
-#include <zephyr/sys/ring_buffer.h>
 #include "data_bus.h"
 #include "zepl_thread_service.h"
 
@@ -64,8 +63,10 @@ struct data_bus_consumer {
 struct data_bus_channel {
     const char*       name;
     char              name_storage[CONFIG_DATA_BUS_CHANNEL_NAME_MAX];
-    struct ring_buf   queue;
-    uint8_t           queue_buf[CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH * sizeof(void*)];
+    data_bus_block_t* queue[CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH];
+    uint32_t          queue_head;
+    uint32_t          queue_tail;
+    uint32_t          flags;
     struct k_spinlock lock;
     atomic_t          active;
 

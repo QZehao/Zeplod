@@ -248,10 +248,16 @@ ref_count = 0 ──► 释放数据缓冲区 + 块结构体
                 ≈ 32B × 32 = 1024 B
 
 数据 slab (默认):
+  64B  × 0 = 0 B      (可选，机器人推荐 16)
+  128B × 0 = 0 B      (可选，机器人推荐 8)
   256B × 8 = 2048 B
+  512B × 0 = 0 B      (可选，机器人推荐 8)
   1KB  × 4 = 4096 B
   4KB  × 2 = 8192 B
   合计 = 14336 B
+
+CONFIG_DATA_BUS_NO_MALLOC:
+  禁用线程路径 k_malloc 兜底，slab 耗尽直接 -ENOMEM（硬实时推荐）
 
 通道 slab:      sizeof(data_bus_channel_t) × MAX_CHANNELS
                 ≈ 200B × 8 = 1600 B
@@ -279,7 +285,16 @@ int data_bus_deinit(void);
 ### 通道管理
 
 ```c
+#define DATA_BUS_CHANNEL_DEFAULT   0U
+#define DATA_BUS_CHANNEL_OVERWRITE BIT(0)
+
+typedef struct {
+    uint32_t flags;
+} data_bus_channel_cfg_t;
+
 int  data_bus_channel_create(const char *name, data_bus_channel_t **out_channel);
+int  data_bus_channel_create_ex(const char *name, const data_bus_channel_cfg_t *cfg,
+                                data_bus_channel_t **out_channel);
 int  data_bus_channel_destroy(data_bus_channel_t *ch);
 data_bus_channel_t *data_bus_channel_find(const char *name);
 ```
@@ -293,16 +308,21 @@ data_bus_channel_t *data_bus_channel_find(const char *name);
 | -EBUSY | 仍有活跃消费者 |
 | -EAGAIN | 队列非空或分发中（稍后重试） |
 
+`DATA_BUS_CHANNEL_OVERWRITE`：单槽覆盖模式，适合 IMU 等高频传感器；`peak_queue_usage` 恒 ≤ 1。
+
 ### 发布
 
 ```c
 int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len);
 int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block);
+int data_bus_publish_inplace(data_bus_channel_t *ch, size_t len,
+                             data_bus_fill_fn_t fill, void *user_data);
 ```
 
 - `publish()`：数据被拷贝到内部块，ISR/线程均可调用
 - `publish_block()`：零拷贝，块必须来自 `data_bus_mem_alloc()`
-- 队列满时均返回 `-ENOBUFS`
+- `publish_inplace()`：分配块后由 `fill` 回调写入，无额外 memcpy
+- 队列满时均返回 `-ENOBUFS`（overwrite 模式下旧块被 retain 时也会丢弃新数据）
 
 ### 消费者管理
 
@@ -417,6 +437,52 @@ data_bus_consumer_register(temp_ch, &cfg2, NULL);
 data_bus_publish(temp_ch, &temp, sizeof(temp));
 ```
 
+### 场景五：高频 IMU（OVERWRITE + publish_inplace）
+
+```c
+static int imu_fill(void *buf, size_t len, void *ud)
+{
+    memcpy(buf, ud, len);
+    return 0;
+}
+
+void imu_init(void)
+{
+    data_bus_channel_cfg_t ch_cfg = { .flags = DATA_BUS_CHANNEL_OVERWRITE };
+    data_bus_channel_create_ex("imu", &ch_cfg, &imu_ch);
+    /* 注册消费者 ... */
+}
+
+/* 1kHz 发布：仅保留最新样本，peak_queue_usage <= 1 */
+data_bus_publish_inplace(imu_ch, sizeof(imu_sample_t), imu_fill, &sample);
+```
+
+---
+
+## Callback 契约
+
+**回调中允许**：
+
+- `data_bus_block_ptr()` / `data_bus_block_len()` / `data_bus_block_retain()` / `data_bus_block_release()`
+- `data_bus_publish()` / `data_bus_publish_block()` / `data_bus_publish_inplace()`（注意递归深度）
+
+**回调中禁止**：
+
+- `data_bus_consumer_unregister()` → `-EDEADLK`
+- `data_bus_channel_create()` / `data_bus_channel_destroy()`
+- `data_bus_deinit()`
+
+---
+
+## Channel 选型指南
+
+| 场景 | 推荐配置 | 发布 API |
+|------|----------|----------|
+| IMU / 编码器 / 姿态 | `OVERWRITE` + 小 slab (64/128B) | `publish_inplace` 或 `publish_block` |
+| 电机反馈（高频） | `OVERWRITE` + `NO_MALLOC` | `publish_block` |
+| 命令队列 / 日志流 | 默认 queue | `data_bus_publish()` |
+| 需异步 retain | 任意 + `manual_release=true` | `publish_block` + retain |
+
 ---
 
 ## 最佳实践
@@ -448,6 +514,8 @@ data_bus_publish(temp_ch, &temp, sizeof(temp));
 | 数据大小 | 建议 |
 |----------|------|
 | ≤ 48 B | 考虑事件系统内联数据（更轻量） |
+| ≤ 64 B | Data Bus + 64B slab（IMU 小包） |
+| ≤ 128 B | Data Bus + 128B slab |
 | ≤ 256 B | Data Bus + 256B slab（最佳） |
 | ≤ 1 KB | Data Bus + 1KB slab |
 | ≤ 4 KB | Data Bus + 4KB slab |

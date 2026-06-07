@@ -124,6 +124,7 @@ west build -t run --build-dir build_tests
 | `prj.conf;prj_native_sim.conf` | IPC + 大堆 Slab（CI `build_tests_ipc`；脚本 `./scripts/run_tests_ipc.sh`） |
 | `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | 再上示例模块 A/B/GPIO/Multi（CI `build_tests_full`；`./scripts/run_tests_full.sh`） |
 | `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop`（CI `build_tests_block`） |
+| `prj.conf;prj_data_bus_optimized.conf` | Data Bus 64/128/512B slab + `NO_MALLOC` 固定池路径（CI `build_tests_data_bus_optimized`） |
 | `prj_test_watchdog.conf` | 看门狗相关套件 |
 
 示例（BLOCK 溢出策略）：

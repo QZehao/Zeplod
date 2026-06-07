@@ -248,10 +248,16 @@ Block struct slab:  sizeof(data_bus_block_t) × MAX_BLOCKS
                     ≈ 32B × 32 = 1024 B
 
 Data slabs (default):
+  64B  × 0 = 0 B      (optional; robot profile: 16)
+  128B × 0 = 0 B      (optional; robot profile: 8)
   256B × 8 = 2048 B
+  512B × 0 = 0 B      (optional; robot profile: 8)
   1KB  × 4 = 4096 B
   4KB  × 2 = 8192 B
   Total = 14336 B
+
+CONFIG_DATA_BUS_NO_MALLOC:
+  Disables k_malloc fallback on thread path; slab exhaustion returns -ENOMEM (recommended for hard real-time)
 
 Channel slab:       sizeof(data_bus_channel_t) × MAX_CHANNELS
                     ≈ 200B × 8 = 1600 B
@@ -279,7 +285,16 @@ int data_bus_deinit(void);
 ### Channel Management
 
 ```c
+#define DATA_BUS_CHANNEL_DEFAULT   0U
+#define DATA_BUS_CHANNEL_OVERWRITE BIT(0)
+
+typedef struct {
+    uint32_t flags;
+} data_bus_channel_cfg_t;
+
 int  data_bus_channel_create(const char *name, data_bus_channel_t **out_channel);
+int  data_bus_channel_create_ex(const char *name, const data_bus_channel_cfg_t *cfg,
+                                data_bus_channel_t **out_channel);
 int  data_bus_channel_destroy(data_bus_channel_t *ch);
 data_bus_channel_t *data_bus_channel_find(const char *name);
 ```
@@ -293,17 +308,22 @@ data_bus_channel_t *data_bus_channel_find(const char *name);
 | -EBUSY | Still has active consumers |
 | -EAGAIN | Queue not empty or dispatch in progress (retry later) |
 
+`DATA_BUS_CHANNEL_OVERWRITE`: single-slot overwrite mode for high-rate sensors; `peak_queue_usage` stays ≤ 1.
+
 ### Publish
 
 ```c
 int data_bus_publish(data_bus_channel_t *ch, const void *data, size_t len);
 int data_bus_publish_block(data_bus_channel_t *ch, data_bus_block_t *block);
+int data_bus_publish_inplace(data_bus_channel_t *ch, size_t len,
+                             data_bus_fill_fn_t fill, void *user_data);
 ```
 
 - `publish()`: Data is copied into internal block; callable from ISR/thread
 - `publish_block()`: Zero-copy; block must be from `data_bus_mem_alloc()`
-- Both return `-ENOBUFS` when queue is full
-- **No consumers**: Blocks are still enqueued; the dispatcher thread drains the queue and `release`s each block (avoids leaks). `publish_block` failure leaves ownership with the caller (`release` required)
+- `publish_inplace()`: Allocates a block, `fill` writes payload (no extra memcpy)
+- Both return `-ENOBUFS` when queue is full (overwrite mode also drops new data if the queued block is still retained)
+- **No consumers**: Blocks are still enqueued; the dispatcher thread drains the queue and `release`s each block (avoids leaks). If `publish_block()` fails, the block still has `ref_count == 0`; ownership remains with the caller, which must use `data_bus_mem_free()` (not `data_bus_block_release()`)
 
 ### Consumer Management
 
@@ -417,6 +437,52 @@ data_bus_consumer_register(temp_ch, &cfg2, NULL);
 /* One publish, both consumers receive shared references to the same block */
 data_bus_publish(temp_ch, &temp, sizeof(temp));
 ```
+
+### Scenario 5: High-Rate IMU (OVERWRITE + publish_inplace)
+
+```c
+static int imu_fill(void *buf, size_t len, void *ud)
+{
+    memcpy(buf, ud, len);
+    return 0;
+}
+
+void imu_init(void)
+{
+    data_bus_channel_cfg_t ch_cfg = { .flags = DATA_BUS_CHANNEL_OVERWRITE };
+    data_bus_channel_create_ex("imu", &ch_cfg, &imu_ch);
+    /* register consumer ... */
+}
+
+/* 1 kHz publish: only latest sample kept; peak_queue_usage <= 1 */
+data_bus_publish_inplace(imu_ch, sizeof(imu_sample_t), imu_fill, &sample);
+```
+
+---
+
+## Callback Contract
+
+**Allowed in callbacks**:
+
+- `data_bus_block_ptr()` / `data_bus_block_len()` / `data_bus_block_retain()` / `data_bus_block_release()`
+- `data_bus_publish()` / `data_bus_publish_block()` / `data_bus_publish_inplace()` (mind recursion depth)
+
+**Forbidden in callbacks**:
+
+- `data_bus_consumer_unregister()` → `-EDEADLK`
+- `data_bus_channel_create()` / `data_bus_channel_destroy()`
+- `data_bus_deinit()`
+
+---
+
+## Channel Selection Guide
+
+| Scenario | Recommended config | Publish API |
+|----------|-------------------|-------------|
+| IMU / encoder / attitude | `OVERWRITE` + small slab (64/128B) | `publish_inplace` or `publish_block` |
+| Motor feedback (high rate) | `OVERWRITE` + `NO_MALLOC` | `publish_block` |
+| Command queue / log stream | Default queue | `data_bus_publish()` |
+| Async retain needed | Any + `manual_release=true` | `publish_block` + retain |
 
 ---
 

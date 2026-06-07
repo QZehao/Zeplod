@@ -27,7 +27,7 @@ extern "C" {
  * @brief 初始化预分配的通道对象
  * @return 成功返回 0
  */
-int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name);
+int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name, uint32_t flags);
 
 /**
  * @brief 重置通道对象（清空消费者，排空队列）

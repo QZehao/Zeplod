@@ -148,11 +148,49 @@ static void channel_publish_release(data_bus_channel_t* ch) {
     }
 }
 
+static bool channel_is_overwrite(const data_bus_channel_t* ch) {
+    return (ch->flags & DATA_BUS_CHANNEL_OVERWRITE) != 0U;
+}
+
+static uint32_t channel_queue_capacity(const data_bus_channel_t* ch) {
+    return channel_is_overwrite(ch) ? 1U : CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+}
+
+static data_bus_block_t* channel_queue_peek_front(data_bus_channel_t* ch) {
+    if (ch->queue_used == 0U) {
+        return NULL;
+    }
+    return ch->queue[ch->queue_head];
+}
+
+static data_bus_block_t* channel_queue_dequeue(data_bus_channel_t* ch) {
+    if (ch->queue_used == 0U) {
+        return NULL;
+    }
+
+    data_bus_block_t* block = ch->queue[ch->queue_head];
+
+    ch->queue_head = (ch->queue_head + 1U) % CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+    ch->queue_used--;
+    return block;
+}
+
+static bool channel_queue_enqueue(data_bus_channel_t* ch, data_bus_block_t* block) {
+    if (ch->queue_used >= channel_queue_capacity(ch)) {
+        return false;
+    }
+
+    ch->queue[ch->queue_tail] = block;
+    ch->queue_tail = (ch->queue_tail + 1U) % CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+    ch->queue_used++;
+    return true;
+}
+
 /* ============================================================================
  * 通道对象初始化/重置
  * ============================================================================ */
 
-int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
+int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name, uint32_t flags) {
     if (ch == NULL || name == NULL) {
         return -EINVAL;
     }
@@ -168,7 +206,10 @@ int data_bus_channel_obj_init(data_bus_channel_t* ch, const char* name) {
     }
 
     ch->name = ch->name_storage;
-    ring_buf_init(&ch->queue, sizeof(ch->queue_buf), ch->queue_buf);
+    ch->flags = flags;
+    ch->queue_head = 0U;
+    ch->queue_tail = 0U;
+    ch->queue_used = 0U;
     /* k_spinlock 零初始化是有效的 */
     atomic_set(&ch->active, 1);
     ch->next_seq = 0;
@@ -187,18 +228,14 @@ void data_bus_channel_drain_pending(data_bus_channel_t* ch, bool run_dispatch) {
 
     while (true) {
         data_bus_block_t* block = NULL;
-        size_t            len = 0;
 
         k_spinlock_key_t key = k_spin_lock(&ch->lock);
-        if (ch->queue_used > 0) {
-            len = ring_buf_get(&ch->queue, (uint8_t*) &block, sizeof(block));
-            if (len == sizeof(block) && block != NULL) {
-                ch->queue_used--;
-            }
+        if (ch->queue_used > 0U) {
+            block = channel_queue_dequeue(ch);
         }
         k_spin_unlock(&ch->lock, key);
 
-        if (len != sizeof(block) || block == NULL) {
+        if (block == NULL) {
             break;
         }
 
@@ -237,12 +274,19 @@ void data_bus_channel_obj_reset(data_bus_channel_t* ch) {
  * ============================================================================ */
 
 int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) {
+    static const data_bus_channel_cfg_t default_cfg = {.flags = DATA_BUS_CHANNEL_DEFAULT};
+
+    return data_bus_channel_create_ex(name, &default_cfg, out_channel);
+}
+
+int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg,
+                               data_bus_channel_t** out_channel) {
     int ready = data_bus_require_initialized();
 
     if (ready != 0) {
         return ready;
     }
-    if (out_channel == NULL) {
+    if (out_channel == NULL || cfg == NULL) {
         return -EINVAL;
     }
     if (!name_valid(name)) {
@@ -282,7 +326,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) 
     }
 
     /* 初始化通道 */
-    ret = data_bus_channel_obj_init(ch, name);
+    ret = data_bus_channel_obj_init(ch, name, cfg->flags);
     if (ret != 0) {
         k_mem_slab_free(&data_bus_channel_slab, ch);
         k_mutex_unlock(&g_channels_lock);
@@ -296,7 +340,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) 
 
     k_mutex_unlock(&g_channels_lock);
 
-    LOG_DBG("Channel '%s' created (total=%u/%u)", name, total, CONFIG_DATA_BUS_MAX_CHANNELS);
+    LOG_DBG("Channel '%s' created (total=%u/%u flags=0x%x)", name, total, CONFIG_DATA_BUS_MAX_CHANNELS, cfg->flags);
     return 0;
 }
 
@@ -412,7 +456,7 @@ data_bus_channel_t* data_bus_channel_find(const char* name) {
  * 内部辅助：将块入队到通道
  * ============================================================================ */
 
-static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t* out_seq) {
+static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t* out_seq) {
 #if IS_ENABLED(CONFIG_DATA_BUS_DEBUG_REFCNT)
     __ASSERT(atomic_get(&block->ref_count) == 0, "block ref_count must be 0 before enqueue");
 #endif
@@ -422,42 +466,54 @@ static uint32_t channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* 
     /* SMP：与 destroy 竞态时拒绝入队，避免访问已释放的 ch（调用方须 mem_free block） */
     if (!atomic_get(&ch->active) || atomic_get(&g_shutting_down)) {
         k_spin_unlock(&ch->lock, key);
-        return 0;
+        return false;
     }
 
-    if (ch->queue_used >= CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH) {
+    if (channel_is_overwrite(ch) && ch->queue_used > 0U) {
+        data_bus_block_t* old = channel_queue_peek_front(ch);
+
+        if (old != NULL && atomic_get(&old->ref_count) == 1) {
+            (void) channel_queue_dequeue(ch);
+            data_bus_block_release(old);
+            ch->drop_count++;
+        } else {
+            /* 旧块仍被 retain：丢弃新数据，避免 UAF */
+            k_spin_unlock(&ch->lock, key);
+            return false;
+        }
+    } else if (ch->queue_used >= channel_queue_capacity(ch)) {
         k_spin_unlock(&ch->lock, key);
-        return 0;
+        return false;
     }
 
     uint32_t seq = ch->next_seq;
     block->seq = seq;
     atomic_set(&block->ref_count, 1);
 
-    uint32_t ret = ring_buf_put(&ch->queue, (uint8_t*) &block, sizeof(block));
-    if (ret == sizeof(block)) {
-        ch->next_seq++;
-        ch->publish_count++;
-        ch->queue_used++;
-        if (out_seq != NULL) {
-            *out_seq = seq;
-        }
-        if (ch->queue_used > ch->peak_queue_usage) {
-            ch->peak_queue_usage = ch->queue_used;
-        }
-    } else {
+    if (!channel_queue_enqueue(ch, block)) {
         atomic_set(&block->ref_count, 0);
+        k_spin_unlock(&ch->lock, key);
+        return false;
     }
+
+    ch->next_seq++;
+    ch->publish_count++;
+    if (out_seq != NULL) {
+        *out_seq = seq;
+    }
+    if (ch->queue_used > ch->peak_queue_usage) {
+        ch->peak_queue_usage = ch->queue_used;
+    }
+
     k_spin_unlock(&ch->lock, key);
-    return ret;
+    return true;
 }
 
 /**
  * @brief 入队失败时释放块并更新统计
  * @return -ESHUTDOWN 通道已关闭；-ENOBUFS 队列已满
  */
-static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t enqueue_ret,
-                                          bool free_block) {
+static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block_t* block, bool free_block) {
     if (free_block) {
         data_bus_mem_free(block);
     }
@@ -468,11 +524,18 @@ static int publish_handle_enqueue_failure(data_bus_channel_t* ch, data_bus_block
         return -ESHUTDOWN;
     }
     ch->drop_count++;
-    ch->queue_full_count++;
+    if (channel_is_overwrite(ch) && ch->queue_used > 0U) {
+        /* overwrite + retain 竞态：旧块仍被持有，新数据被丢弃 */
+    } else {
+        ch->queue_full_count++;
+    }
     k_spin_unlock(&ch->lock, fkey);
 
-    ARG_UNUSED(enqueue_ret);
-    LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
+    if (channel_is_overwrite(ch)) {
+        LOG_WRN("Publish to '%s' dropped: overwrite slot busy (retained block pending)", ch->name);
+    } else {
+        LOG_WRN("Publish to '%s' dropped: queue full (depth=%u)", ch->name, CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH);
+    }
     return -ENOBUFS;
 }
 
@@ -539,12 +602,12 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     }
 
     /* 入队 */
-    uint32_t ret;
+    bool     enqueued;
     uint32_t published_seq = 0;
     size_t   published_len = block->len;
 
     if (in_isr) {
-        ret = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
     } else {
         k_mutex_lock(&g_channels_lock, K_FOREVER);
         if (!channel_in_table_locked(ch)) {
@@ -559,12 +622,12 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
             channel_publish_release(ch);
             return -ESHUTDOWN;
         }
-        ret = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
         k_mutex_unlock(&g_channels_lock);
     }
 
-    if (ret != sizeof(block)) {
-        int err = publish_handle_enqueue_failure(ch, block, ret, true);
+    if (!enqueued) {
+        int err = publish_handle_enqueue_failure(ch, block, true);
         channel_publish_release(ch);
         return err;
     }
@@ -607,7 +670,7 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
         return ready;
     }
 
-    uint32_t ret;
+    bool     enqueued;
     uint32_t published_seq = 0;
     size_t   published_len = block->len;
 
@@ -624,7 +687,7 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
 #endif
 
     if (in_isr) {
-        ret = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
     } else {
         k_mutex_lock(&g_channels_lock, K_FOREVER);
         if (!channel_in_table_locked(ch)) {
@@ -637,11 +700,11 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
             channel_publish_release(ch);
             return -ESHUTDOWN;
         }
-        ret = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
         k_mutex_unlock(&g_channels_lock);
     }
-    if (ret != sizeof(block)) {
-        int err = publish_handle_enqueue_failure(ch, block, ret, false);
+    if (!enqueued) {
+        int err = publish_handle_enqueue_failure(ch, block, false);
         channel_publish_release(ch);
         return err;
     }
@@ -649,6 +712,110 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
     LOG_DBG("publish_block to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
 
     /* 通知分发器（就绪队列 + 信号量） */
+    data_bus_ready_signal(ch);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)
+    if (!in_isr) {
+        data_bus_event_bridge_notify(ch, published_seq, published_len);
+    }
+#endif
+
+    channel_publish_release(ch);
+    return 0;
+}
+
+int data_bus_publish_inplace(data_bus_channel_t* ch, size_t len, data_bus_fill_fn_t fill, void* user_data) {
+    int  ready = data_bus_require_initialized();
+    bool in_isr = k_is_in_isr();
+
+    if (ready != 0) {
+        return ready;
+    }
+    if (ch == NULL || fill == NULL) {
+        return -EINVAL;
+    }
+    if (len == 0) {
+        return -EINVAL;
+    }
+
+    ready = channel_publish_acquire(ch, in_isr);
+    if (ready != 0) {
+        return ready;
+    }
+
+    data_bus_block_t* block = NULL;
+
+    if (in_isr) {
+        block = data_bus_mem_alloc_isr(len);
+    } else {
+        block = data_bus_mem_alloc(len);
+    }
+    if (block == NULL) {
+        LOG_ERR("publish_inplace to '%s' failed: block allocation (len=%zu)", ch->name, len);
+        k_spinlock_key_t fkey = k_spin_lock(&ch->lock);
+        ch->alloc_fail_count++;
+        k_spin_unlock(&ch->lock, fkey);
+        channel_publish_release(ch);
+        return -ENOMEM;
+    }
+
+    bool warn_memory_fallback = channel_note_block_memory(ch, block);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE) && (CONFIG_DATA_BUS_FALLBACK_WARN_THRESHOLD > 0)
+    if (warn_memory_fallback && !in_isr) {
+        data_bus_stats_t stats;
+        data_bus_channel_get_stats(ch, &stats);
+        data_bus_event_bridge_notify_memory_warning(ch, stats.malloc_fallback_count, stats.slab_exhausted_count);
+    }
+#else
+    ARG_UNUSED(warn_memory_fallback);
+#endif
+
+    int fill_ret = fill(block->ptr, len, user_data);
+    if (fill_ret != 0) {
+        data_bus_mem_free(block);
+        channel_publish_release(ch);
+        return fill_ret;
+    }
+
+    if (!atomic_get(&ch->active) || atomic_get(&g_shutting_down)) {
+        data_bus_mem_free(block);
+        channel_publish_release(ch);
+        return -ESHUTDOWN;
+    }
+
+    bool     enqueued;
+    uint32_t published_seq = 0;
+    size_t   published_len = block->len;
+
+    if (in_isr) {
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
+    } else {
+        k_mutex_lock(&g_channels_lock, K_FOREVER);
+        if (!channel_in_table_locked(ch)) {
+            k_mutex_unlock(&g_channels_lock);
+            data_bus_mem_free(block);
+            channel_publish_release(ch);
+            return -EINVAL;
+        }
+        if (atomic_get(&g_shutting_down)) {
+            k_mutex_unlock(&g_channels_lock);
+            data_bus_mem_free(block);
+            channel_publish_release(ch);
+            return -ESHUTDOWN;
+        }
+        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        k_mutex_unlock(&g_channels_lock);
+    }
+
+    if (!enqueued) {
+        int err = publish_handle_enqueue_failure(ch, block, true);
+        channel_publish_release(ch);
+        return err;
+    }
+
+    LOG_DBG("publish_inplace to '%s' seq=%u len=%zu", ch->name, published_seq, published_len);
+
     data_bus_ready_signal(ch);
 
 #if IS_ENABLED(CONFIG_DATA_BUS_EVENT_BRIDGE)

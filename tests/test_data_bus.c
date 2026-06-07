@@ -24,6 +24,7 @@
 #include <zephyr/ztest.h>
 #include <string.h>
 #include "data_bus.h"
+#include "data_bus_channel.h"
 #include "data_bus_internal.h"
 #include "data_bus_memory.h"
 #include "ztest_sync.h"
@@ -41,7 +42,9 @@ static struct k_sem      g_test_sem;
 static atomic_t          g_call_count;
 static uint32_t          g_recv_seq = 0;
 static data_bus_block_t* g_retained_block = NULL;
+#if !IS_ENABLED(CONFIG_DATA_BUS_NO_MALLOC)
 static uint8_t           g_large_payload[4097];
+#endif
 static struct k_thread   g_unregister_thread;
 static struct k_thread   g_deinit_thread;
 static K_THREAD_STACK_DEFINE(g_unregister_stack, 1024);
@@ -990,6 +993,7 @@ ZTEST(test_data_bus, test_reset_stats) {
     data_bus_deinit();
 }
 
+#if !IS_ENABLED(CONFIG_DATA_BUS_NO_MALLOC)
 /**
  * @brief 测试 k_malloc fallback 与 slab 耗尽标记统计
  */
@@ -1065,6 +1069,7 @@ ZTEST(test_data_bus, test_publish_block_retry_counts_memory_once) {
     zassert_equal(data_bus_channel_destroy(ch), 0, NULL);
     zassert_equal(data_bus_deinit(), 0, NULL);
 }
+#endif
 
 /**
  * @brief publish_block 在 ref_count != 0 时应拒绝
@@ -1171,6 +1176,381 @@ ZTEST(test_data_bus, test_requires_init) {
     int                 ret = data_bus_channel_create("no_init_ch", &ch);
     zassert_equal(ret, -ENODEV, "未初始化应返回 -ENODEV");
     zassert_is_null(ch, "不应输出通道指针");
+}
+
+/**
+ * @brief 指针队列：destroy 前 drain 排空（PR-1 回归）
+ */
+ZTEST(test_data_bus, test_queue_drain_before_destroy) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+    zassert_equal(data_bus_channel_create("drain_ch", &ch), 0, NULL);
+
+    for (int i = 0; i < 3; i++) {
+        data_bus_block_t* block = data_bus_mem_alloc(1U);
+        zassert_not_null(block, "block allocation %d failed", i);
+        data_bus_block_acquire(block);
+
+        k_spinlock_key_t key = k_spin_lock(&ch->lock);
+        ch->queue[ch->queue_tail] = block;
+        ch->queue_tail = (ch->queue_tail + 1U) % CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+        ch->queue_used++;
+        k_spin_unlock(&ch->lock, key);
+    }
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    zassert_equal(ch->queue_used, 3U, "queue should hold 3 blocks before drain");
+    k_spin_unlock(&ch->lock, key);
+
+    data_bus_channel_drain_pending(ch, false);
+
+    key = k_spin_lock(&ch->lock);
+    zassert_equal(ch->queue_used, 0U, "drain should empty queue");
+    k_spin_unlock(&ch->lock, key);
+
+    zassert_equal(data_bus_channel_destroy(ch), 0, NULL);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+static void overwrite_seq_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
+    ARG_UNUSED(ch);
+    ARG_UNUSED(user_data);
+
+    atomic_inc(&g_call_count);
+    g_recv_seq = block->seq;
+    k_sem_give(&g_test_sem);
+}
+
+/**
+ * @brief OVERWRITE 通道：连续 publish 后消费者收到最新 seq
+ */
+ZTEST(test_data_bus, test_overwrite_latest_seq) {
+    data_bus_channel_t*          ch = NULL;
+    data_bus_consumer_cfg_t      cfg = {
+        .name = "ow_cons",
+        .manual_release = false,
+        .callback = overwrite_seq_consumer_cb,
+        .user_data = NULL,
+    };
+    const data_bus_channel_cfg_t ch_cfg = {.flags = DATA_BUS_CHANNEL_OVERWRITE};
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create_ex("ow_ch", &ch_cfg, &ch), 0, NULL);
+
+    const uint8_t payload[] = {0x01};
+    const int     publish_count = 100;
+
+    for (int i = 0; i < publish_count; i++) {
+        zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, "publish %d", i);
+    }
+
+    data_bus_test_wait_channel_quiescent(ch);
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_true(stats.peak_queue_usage <= 1U, "overwrite peak_queue_usage must be <= 1");
+
+    data_bus_consumer_t* cons = NULL;
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+    zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+    zassert_equal(k_sem_take(&g_test_sem, K_MSEC(500)), 0, NULL);
+    zassert_equal(g_recv_seq, (uint32_t) publish_count, "consumer should see post-burst seq");
+
+    zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+/**
+ * @brief OVERWRITE 无消费者时 peak_queue_usage <= 1
+ */
+ZTEST(test_data_bus, test_overwrite_peak_queue_no_consumer) {
+    data_bus_channel_t*          ch = NULL;
+    const data_bus_channel_cfg_t ch_cfg = {.flags = DATA_BUS_CHANNEL_OVERWRITE};
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create_ex("ow_peak", &ch_cfg, &ch), 0, NULL);
+
+    const uint8_t payload[] = {0x02};
+    for (int i = 0; i < CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH + 10; i++) {
+        zassert_equal(data_bus_publish(ch, payload, sizeof(payload)), 0, NULL);
+    }
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_true(stats.peak_queue_usage <= 1U, NULL);
+    zassert_equal(stats.publish_count, (uint32_t) (CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH + 10), NULL);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+/**
+ * @brief OVERWRITE + retain：队列中旧块 ref_count!=1 时丢弃新数据（无 UAF）
+ */
+ZTEST(test_data_bus, test_overwrite_retain_drops_new) {
+    data_bus_channel_t*          ch = NULL;
+    const data_bus_channel_cfg_t ch_cfg = {.flags = DATA_BUS_CHANNEL_OVERWRITE};
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create_ex("ow_retain_ch", &ch_cfg, &ch), 0, NULL);
+
+    data_bus_block_t* queued = data_bus_mem_alloc(1U);
+    zassert_not_null(queued, NULL);
+    data_bus_block_acquire(queued);
+    zassert_not_null(data_bus_block_retain(queued), NULL);
+
+    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    ch->queue[ch->queue_tail] = queued;
+    ch->queue_tail = (ch->queue_tail + 1U) % CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+    ch->queue_used = 1U;
+    k_spin_unlock(&ch->lock, key);
+
+    const uint8_t p2[] = {0x02};
+    zassert_equal(data_bus_publish(ch, p2, sizeof(p2)), -ENOBUFS, "new data dropped while queued block retained");
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_equal(stats.drop_count, 1U, NULL);
+
+    key = k_spin_lock(&ch->lock);
+    queued = ch->queue[ch->queue_head];
+    ch->queue_head = (ch->queue_head + 1U) % CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH;
+    ch->queue_used--;
+    k_spin_unlock(&ch->lock, key);
+    data_bus_block_release(queued);
+    data_bus_block_release(queued);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+#if CONFIG_DATA_BUS_SLAB_64_COUNT > 0
+ZTEST(test_data_bus, test_slab_64_allocation) {
+    data_bus_test_setup();
+
+    data_bus_block_t* block = data_bus_mem_alloc(48);
+    zassert_not_null(block, NULL);
+    zassert_false(block->malloc_fallback, "48B should use 64B slab");
+    zassert_not_null(block->slab, "should be slab-backed");
+    data_bus_mem_free(block);
+}
+#endif
+
+#if CONFIG_DATA_BUS_SLAB_128_COUNT > 0
+ZTEST(test_data_bus, test_slab_128_allocation) {
+    data_bus_test_setup();
+
+    data_bus_block_t* block = data_bus_mem_alloc(100);
+    zassert_not_null(block, NULL);
+    zassert_false(block->malloc_fallback, NULL);
+    data_bus_mem_free(block);
+}
+#endif
+
+#if CONFIG_DATA_BUS_SLAB_512_COUNT > 0
+ZTEST(test_data_bus, test_slab_512_allocation) {
+    data_bus_test_setup();
+
+    data_bus_block_t* block = data_bus_mem_alloc(400);
+    zassert_not_null(block, NULL);
+    zassert_false(block->malloc_fallback, NULL);
+    data_bus_mem_free(block);
+}
+#endif
+
+#if IS_ENABLED(CONFIG_DATA_BUS_NO_MALLOC)
+ZTEST(test_data_bus, test_no_malloc_exhaustion) {
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+
+    data_bus_channel_t* ch = NULL;
+    zassert_equal(data_bus_channel_create("no_malloc_ch", &ch), 0, NULL);
+
+#if IS_ENABLED(CONFIG_DATA_BUS_SLAB_ENABLE) && (CONFIG_DATA_BUS_SLAB_256_COUNT > 0)
+    data_bus_block_t* blocks[CONFIG_DATA_BUS_SLAB_256_COUNT + 1];
+    memset(blocks, 0, sizeof(blocks));
+
+    for (int i = 0; i < CONFIG_DATA_BUS_SLAB_256_COUNT + 1; i++) {
+        blocks[i] = data_bus_mem_alloc(200);
+        if (i < CONFIG_DATA_BUS_SLAB_256_COUNT) {
+            zassert_not_null(blocks[i], "block %d", i);
+            zassert_false(blocks[i]->malloc_fallback, NULL);
+        } else {
+            zassert_is_null(blocks[i], "NO_MALLOC must not fall back to k_malloc");
+        }
+    }
+
+    for (int i = 0; i < CONFIG_DATA_BUS_SLAB_256_COUNT; i++) {
+        data_bus_mem_free(blocks[i]);
+    }
+#endif
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_equal(stats.malloc_fallback_count, 0U, NULL);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+#endif
+
+static int inplace_fill_ok(void* buf, size_t len, void* user_data) {
+    const char* msg = (const char*) user_data;
+
+    if (msg == NULL) {
+        return -EINVAL;
+    }
+    size_t msg_len = strlen(msg) + 1U;
+    if (msg_len > len) {
+        return -EINVAL;
+    }
+    memcpy(buf, msg, msg_len);
+    return 0;
+}
+
+static int inplace_fill_fail(void* buf, size_t len, void* user_data) {
+    ARG_UNUSED(buf);
+    ARG_UNUSED(len);
+    ARG_UNUSED(user_data);
+    return -EIO;
+}
+
+/**
+ * @brief publish_inplace 与 publish_block 语义一致
+ */
+ZTEST(test_data_bus, test_publish_inplace) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_t*    cons = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "inplace_cons",
+        .manual_release = false,
+        .callback = auto_consumer_cb,
+        .user_data = NULL,
+    };
+    const char* msg = "inplace zero-copy";
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("inplace_ch", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+
+    size_t msg_len = strlen(msg) + 1U;
+    zassert_equal(data_bus_publish_inplace(ch, msg_len, inplace_fill_ok, (void*) msg), 0, NULL);
+    zassert_equal(k_sem_take(&g_test_sem, K_MSEC(200)), 0, NULL);
+    zassert_equal(atomic_get(&g_call_count), 1, NULL);
+
+    zassert_equal(data_bus_publish_inplace(ch, msg_len, inplace_fill_fail, NULL), -EIO, NULL);
+
+    zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+static void slow_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data) {
+    ARG_UNUSED(ch);
+    ARG_UNUSED(block);
+    ARG_UNUSED(user_data);
+
+    k_sleep(K_MSEC(5));
+    atomic_inc(&g_call_count);
+    k_sem_give(&g_test_sem);
+}
+
+static int inplace_fill_imu(void* buf, size_t len, void* user_data) {
+    if (user_data == NULL || buf == NULL) {
+        return -EINVAL;
+    }
+    memcpy(buf, user_data, len);
+    return 0;
+}
+
+/**
+ * @brief 基准场景 B：慢消费者导致队列满
+ */
+ZTEST(test_data_bus, test_benchmark_slow_consumer_queue_full) {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_t*    cons = NULL;
+    data_bus_consumer_cfg_t cfg = {
+        .name = "slow_cons",
+        .manual_release = false,
+        .callback = slow_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create("slow_q", &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+
+    const uint8_t payload[256] = {0xAB};
+    int           drops = 0;
+
+    for (int i = 0; i < CONFIG_DATA_BUS_CHANNEL_QUEUE_DEPTH + 8; i++) {
+        int ret = data_bus_publish(ch, payload, sizeof(payload));
+        if (ret == -ENOBUFS) {
+            drops++;
+        } else {
+            zassert_equal(ret, 0, "publish %d", i);
+        }
+    }
+
+    zassert_true(drops > 0, "slow consumer should cause queue pressure");
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    LOG_INF("benchmark slow consumer: publish=%u drop=%u queue_full=%u peak_q=%u",
+            stats.publish_count, stats.drop_count, stats.queue_full_count, stats.peak_queue_usage);
+
+    data_bus_test_wait_channel_quiescent(ch);
+    zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
+}
+
+/**
+ * @brief 基准场景 A：IMU 模拟（OVERWRITE + 高频 publish）
+ */
+ZTEST(test_data_bus, test_benchmark_imu_overwrite) {
+    data_bus_channel_t*          ch = NULL;
+    const data_bus_channel_cfg_t ch_cfg = {.flags = DATA_BUS_CHANNEL_OVERWRITE};
+    data_bus_consumer_t*         cons = NULL;
+    data_bus_consumer_cfg_t      cfg = {
+        .name = "imu_cons",
+        .manual_release = false,
+        .callback = auto_consumer_cb,
+        .user_data = NULL,
+    };
+
+    data_bus_test_setup();
+    zassert_equal(data_bus_init(), 0, NULL);
+    zassert_equal(data_bus_channel_create_ex("imu_bench", &ch_cfg, &ch), 0, NULL);
+    zassert_equal(data_bus_consumer_register(ch, &cfg, &cons), 0, NULL);
+
+    uint8_t imu_payload[64];
+    for (int round = 0; round < 200; round++) {
+        imu_payload[0] = (uint8_t) round;
+        zassert_equal(data_bus_publish_inplace(ch, sizeof(imu_payload), inplace_fill_imu, imu_payload), 0, NULL);
+    }
+
+    data_bus_stats_t stats;
+    data_bus_channel_get_stats(ch, &stats);
+    zassert_true(stats.peak_queue_usage <= 1U, NULL);
+    zassert_equal(stats.alloc_fail_count, 0U, NULL);
+    LOG_INF("benchmark IMU overwrite: publish=%u drop=%u peak_q=%u malloc_fb=%u",
+            stats.publish_count, stats.drop_count, stats.peak_queue_usage, stats.malloc_fallback_count);
+
+    data_bus_test_wait_channel_quiescent(ch);
+    zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
+
+    data_bus_test_destroy_channel(ch);
+    zassert_equal(data_bus_deinit(), 0, NULL);
 }
 
 /* ============================================================================

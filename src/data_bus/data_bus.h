@@ -62,6 +62,23 @@ typedef struct data_bus_consumer data_bus_consumer_t;
  */
 typedef void (*data_bus_consume_fn_t)(data_bus_channel_t* ch, data_bus_block_t* block, void* user_data);
 
+/**
+ * @brief 零拷贝发布时的填充回调
+ * @return 0 成功，负 errno 失败（块将被释放，不会入队）
+ */
+typedef int (*data_bus_fill_fn_t)(void* buf, size_t len, void* user_data);
+
+/* ============================================================================
+ * 通道配置
+ * ============================================================================ */
+
+#define DATA_BUS_CHANNEL_DEFAULT   0U
+#define DATA_BUS_CHANNEL_OVERWRITE BIT(0)
+
+typedef struct {
+    uint32_t flags; /**< DATA_BUS_CHANNEL_* */
+} data_bus_channel_cfg_t;
+
 /* ============================================================================
  * 消费者配置
  * ============================================================================ */
@@ -85,7 +102,7 @@ typedef struct {
 
 typedef struct {
     uint32_t publish_count;         /**< 发布次数 */
-    uint32_t drop_count;            /**< 丢弃次数（ring_buf 满） */
+    uint32_t drop_count;            /**< 丢弃次数（队列满或 overwrite 替换/拒绝） */
     uint32_t queue_full_count;      /**< 队列满次数 */
     uint32_t alloc_fail_count;      /**< 内存分配失败次数 */
     uint32_t malloc_fallback_count; /**< 数据缓冲区回退到 k_malloc 的次数 */
@@ -141,7 +158,7 @@ typedef struct {
 /**
  * @brief 初始化 Data Bus
  *
- * 初始化全局信号量、通道表、ring_buf 元状态，
+ * 初始化全局信号量、通道表、分发就绪队列，
  * 并创建/启动分发线程。
  *
  * @return 成功返回 0，失败返回负 errno
@@ -185,6 +202,15 @@ int data_bus_deinit(void);
 int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel);
 
 /**
+ * @brief 创建命名通道（扩展配置）
+ *
+ * @param cfg flags 可含 DATA_BUS_CHANNEL_OVERWRITE（单槽覆盖，适合高频传感器）
+ * @return 与 data_bus_channel_create 相同
+ */
+int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg,
+                               data_bus_channel_t** out_channel);
+
+/**
  * @brief 销毁通道
  *
  * 若仍有活跃消费者返回 -EBUSY；
@@ -213,7 +239,7 @@ data_bus_channel_t* data_bus_channel_find(const char* name);
  * @brief 向通道发布数据（ISR / 线程统一接口）
  *
  * 自动检测上下文并内部适配：
- * - ISR：仅从 slab 分配（K_NO_WAIT），k_spin_lock 保护 ring_buf
+ * - ISR：仅从 slab 分配（K_NO_WAIT），k_spin_lock 保护通道队列
  * - 线程：从 slab 分配（或 k_malloc 兜底），k_spin_lock 保护
  *
  * 入队后通过信号量通知分发线程。
@@ -250,6 +276,17 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len);
  * @note 无消费者时与 data_bus_publish 相同：分发线程排空并 release
  */
 int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block);
+
+/**
+ * @brief 零拷贝便捷发布：分配块 → fill 回调写入 → publish_block
+ *
+ * 不产生额外 memcpy（仅 fill 回调写入 payload）。
+ * fill 失败、alloc 失败或入队失败时正确释放块。
+ *
+ * @param len 载荷长度（字节，须 > 0）
+ * @return 与 data_bus_publish 相同
+ */
+int data_bus_publish_inplace(data_bus_channel_t* ch, size_t len, data_bus_fill_fn_t fill, void* user_data);
 
 /* ============================================================================
  * 消费者管理
