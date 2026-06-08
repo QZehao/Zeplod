@@ -360,6 +360,39 @@ PROJECT EXECUTION SUCCESSFUL
 - **SMP 实验**：`ZEPHYR_TEST_BOARD=qemu_riscv32/qemu_virt_riscv32/smp`（见 §5）。
 - **避免**：`qemu_cortex_m3` 等 ARM M 系板型（见 §8.4）。
 
+### 6.8 单元测试覆盖率（`src/core/` 目标 ≥95%）
+
+QEMU 目标无主机 `.gcda` 文件；启用 `CONFIG_COVERAGE=y` 与 `CONFIG_COVERAGE_DUMP=y` 后，gcov 数据经串口以 `GCOV_COVERAGE_DUMP_START/END` 块输出，由 `run_qemu.ps1` 调用 Zephyr `gen_gcov_files.py` 与 **gcovr** 生成报告。
+
+```powershell
+. .\scripts\setup_env.ps1
+
+# 默认板型 qemu_riscv32；CI 对齐门槛 80%
+.\scripts\run_qemu.ps1 -Tests -Coverage -CoverageMin 80
+
+# 95% 冲刺目标（未达标时非零退出；当前约 77%）
+.\scripts\run_qemu.ps1 -Tests -Coverage -CoverageMin 95
+
+# 可选：指定过滤路径与最低门槛
+.\scripts\run_qemu.ps1 -Tests -Coverage -CoverageFilter "src/core/" -CoverageMin 95
+
+# 已有日志时仅重算 HTML/JSON（跳过构建与 QEMU）
+.\scripts\run_qemu.ps1 -Tests -Coverage -ReportOnly -CoverageLog coverage_qemu_qemu_riscv32.log
+```
+
+| 项 | 说明 |
+|----|------|
+| 默认 CONF | `prj.conf;prj_test_extensions.conf;prj_qemu_coverage.conf;prj_block_overflow.conf` |
+| 构建目录 | `build_tests_qemu_cov_qemu_riscv32` |
+| HTML 报告 | `coverage-qemu-core.html` |
+| 日志 | `coverage_qemu_qemu_riscv32.log` |
+| gcov 工具 | Zephyr SDK 内 `riscv64-zephyr-elf-gcov` |
+| 依赖 | `pip install gcovr` |
+
+`prj_qemu_coverage.conf` 加大堆与各服务线程栈（gcov 插桩耗栈），并开启 `EVENT_RUNTIME_STATUS` / `EVENT_DEBUG_MEM`；覆盖率构建默认关闭 `CONFIG_ZTEST_CONCURRENCY_STRESS` 以避免栈溢出。
+
+与 CI 区别：GitHub Actions 在 **`native_sim`** 上对 `src/core/` 执行 **≥80%** 门禁。本地 Windows 以 QEMU 全量 ztest 验证同一范围；**95%** 为下一阶段目标（ISR 入队、`SYS_INIT` 自动初始化等路径仍难触达）。
+
 ---
 
 ## 7. 主应用成功输出示例

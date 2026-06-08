@@ -11,6 +11,8 @@
 | `prj.conf` | **默认**：精简配置，**`CONFIG_THREAD_IPC_SERVICE=n`**，适合快速冒烟与 CI（Zephyr 4.3.0 容器使用 `native_sim`） |
 | `prj_native_sim.conf` | **叠加层**：较大堆、Slab、**`CONFIG_THREAD_IPC_SERVICE=y`**（须与 `prj.conf` 联用） |
 | `prj_ci_examples.conf` | 启用示例模块 A/B/GPIO/Multi（与上两文件联用） |
+| `prj_qemu_coverage.conf` | QEMU + gcov 叠加：加大堆/栈、开启 `EVENT_RUNTIME_STATUS` / `EVENT_DEBUG_MEM`；**须与 `prj.conf` 联用** |
+| `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 BLOCK 溢出用例（覆盖率构建默认叠加） |
 
 默认 **`tests/prj.conf` 不开启 IPC**，不链接 `test_ipc_service.c`。需要 IPC 烟测时：
 
@@ -39,8 +41,10 @@ tests/
 ├── prj.conf
 ├── prj_native_sim.conf     # native_sim 全量配置（可选）
 ├── test_event_system.c
+├── test_event_system_compat.c
 ├── test_event_queue.c
 ├── test_event_dispatcher.c
+├── test_core_coverage.c
 ├── test_module_manager.c
 ├── test_sys_memory.c
 ├── test_sys_timer.c
@@ -123,6 +127,7 @@ west build -t run --build-dir build_tests
 | `prj.conf;prj_concurrency_stress.conf` | 仅并发压测（硬件 640KB SRAM 后本地验证） |
 | `prj.conf;prj_native_sim.conf` | IPC + 大堆 Slab（CI `build_tests_ipc`；脚本 `./scripts/run_tests_ipc.sh`） |
 | `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | 再上示例模块 A/B/GPIO/Multi（CI `build_tests_full`；`./scripts/run_tests_full.sh`） |
+| `prj.conf;prj_test_extensions.conf;prj_qemu_coverage.conf;prj_block_overflow.conf` | **QEMU 覆盖率**（`run_qemu.ps1 -Tests -Coverage` 默认；目标 `src/core/` ≥95%） |
 | `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop`（CI `build_tests_block`） |
 | `prj.conf;prj_data_bus_optimized.conf` | Data Bus 64/128/512B slab + `NO_MALLOC` 固定池路径（CI `build_tests_data_bus_optimized`） |
 | `prj_test_watchdog.conf` | 看门狗相关套件 |
@@ -177,14 +182,45 @@ ZTEST_SUITE(test_module_name, NULL, NULL, NULL, NULL, NULL);
 
 ## 测试覆盖率
 
-### 使用 gcov
+### 范围与目标
+
+| 范围 | 本地目标 | CI 门禁（`.github/workflows/ci.yml`） |
+|------|----------|--------------------------------------|
+| `src/core/` | 目标 **≥95%**（QEMU 全量 ztest；当前约 **77%**，见下方说明） | **≥80%**（`native_sim` + `--coverage`） |
+
+全仓库 100% 不现实（`src/app/`、未纳入测试的 `proprietary/`、`SYS_INIT` 自动初始化路径等不在统计范围内）。
+
+### Windows / QEMU（推荐）
+
+Windows 原生无法运行 `native_sim`，使用 **`scripts/run_qemu.ps1`** 在 QEMU 上跑 ztest 并解析串口 gcov 转储：
+
+```powershell
+. .\scripts\setup_env.ps1
+
+# 构建、运行测试、生成报告（CI 对齐门槛 80%）
+.\scripts\run_qemu.ps1 -Tests -Coverage -CoverageMin 80
+
+# 冲刺 95% 目标（当前未达标时会非零退出）
+.\scripts\run_qemu.ps1 -Tests -Coverage -CoverageMin 95
+
+# 仅根据已有日志重算报告（跳过 QEMU）
+.\scripts\run_qemu.ps1 -Tests -Coverage -ReportOnly -CoverageLog coverage_qemu_qemu_riscv32.log
+```
+
+默认 CONF 链：`prj.conf;prj_test_extensions.conf;prj_qemu_coverage.conf;prj_block_overflow.conf`。  
+产物：`coverage-qemu-core.html`、`coverage-qemu-core-summary.json`、日志 `coverage_qemu_<board>.log`。
+
+需已安装 **Zephyr SDK**（`riscv64-zephyr-elf-gcov`）与 **gcovr**（`pip install gcovr`）。
+
+### Linux / macOS / WSL（native_sim）
 
 将 `native_sim` 或 `native_posix` 替换为当前环境可用板型：
 
 ```bash
-west build -b native_sim tests/ --build-dir build_tests -- -DCMAKE_C_FLAGS="--coverage"
-west build -t run --build-dir build_tests
-gcovr -r .. --html --html-details coverage.html
+west build -b native_sim tests/ --build-dir build_tests_cov -p always \
+  -- -DCMAKE_C_FLAGS="--coverage"
+west build -t run --build-dir build_tests_cov
+gcovr -r . --filter "src/core/" --html --html-details coverage-core.html --print-summary
 ```
 
 ## 持续集成

@@ -48,9 +48,12 @@ add_subdirectory(${APP_SRC_DIR}/modules ${CMAKE_CURRENT_BINARY_DIR}/modules)
 # =============================================================================
 target_sources(app PRIVATE
 	test_event_system.c
+	test_event_system_compat.c
 	test_event_queue.c
 	test_event_dispatcher.c
 	test_event_memory.c
+	test_core_coverage.c
+	test_core_coverage_extended.c
 	test_module_manager.c
 	test_sys_log.c
 	test_lock_order.c
