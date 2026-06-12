@@ -1088,8 +1088,8 @@ sensor_driver_status_t sensor_driver_get_status(void);
 // Analyze module dependencies
 // example_module_gpio.c
 
-#include "example_module_gpio.h"    // Own header
-#include "app_config.h"              // Application config
+#include <zeplod/example_module_gpio.h>  // Own header
+#include <zeplod/app_config.h>           // Application config
 #include <zephyr/kernel.h>           // Zephyr kernel
 
 // Dependency analysis:
@@ -1219,7 +1219,7 @@ typedef struct {
 #### 4.3 This Framework's Data Structure Practice
 
 ```c
-// src/core/event_system.h
+// include/zeplod/event_system.h
 typedef struct {
     event_type_t type;           /**< Event type */
     event_priority_t priority;   /**< Event priority */
@@ -1264,7 +1264,7 @@ typedef enum {
  */
 
 #include "<module_name>.h"
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 #ifdef CONFIG_<MODULE_NAME_UPPER>
 #include <zephyr/kernel.h>
@@ -1984,17 +1984,17 @@ clang-format -i src/modules/*.c
 
 ### 13.1 Module Creation Steps
 
-1. **Define module priority** (in `src/app/app_config.h`):
+1. **Define module priority** (in `include/zeplod/app_config.h`):
 ```c
 #define APP_INIT_PRIO_MODULE_MINE  60  // Between MODULE_MGR(54) and APP_FINAL(99)
 ```
 
-2. **Create module header** (`src/modules/my_module.h`):
+2. **Create module header** (`include/zeplod/my_module.h`):
 ```c
 #ifndef MY_MODULE_H
 #define MY_MODULE_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 typedef struct {
     uint32_t param1;
@@ -2017,7 +2017,7 @@ DECLARE_MODULE_INTERFACE(my_module);
 3. **Implement module** (`src/modules/my_module.c`):
 ```c
 #include "my_module.h"
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 static my_module_config_t g_config;
 

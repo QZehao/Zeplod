@@ -139,7 +139,8 @@ clang-tidy -p build src/core/event_system.c
 ### 头文件包含顺序
 1. `<zephyr/...>`（Zephyr 头文件 - 最高优先级）
 2. `<...>`（标准库头文件）
-3. `"..."`（本地头文件）
+3. `<zeplod/...>`（框架对外 API，见 `include/zeplod/`）
+4. `"..."`（本模块私有头文件或 `src/` 内部实现头文件，如 `*_internal.h`）
 
 ### 命名规范
 
@@ -196,17 +197,17 @@ if (result != EVENT_OK) {
 
 ### 创建新模块步骤
 
-1. **定义模块优先级**（在 `src/app/app_config.h`）：
+1. **定义模块优先级**（在 `include/zeplod/app_config.h`）：
 ```c
 #define APP_INIT_PRIO_MODULE_MINE  60  // 在 MODULE_MGR(54) 和 APP_FINAL(99) 之间
 ```
 
-2. **创建模块头文件**（`src/modules/my_module.h`）：
+2. **创建模块头文件**（`include/zeplod/my_module.h`）：
 ```c
 #ifndef MY_MODULE_H
 #define MY_MODULE_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 typedef struct {
     uint32_t param1;
@@ -228,8 +229,8 @@ DECLARE_MODULE_INTERFACE(my_module);
 
 3. **实现模块**（`src/modules/my_module.c`）：
 ```c
-#include "my_module.h"
-#include "app_config.h"
+#include <zeplod/my_module.h>
+#include <zeplod/app_config.h>
 
 static my_module_config_t g_config;
 
@@ -314,7 +315,7 @@ event_publish_from_isr(&my_event);
 
 **状态机**
 
-- 生命周期使用 `zepl_state_machine_t` + `zepl_state_machine_try_transition()`，状态集见 `state_machine.h`（`ZEP_STATE_UNINIT` … `ZEP_STATE_ERROR`）。
+- 生命周期使用 `zepl_state_machine_t` + `zepl_state_machine_try_transition()`，状态集见 `include/zeplod/state_machine.h`（`ZEP_STATE_UNINIT` … `ZEP_STATE_ERROR`）。
 - `event_system` **不使用** `ZEP_STATE_ERROR`，失败仍返回 `event_status_t`；`module_manager` / `ipc_service` 在 start/stop 路径会检查 ERROR。
 - 可与 `initialized`、`running` 等原子/布尔并存：状态机管阶段，原子管热路径与 ISR，勿混用语义。
 
@@ -356,36 +357,38 @@ zeplod/
 ├── .pre-commit-config.yaml    # pre-commit 钩子配置
 ├── boards/
 │   └── overlay.dts            # 通用设备树覆盖
+├── include/
+│   └── zeplod/                # 对外公开 API 头文件（统一 #include <zeplod/...>）
+│       ├── zeplod_framework.h # 伞头：事件系统 + 状态机 + 锁序
+│       ├── zeplod_module.h    # 伞头：模块系统
+│       ├── event_system.h
+│       ├── module_manager.h
+│       ├── app_config.h
+│       └── ...
 ├── src/
-│   ├── core/                  # 事件系统核心
-│   │   ├── event_system.c/h
+│   ├── core/                  # 事件系统实现（内部头 *\_internal.h 等）
+│   │   ├── event_system.c
 │   │   ├── event_queue.c/h
-│   │   ├── event_dispatcher.c/h
-│   │   ├── event_system_compat.c/h
-│   │   ├── state_machine.c/h    # 通用生命周期状态机
-│   │   └── lock_order.c/h       # 多锁顺序校验（调试辅助）
-│   ├── services/              # 系统服务
-│   │   ├── sys_log.c/h
-│   │   ├── sys_memory.c/h
-│   │   ├── sys_watchdog.c/h
-│   │   └── sys_timer.c/h
-│   ├── modules/              # 业务模块
-│   │   ├── module_base.h
-│   │   ├── module_manager.c/h
-│   │   ├── module_manager_compat.c/h
-│   │   ├── ipc_service/      # Thread IPC 服务
-│   │   ├── example_module_a.c/h
-│   │   ├── example_module_b.c/h
-│   │   ├── example_module_gpio.c/h
-│   │   ├── example_module_uart.c/h
-│   │   ├── example_module_ipc.c/h
-│   │   └── example_module_multi_dep.c/h
-│   ├── app/                  # 应用层
-│   │   ├── app_main.c/h
-│   │   ├── app_config.h
-│   │   ├── app_version.c/h
-│   │   └── app_kv.c/h
-│   └── proprietary/         # 商业闭源模块
+│   │   ├── event_dispatcher.c
+│   │   ├── event_system_compat.c
+│   │   ├── state_machine.c
+│   │   └── lock_order.c
+│   ├── services/              # 系统服务实现
+│   │   ├── sys_log.c
+│   │   ├── sys_memory.c
+│   │   ├── sys_watchdog.c
+│   │   └── sys_timer.c
+│   ├── modules/               # 模块管理器与 IPC 实现
+│   │   ├── module_manager.c
+│   │   ├── module_manager_compat.c
+│   │   └── ipc_service/
+│   ├── modules_examples/      # 示例模块 .c（头文件在 include/zeplod/）
+│   ├── data_bus/              # Data Bus 实现
+│   ├── app/                   # 应用层实现
+│   │   ├── app_main.c
+│   │   ├── app_version.c
+│   │   └── app_kv.c
+│   └── proprietary/           # 商业闭源模块
 ├── tests/                    # ztest 单元测试
 │   ├── CMakeLists.txt
 │   ├── Kconfig

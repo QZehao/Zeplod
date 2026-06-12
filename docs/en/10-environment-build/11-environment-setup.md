@@ -239,7 +239,7 @@ A: Yes. Simply run `west build -b <board>` separately for each board.
 
 ### Q: How do I change the log level?
 
-A: Edit the `CONFIG_SYS_LOG_LEVEL` value in `prj.conf`, or edit `src/app/app_config.h`.
+A: Edit the `CONFIG_SYS_LOG_LEVEL` value in `prj.conf`, or edit `include/zeplod/app_config.h`.
 
 ### Q: What boards does this project support?
 

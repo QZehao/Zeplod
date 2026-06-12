@@ -1429,7 +1429,7 @@ Complete module design example:
 #ifndef SENSOR_PROCESSOR_H
 #define SENSOR_PROCESSOR_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 // Configuration structure
 typedef struct {

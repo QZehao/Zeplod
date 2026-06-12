@@ -129,7 +129,7 @@ Same as other example modules, provide **`module_interface_t`**, call **`SYS_INI
 
 | Item | Description |
 |------|-------------|
-| Files | `src/modules/example_module_ipc.c`, `example_module_ipc.h` |
+| Files | `src/modules_examples/example_module_ipc.c`, `include/zeplod/example_module_ipc.h` |
 | Switch | `CONFIG_EXAMPLE_MODULE_THREAD_IPC=y` |
 | Behavior | `init` calls `ipc_service_init`; `start` calls `ipc_service_start` and creates **demo thread**, about 300ms later executes one **`ipc_call_sync`**; `stop` first **`k_thread_join` demo thread** then `ipc_service_stop` |
 | Service function | `mod_ipc_service_func`: echoes input; if **`CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE`** enabled, then **`thread_ipc_event_publish_result(EXAMPLE_MODULE_IPC_EVENT_SOURCE_ID, …)`** |

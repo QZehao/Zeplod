@@ -17,7 +17,7 @@ This document describes the four types of System Services under **`src/services/
 | Timer | `sys_timer.h` / `sys_timer.c` | One-shot/periodic callback wrapper based on kernel timer |
 | Watchdog | `sys_watchdog.h` / `sys_watchdog.c` | Soft/hardware watchdog abstraction, feeding and pre-timeout callbacks |
 
-**Initialization order**: In main firmware, each **`sys_*_init()`** is called before **`main()`** by multiple **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** in **`app_main.c`** (priority definitions in **`src/app/app_config.h`**); **`app_start()`** in **`main()`** then starts threads and modules. If a service is not initialized, corresponding API behavior follows implementation (may return error or undefined).
+**Initialization order**: In main firmware, each **`sys_*_init()`** is called before **`main()`** by multiple **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** in **`app_main.c`** (priority definitions in **`include/zeplod/app_config.h`**); **`app_start()`** in **`main()`** then starts threads and modules. If a service is not initialized, corresponding API behavior follows implementation (may return error or undefined).
 
 ---
 
@@ -28,7 +28,7 @@ The following snippets only demonstrate **typical calling order**; macros, confi
 ### Logging `sys_log`
 
 ```c
-#include "sys_log.h"
+#include <zeplod/sys_log.h>
 
 void demo_sys_log(void)
 {
@@ -50,7 +50,7 @@ void demo_sys_log(void)
 ### Memory `sys_memory`
 
 ```c
-#include "sys_memory.h"
+#include <zeplod/sys_memory.h>
 
 void demo_sys_mem(void)
 {
@@ -78,7 +78,7 @@ void demo_sys_mem(void)
 ### Timer `sys_timer`
 
 ```c
-#include "sys_timer.h"
+#include <zeplod/sys_timer.h>
 
 static void on_tick(sys_timer_handle_t t, void *user_data)
 {
@@ -112,7 +112,7 @@ void demo_sys_timer(void)
 ### Watchdog `sys_watchdog`
 
 ```c
-#include "sys_watchdog.h"
+#include <zeplod/sys_watchdog.h>
 
 void demo_sys_wdt(void)
 {

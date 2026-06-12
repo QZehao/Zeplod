@@ -246,34 +246,38 @@ zeplod/
     │   ├── data_bus_event_bridge.c    # Event system bridge (optional)
     │   ├── data_bus_internal.h        # Internal shared declarations
     │   └── Kconfig                    # Data Bus Kconfig options
-    ├── services/                      # System services
-    │   ├── sys_log.{c,h}              # Unified logging (levels, mem ring, optional RTT)
-    │   ├── sys_memory.{c,h}           # Memory pool management (with leak detection)
-    │   ├── sys_watchdog.{c,h}         # Hardware/software watchdog
-    │   └── sys_timer.{c,h}            # High-resolution timers
-    ├── modules/                       # Module manager & Thread IPC service
-    │   ├── module_base.h
-    │   ├── module_manager.{c,h}
-    │   ├── module_manager_compat.{c,h} # Module manager compatibility layer
+    ├── include/zeplod/                # Public API headers (#include <zeplod/...>)
+    │   ├── zeplod_framework.h         # Umbrella: event system + state machine + lock order
+    │   ├── event_system.h
+    │   ├── module_manager.h
+    │   ├── app_config.h
+    │   └── ...
+    ├── services/                      # System services (implementation)
+    │   ├── sys_log.c
+    │   ├── sys_memory.c
+    │   ├── sys_watchdog.c
+    │   └── sys_timer.c
+    ├── modules/                       # Module manager & Thread IPC (implementation)
+    │   ├── module_manager.c
+    │   ├── module_manager_compat.c
     │   └── ipc_service/               # Thread IPC service (Kconfig: THREAD_IPC_SERVICE)
-    │       ├── ipc_service.{c,h}
-    │       ├── ipc_service_event.{c,h}
-    │       ├── ipc_shared_mem.{c,h}
+    │       ├── ipc_service.c
+    │       ├── ipc_service_event.c
+    │       ├── ipc_shared_mem.c
     │       ├── ipc_service_example.c
     │       ├── CMakeLists.txt
     │       └── Kconfig
-    ├── modules_examples/              # Business module examples (conditional compilation)
-    │   ├── example_module_a.{c,h}
-    │   ├── example_module_b.{c,h}
-    │   ├── example_module_gpio.{c,h}
-    │   ├── example_module_uart.{c,h}
-    │   ├── example_module_ipc.{c,h}
-    │   └── example_module_multi_dep.{c,h} # Multi-dependency example
-    ├── app/                           # Application layer
-    │   ├── app_main.{c,h}
-    │   ├── app_config.h               # Feature flags, init priorities, stack sizes
-    │   ├── app_version.{c,h}          # Version API (macros injected via -D from root APP_VERSION)
-    │   └── app_kv.{c,h}               # Application key-value store (optional persist on power loss)
+    ├── modules_examples/              # Example module .c (headers in include/zeplod/)
+    │   ├── example_module_a.c
+    │   ├── example_module_b.c
+    │   ├── example_module_gpio.c
+    │   ├── example_module_uart.c
+    │   ├── example_module_ipc.c
+    │   └── example_module_multi_dep.c
+    ├── app/                           # Application layer (implementation)
+    │   ├── app_main.c
+    │   ├── app_version.c              # Version API (macros injected via -D from root APP_VERSION)
+    │   └── app_kv.c                   # Application key-value store (optional persist on power loss)
     └── proprietary/                   # Proprietary closed-source modules (optional, enabled by proprietary_manage)
 ```
 
@@ -288,7 +292,7 @@ After copying or forking this repo, complete the following steps in order for ea
 | 3 | **CMake**: In root `CMakeLists.txt`, change `project(...)` name to your product project name. |
 | 4 | **Version & Description**: Modify `APP_VERSION`, README title and product description as needed. |
 | 5 | **Board & CI**: In `prj.conf`, **`.github/workflows/ci.yml`** / **`.gitlab-ci.yml`**, make ARM matrix `board` match target hardware or trim as needed. |
-| 6 | **Example Code**: `src/modules_examples/example_*` can be deleted or replaced; sync `CMakeLists.txt`, Kconfig, and each module's **`.c` `SYS_INIT` registration** and **`app_config.h` `APP_INIT_PRIO_*`**. |
+| 6 | **Example Code**: `src/modules_examples/example_*` can be deleted or replaced (headers under `include/zeplod/`); sync `CMakeLists.txt`, Kconfig, each module **`.c` `SYS_INIT` registration**, and **`include/zeplod/app_config.h` `APP_INIT_PRIO_*`**. |
 
 > **Board examples in docs and CI**: Getting started docs may mention `nucleo_l4r5zi` and other example boards; CI is currently fixed to some Nucleo/Disco boards. **Use your actual `BOARD` and CI matrix as the source of truth**; for RAM/link issues, see **[docs/en/40-app-development/44-devicetree-memory-config.md](docs/en/40-app-development/44-devicetree-memory-config.md)**.
 
@@ -454,7 +458,7 @@ event_publish_copy_rt(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_HIGH, &data, sizeof
 
 Modules are independent business logic units:
 - **Lifecycle**: init -> start -> run -> stop -> shutdown
-- **Registration**: Dynamically registered via module manager; firmware auto-registers in **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** (see `src/app/app_config.h` and each `example_module_*.c`)
+- **Registration**: Dynamically registered via module manager; firmware auto-registers in **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** (see `include/zeplod/app_config.h` and each `example_module_*.c`)
 - **Event Handling**: Automatically routes events to subscribed modules
 - **Isolation**: Each module has its own state and configuration
 
@@ -462,7 +466,7 @@ Modules are independent business logic units:
 // Define module interface
 DECLARE_MODULE_INTERFACE(my_module);
 
-// Typical: auto-register with Zephyr initialization in module .c (define APP_INIT_PRIO_MODULE_* in app_config.h)
+// Typical: auto-register with Zephyr initialization in module .c (define APP_INIT_PRIO_MODULE_* in include/zeplod/app_config.h)
 static int my_module_auto_register(void) {
     uint32_t id;
     return module_manager_register(my_module_get_interface(), &config, &id) ? -EIO : 0;
@@ -538,7 +542,7 @@ CONFIG_SYS_WATCHDOG_TIMEOUT_MS=5000
 
 ### Application Configuration
 
-Edit `src/app/app_config.h` to customize:
+Edit `include/zeplod/app_config.h` to customize:
 - Feature flags (enable/disable modules and services)
 - Task priorities and stack sizes
 - Timing configuration
@@ -579,13 +583,13 @@ app help
 
 ## Creating Custom Modules
 
-1. Create module header file (`my_module.h`):
+1. Create module header file (`include/zeplod/my_module.h`):
 
 ```c
 #ifndef MY_MODULE_H
 #define MY_MODULE_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 typedef struct {
     uint32_t param1;
@@ -605,10 +609,10 @@ DECLARE_MODULE_INTERFACE(my_module);
 #endif
 ```
 
-2. Implement the module (`my_module.c`):
+2. Implement the module (`src/modules/my_module.c`):
 
 ```c
-#include "my_module.h"
+#include <zeplod/my_module.h>
 
 static my_module_cb_t g_my_module;
 
@@ -627,10 +631,10 @@ int my_module_start(void) {
 DECLARE_MODULE_INTERFACE(my_module);
 ```
 
-3. Register with **`SYS_INIT`** in **`my_module.c`** (add **`APP_INIT_PRIO_MODULE_MINE`** in **`app_config.h`**, value between **`APP_INIT_PRIO_MODULE_MGR`** and **`APP_INIT_PRIO_APP_FINAL`**; if depending on other registered modules, use a **larger** priority number to execute later):
+3. Register with **`SYS_INIT`** in **`my_module.c`** (add **`APP_INIT_PRIO_MODULE_MINE`** in **`include/zeplod/app_config.h`**, value between **`APP_INIT_PRIO_MODULE_MGR`** and **`APP_INIT_PRIO_APP_FINAL`**; if depending on other registered modules, use a **larger** priority number to execute later):
 
 ```c
-#include "app_config.h"
+#include <zeplod/app_config.h>
 #include <zephyr/init.h>
 #include <errno.h>
 

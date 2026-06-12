@@ -247,34 +247,38 @@ zeplod/
     │   ├── data_bus_event_bridge.c   # 事件系统桥接（可选）
     │   ├── data_bus_internal.h       # 内部共享声明
     │   └── Kconfig                   # Data Bus Kconfig 配置项
-    ├── services/                     # 系统服务
-    │   ├── sys_log.{c,h}             # 统一日志（分级、内存环、可选 RTT）
-    │   ├── sys_memory.{c,h}          # 内存池管理（带泄漏检测）
-    │   ├── sys_watchdog.{c,h}        # 硬件/软件看门狗
-    │   └── sys_timer.{c,h}           # 高分辨率定时器
-    ├── modules/                      # 模块管理器与 Thread IPC 服务
-    │   ├── module_base.h
-    │   ├── module_manager.{c,h}
-    │   ├── module_manager_compat.{c,h} # 模块管理器兼容层
+    ├── include/zeplod/               # 对外公开 API 头文件（#include <zeplod/...>）
+    │   ├── zeplod_framework.h        # 伞头：事件系统 + 状态机 + 锁序
+    │   ├── event_system.h
+    │   ├── module_manager.h
+    │   ├── app_config.h
+    │   └── ...
+    ├── services/                     # 系统服务（实现）
+    │   ├── sys_log.c
+    │   ├── sys_memory.c
+    │   ├── sys_watchdog.c
+    │   └── sys_timer.c
+    ├── modules/                      # 模块管理器与 Thread IPC（实现）
+    │   ├── module_manager.c
+    │   ├── module_manager_compat.c
     │   └── ipc_service/              # Thread IPC 服务（Kconfig: THREAD_IPC_SERVICE）
-    │       ├── ipc_service.{c,h}
-    │       ├── ipc_service_event.{c,h}
-    │       ├── ipc_shared_mem.{c,h}
+    │       ├── ipc_service.c
+    │       ├── ipc_service_event.c
+    │       ├── ipc_shared_mem.c
     │       ├── ipc_service_example.c
     │       ├── CMakeLists.txt
     │       └── Kconfig
-    ├── modules_examples/             # 业务模块示例（条件编译）
-    │   ├── example_module_a.{c,h}
-    │   ├── example_module_b.{c,h}
-    │   ├── example_module_gpio.{c,h}
-    │   ├── example_module_uart.{c,h}
-    │   ├── example_module_ipc.{c,h}
-    │   └── example_module_multi_dep.{c,h} # 多依赖示例
-    ├── app/                          # 应用层
-    │   ├── app_main.{c,h}
-    │   ├── app_config.h              # 功能开关、初始化优先级、栈大小
-    │   ├── app_version.{c,h}         # 版本 API（版本宏由根目录 APP_VERSION 经 -D 注入）
-    │   └── app_kv.{c,h}              # 应用键值存储（可选掉电保存）
+    ├── modules_examples/             # 示例模块 .c（头文件在 include/zeplod/）
+    │   ├── example_module_a.c
+    │   ├── example_module_b.c
+    │   ├── example_module_gpio.c
+    │   ├── example_module_uart.c
+    │   ├── example_module_ipc.c
+    │   └── example_module_multi_dep.c
+    ├── app/                          # 应用层（实现）
+    │   ├── app_main.c
+    │   ├── app_version.c             # 版本 API（版本宏由根目录 APP_VERSION 经 -D 注入）
+    │   └── app_kv.c                  # 应用键值存储（可选掉电保存）
     └── proprietary/                  # 商业闭源模块（可选，由 proprietary_manage 启用）
 ```
 
@@ -289,7 +293,7 @@ zeplod/
 | 3 | **CMake**：根目录 `CMakeLists.txt` 中 `project(...)` 名称改为你的产品工程名。 |
 | 4 | **版本与说明**：按需修改 `APP_VERSION`、README 标题与产品描述。 |
 | 5 | **板型与 CI**：`prj.conf`、**`.github/workflows/ci.yml`** / **`.gitlab-ci.yml`** 中 ARM 矩阵 `board` 与目标硬件一致或按需裁剪。 |
-| 6 | **示例代码**：`src/modules/example_*` 可删除或替换；同步 `CMakeLists.txt`、Kconfig，以及各模块 **`.c` 的 `SYS_INIT` 注册**与 **`app_config.h` 的 `APP_INIT_PRIO_*`**。 |
+| 6 | **示例代码**：`src/modules_examples/example_*` 可删除或替换（头文件在 `include/zeplod/`）；同步 `CMakeLists.txt`、Kconfig，各模块 **`.c` 的 `SYS_INIT` 注册**与 **`include/zeplod/app_config.h` 的 `APP_INIT_PRIO_*`**。 |
 
 > **文档与 CI 的板型示例**：入门文档中可能出现 `nucleo_l4r5zi` 等示例板名；CI 当前固定为若干 Nucleo/Disco 板。**以你手头的 `BOARD` 与 CI 矩阵为准**；若遇 RAM/链接问题，见 **[docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md](docs/zh-CN/40-应用开发/44-设备树与内存配置手册.md)**。
 
@@ -452,7 +456,7 @@ event_publish_copy_rt(EVENT_TYPE_SENSOR_DATA, EVENT_PRIORITY_HIGH, &data, sizeof
 
 模块是独立的业务逻辑单元：
 - **生命周期**：init → start → run → stop → shutdown
-- **注册**：通过模块管理器动态注册；主固件在 **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** 中自动注册（见 `src/app/app_config.h` 与各 `example_module_*.c`）
+- **注册**：通过模块管理器动态注册；主固件在 **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** 中自动注册（见 `include/zeplod/app_config.h` 与各 `example_module_*.c`）
 - **事件处理**：自动将事件路由到订阅的模块
 - **隔离**：每个模块有自己的状态和配置
 
@@ -536,7 +540,7 @@ CONFIG_SYS_WATCHDOG_TIMEOUT_MS=5000
 
 ### 应用配置
 
-编辑 `src/app/app_config.h` 自定义：
+编辑 `include/zeplod/app_config.h` 自定义：
 - 功能标志（启用/禁用模块和服务）
 - 任务优先级和栈大小
 - 定时配置
@@ -577,13 +581,13 @@ app help
 
 ## 创建自定义模块
 
-1. 创建模块头文件（`my_module.h`）：
+1. 创建模块头文件（`include/zeplod/my_module.h`）：
 
 ```c
 #ifndef MY_MODULE_H
 #define MY_MODULE_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 typedef struct {
     uint32_t param1;
@@ -603,10 +607,10 @@ DECLARE_MODULE_INTERFACE(my_module);
 #endif
 ```
 
-2. 实现模块（`my_module.c`）：
+2. 实现模块（`src/modules/my_module.c`）：
 
 ```c
-#include "my_module.h"
+#include <zeplod/my_module.h>
 
 static my_module_cb_t g_my_module;
 
@@ -625,10 +629,10 @@ int my_module_start(void) {
 DECLARE_MODULE_INTERFACE(my_module);
 ```
 
-3. 在 **`my_module.c`** 中用 **`SYS_INIT`** 注册（并在 **`app_config.h`** 增加 **`APP_INIT_PRIO_MODULE_MINE`**，取值在 **`APP_INIT_PRIO_MODULE_MGR`** 与 **`APP_INIT_PRIO_APP_FINAL`** 之间；若依赖其它已注册模块，优先级数值应**更大**以更晚执行）：
+3. 在 **`my_module.c`** 中用 **`SYS_INIT`** 注册（并在 **`include/zeplod/app_config.h`** 增加 **`APP_INIT_PRIO_MODULE_MINE`**，取值在 **`APP_INIT_PRIO_MODULE_MGR`** 与 **`APP_INIT_PRIO_APP_FINAL`** 之间；若依赖其它已注册模块，优先级数值应**更大**以更晚执行）：
 
 ```c
-#include "app_config.h"
+#include <zeplod/app_config.h>
 #include <zephyr/init.h>
 #include <errno.h>
 

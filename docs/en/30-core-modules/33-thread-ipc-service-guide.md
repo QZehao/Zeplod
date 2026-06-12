@@ -62,7 +62,7 @@ This module intentionally uses **different Kconfig symbols**:
 
 **Do not mix these names**. In `prj.conf`, use `CONFIG_THREAD_IPC_SERVICE=y` to enable this module; under normal circumstances **should not** enable `CONFIG_IPC_SERVICE` for this module (unless you really need Zephyr's multi-core IPC Service).
 
-Header file `ipc_service.h` triggers a compile-time `#error` when **`CONFIG_THREAD_IPC_SERVICE`** is not enabled, preventing accidental inclusion.
+Header file `include/zeplod/ipc_service.h` triggers a compile-time `#error` when **`CONFIG_THREAD_IPC_SERVICE`** is not enabled, preventing accidental inclusion.
 
 ---
 
@@ -156,7 +156,7 @@ Root `CMakeLists.txt` adds source and include paths based on Kconfig conditions:
 When enabling `CONFIG_THREAD_IPC_SERVICE=y` in `prj.conf`, use:
 
 ```c
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 ```
 
 If the module is disabled, do not include this header file (will `#error`), and ensure no references to stripped symbols in the project.
@@ -205,7 +205,7 @@ CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE=y
 After **`event_system_init()`** and before publishing any events, call once (idempotent type registration):
 
 ```c
-#include "ipc_service_event.h"
+#include <zeplod/ipc_service_event.h>
 
 thread_ipc_event_register_types();
 ```
@@ -234,7 +234,7 @@ static int my_ipc_service_func(ipc_request_id_t request_id,
 Subscribers use existing API:
 
 ```c
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 static void on_thread_ipc_result(const event_t *ev, void *user_data)
 {
@@ -248,7 +248,7 @@ static void on_thread_ipc_result(const event_t *ev, void *user_data)
 /* During initialization: event_subscribe(EVENT_TYPE_THREAD_IPC_RESPONSE, on_thread_ipc_result, NULL, &sub_id); */
 ```
 
-Event type constant is defined in **`event_system.h`** as `EVENT_TYPE_THREAD_IPC_RESPONSE` (value `20`), payload structure is **`thread_ipc_event_result_t`** (defined in `ipc_service_event.h`).
+Event type constant is defined in **`include/zeplod/event_system.h`** as `EVENT_TYPE_THREAD_IPC_RESPONSE` (value `20`), payload structure is **`thread_ipc_event_result_t`** (defined in `include/zeplod/ipc_service_event.h`).
 
 **Note**:
 
@@ -257,7 +257,7 @@ Event type constant is defined in **`event_system.h`** as `EVENT_TYPE_THREAD_IPC
 
 ### Method 2: Without Enabling Kconfig, Directly Send Events in service_func
 
-If you don't want to add `ipc_service_event.c`, you can directly `#include "event_system.h"` and call `event_publish_copy` etc. in `ipc_service_func_t`. Same requirement: publish **after `event_system_start()`**.
+If you don't want to add `ipc_service_event.c`, you can directly `#include <zeplod/event_system.h>` and call `event_publish_copy` etc. in `ipc_service_func_t`. Same requirement: publish **after `event_system_start()`**.
 
 ---
 
@@ -286,7 +286,7 @@ module_manager_stop()（ipc_service_stop）
 | `stop` | `ipc_service_stop()` |
 | Before restart | Need `ipc_service_init()` again (see "Re-initialization" above) |
 
-For specific field names, refer to `module_interface_t` in **`module_base.h`**; this repository's `example_module_a/b` can serve as reference for registration method, just replace business with `ipc_service_*`.
+For specific field names, refer to `module_interface_t` in **`include/zeplod/module_base.h`**; this repository's `example_module_a/b` can serve as reference for registration method, just replace business with `ipc_service_*`.
 
 ---
 
@@ -511,7 +511,7 @@ You can copy this file as template to your own module, delete or replace the `SY
 
 ## Version and Maintenance
 
-- Implementation files: `ipc_service.c` / `ipc_service.h`; optional `ipc_service_event.c` / `ipc_service_event.h`
-- Event type constant: `EVENT_TYPE_THREAD_IPC_RESPONSE` (`src/core/event_system.h`)
+- Implementation: `src/modules/ipc_service/ipc_service.c`; public header: `include/zeplod/ipc_service.h`; optional bridge `ipc_service_event.c` / `include/zeplod/ipc_service_event.h`
+- Event type constant: `EVENT_TYPE_THREAD_IPC_RESPONSE` (`include/zeplod/event_system.h`)
 - Kconfig: `src/modules/ipc_service/Kconfig`
 - This document should stay in sync with the above files; if API or Kconfig changes, please sync this section and table symbol names.

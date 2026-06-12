@@ -18,7 +18,8 @@ Task entry: [05-task-navigation.md](05-task-navigation.md) · Full index: [02-do
 | `cmake/zeplod_app_overlays.cmake` | [15 §6](../10-environment-build/15-creating-new-app-guide.md), [44 overlay](../40-app-development/44-devicetree-memory-config.md) | skip `app.overlay` on QEMU |
 | `zephyr_app.env.template` | [15 §3.7](../10-environment-build/15-creating-new-app-guide.md), [63 §6](../60-debugging/63-scripts-and-tools.md) | `APP_PRJ_CONF`, `QEMU_CONF` |
 | `zephyr_config.env.template` | [11](../10-environment-build/11-environment-setup.md) | `ZEPHYR_BASE`, `QEMU_BIN_PATH` |
-| `src/core/` | [31](../30-core-modules/31-event-system-guide.md), [23](../20-architecture/23-framework-internals.md) | event_system |
+| `include/zeplod/` | [31](../30-core-modules/31-event-system-guide.md), [32](../30-core-modules/32-module-system-guide.md), [04](04-developer-guide.md) | Public API headers (`#include <zeplod/...>`) |
+| `src/core/` | [31](../30-core-modules/31-event-system-guide.md), [23](../20-architecture/23-framework-internals.md) | event_system implementation |
 | `src/modules/` | [32](../30-core-modules/32-module-system-guide.md) | module_manager |
 | `src/modules_examples/` | [32](../30-core-modules/32-module-system-guide.md), [04](04-developer-guide.md) | Example modules (GPIO / UART / IPC…) |
 | `src/modules/ipc_service/` | [33](../30-core-modules/33-thread-ipc-service-guide.md), [34](../30-core-modules/34-thread-ipc-integration-guide.md) | Thread IPC |

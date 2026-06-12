@@ -129,7 +129,7 @@ int ipc_service_init(ipc_service_t *service, const char *name,
 
 | 项目 | 说明 |
 |------|------|
-| 文件 | `src/modules/example_module_ipc.c`、`example_module_ipc.h` |
+| 文件 | `src/modules_examples/example_module_ipc.c`、`include/zeplod/example_module_ipc.h` |
 | 开关 | `CONFIG_EXAMPLE_MODULE_THREAD_IPC=y` |
 | 行为 | `init` 中 `ipc_service_init`；`start` 中 `ipc_service_start` 并创建 **演示线程**，约 300ms 后执行一次 **`ipc_call_sync`**；`stop` 中 **`k_thread_join` 演示线程** 再 `ipc_service_stop` |
 | 业务函数 | `mod_ipc_service_func`：echo 输入；若启用 **`CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE`**，则 **`thread_ipc_event_publish_result(EXAMPLE_MODULE_IPC_EVENT_SOURCE_ID, …)`** |

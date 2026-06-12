@@ -62,7 +62,7 @@ Zephyr 在 **Inter Processor Communication** 菜单下有 **`CONFIG_IPC_SERVICE`
 
 二者 **不要混用名称**。在 `prj.conf` 中应使用 `CONFIG_THREAD_IPC_SERVICE=y` 启用本模块；正常情况下 **不应** 同时为了本模块去打开 `CONFIG_IPC_SERVICE`（除非你真的需要 Zephyr 的多核 IPC Service）。
 
-头文件 `ipc_service.h` 在 **`CONFIG_THREAD_IPC_SERVICE` 未开启** 时会触发编译期 `#error`，避免误包含。
+头文件 `include/zeplod/ipc_service.h` 在 **`CONFIG_THREAD_IPC_SERVICE` 未开启** 时会触发编译期 `#error`，避免误包含。
 
 ---
 
@@ -156,7 +156,7 @@ CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n
 自定义应用时，在 `prj.conf` 打开 `CONFIG_THREAD_IPC_SERVICE=y` 后，使用：
 
 ```c
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 ```
 
 若关闭模块，请勿包含该头文件（会 `#error`），并确保工程中无对已剥离符号的引用。
@@ -205,7 +205,7 @@ CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE=y
 在 **`event_system_init()` 之后**、发布任何事件之前，调用一次（可重复调用，类型注册幂等）：
 
 ```c
-#include "ipc_service_event.h"
+#include <zeplod/ipc_service_event.h>
 
 thread_ipc_event_register_types();
 ```
@@ -234,7 +234,7 @@ static int my_ipc_service_func(ipc_request_id_t request_id,
 订阅方使用已有 API：
 
 ```c
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 static void on_thread_ipc_result(const event_t *ev, void *user_data)
 {
@@ -248,7 +248,7 @@ static void on_thread_ipc_result(const event_t *ev, void *user_data)
 /* 初始化阶段：event_subscribe(EVENT_TYPE_THREAD_IPC_RESPONSE, on_thread_ipc_result, NULL, &sub_id); */
 ```
 
-事件类型常量在 **`event_system.h`** 中定义为 `EVENT_TYPE_THREAD_IPC_RESPONSE`（值为 `20`），载荷结构体为 **`thread_ipc_event_result_t`**（定义在 `ipc_service_event.h`）。
+事件类型常量在 **`include/zeplod/event_system.h`** 中定义为 `EVENT_TYPE_THREAD_IPC_RESPONSE`（值为 `20`），载荷结构体为 **`thread_ipc_event_result_t`**（定义在 `include/zeplod/ipc_service_event.h`）。
 
 **注意：**
 
@@ -257,7 +257,7 @@ static void on_thread_ipc_result(const event_t *ev, void *user_data)
 
 ### 方式二：不开启 Kconfig，在 service_func 内直接发事件
 
-若不想增加 `ipc_service_event.c`，可在 `ipc_service_func_t` 中直接 `#include "event_system.h"` 并调用 `event_publish_copy` 等，同样需在 **`event_system_start()` 之后** 再发布。
+若不想增加 `ipc_service_event.c`，可在 `ipc_service_func_t` 中直接 `#include <zeplod/event_system.h>` 并调用 `event_publish_copy` 等，同样需在 **`event_system_start()` 之后** 再发布。
 
 ---
 
@@ -286,7 +286,7 @@ module_manager_stop()（ipc_service_stop）
 | `stop` | `ipc_service_stop()` |
 | 再次启动前 | 需再次 `ipc_service_init()`（见前文「重复初始化」） |
 
-具体字段名以 **`module_base.h`** 中 `module_interface_t` 为准；本仓库的 `example_module_a/b` 可作为注册方式的参考，将其中业务替换为 `ipc_service_*` 即可。
+具体字段名以 **`include/zeplod/module_base.h`** 中 `module_interface_t` 为准；本仓库的 `example_module_a/b` 可作为注册方式的参考，将其中业务替换为 `ipc_service_*` 即可。
 
 ---
 
@@ -511,7 +511,7 @@ ipc_shm_release(service, handle);
 
 ## 版本与维护
 
-- 实现文件：`ipc_service.c` / `ipc_service.h`；可选 `ipc_service_event.c` / `ipc_service_event.h`
-- 事件类型常量：`EVENT_TYPE_THREAD_IPC_RESPONSE`（`src/core/event_system.h`）
+- 实现：`src/modules/ipc_service/ipc_service.c`；公开头文件：`include/zeplod/ipc_service.h`；可选桥接 `ipc_service_event.c` / `include/zeplod/ipc_service_event.h`
+- 事件类型常量：`EVENT_TYPE_THREAD_IPC_RESPONSE`（`include/zeplod/event_system.h`）
 - Kconfig：`src/modules/ipc_service/Kconfig`
 - 本文档应与上述文件保持同步；若 API 或 Kconfig 变更，请同步更新本节与表格中的符号名。

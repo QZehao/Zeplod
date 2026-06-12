@@ -35,7 +35,7 @@ When using this repo as a **new product engineering template**, it is recommende
 3. **CMake project name**: In root **`CMakeLists.txt`**, change **`project(...)`** to your product name.
 4. **Version and documentation**: Update root **`APP_VERSION`**, **`README.md`** title and product description as needed.
 5. **Board and CI**: **`prj.conf`**, **`.github/workflows/ci.yml`** (and if using GitLab: **`.gitlab-ci.yml`**) have ARM build matrix **`board`** aligned with target hardware or CI strategy; example board names in docs (like `nucleo_l4r5zi`) are for illustration only, **use your actual `BOARD` and CI as the standard**. For step-by-step CI platform enablement see **[52-ci-platform-setup.md](../50-testing-ci/52-ci-platform-setup.md)**.
-6. **Example modules**: **`src/modules/example_*`** can be deleted or converted to business modules; synchronize **`CMakeLists.txt`**, Kconfig, and each module's **`.c`** file's **`SYS_INIT`** registration and **`app_config.h`** **`APP_INIT_PRIO_*`** (no longer need to modify **`app_main.c`** registration list centrally).
+6. **Example modules**: **`src/modules_examples/example_*`** can be deleted or converted to business modules (public headers under **`include/zeplod/`**); synchronize **`CMakeLists.txt`**, Kconfig, each module **`.c`** **`SYS_INIT`** registration, and **`APP_INIT_PRIO_*`** in **`include/zeplod/app_config.h`** (no longer need to modify **`app_main.c`** registration list centrally).
 7. **Optional hooks**: Installing **`pre-commit`** locally (see **[81-contributing-code-style.md](../80-contributing/81-contributing-code-style.md)**) can align with CI **`pre-commit run --all-files`** behavior.
 
 ---
@@ -101,13 +101,13 @@ zeplod/
 
 ### Adding a New Module
 
-1. Create module files `src/modules/my_module.h/c`
-2. Implement module interface
-3. Add source files in **`CMakeLists.txt`**
-4. Add **`APP_INIT_PRIO_MODULE_*`** in **`app_config.h`** (between **`APP_INIT_PRIO_MODULE_MGR`** and **`APP_INIT_PRIO_APP_FINAL`**)
+1. Create public header `include/zeplod/my_module.h` and implementation `src/modules/my_module.c`
+2. Implement module interface (`#include <zeplod/module_base.h>`)
+3. Add `.c` source files in **`CMakeLists.txt`**
+4. Add **`APP_INIT_PRIO_MODULE_*`** in **`include/zeplod/app_config.h`** (between **`APP_INIT_PRIO_MODULE_MGR`** and **`APP_INIT_PRIO_APP_FINAL`**)
 5. Use **`SYS_INIT(..., POST_KERNEL, APP_INIT_PRIO_MODULE_*)`** to call **`module_manager_register()`** at the end of **`my_module.c`** (reference **`example_module_a.c`**)
 
-Optional: If module startup order needs dependency arrangement, see "Application Startup and Initialization Order (Zephyr SYS_INIT)" and "Runtime Dependencies" in [32-module-system-guide.md](../30-core-modules/32-module-system-guide.md); for multi-dependency examples see `src/modules/example_module_multi_dep.c`.
+Optional: If module startup order needs dependency arrangement, see "Application Startup and Initialization Order (Zephyr SYS_INIT)" and "Runtime Dependencies" in [32-module-system-guide.md](../30-core-modules/32-module-system-guide.md); for multi-dependency examples see `src/modules_examples/example_module_multi_dep.c`.
 
 ### Adding an Event Type
 
@@ -142,7 +142,7 @@ The framework provides **`state_machine`** (lifecycle) and **`lock_order`** (mul
 
 | Topic | Notes |
 |-------|--------|
-| State machine API | `zepl_state_machine_init`, `zepl_state_machine_try_transition`, `zepl_state_machine_get` (see `state_machine.h`) |
+| State machine API | `zepl_state_machine_init`, `zepl_state_machine_try_transition`, `zepl_state_machine_get` (see `include/zeplod/state_machine.h`) |
 | Lock order API | Pair `zepl_lock_enter` / `zepl_lock_exit` with `k_mutex`; levels GLOBAL → STATE → TABLE → ENTRY → RESOURCE |
 | New modules | Use `zepl_state_machine_t` for init/start/stop; register lock order on every mutex; no external callbacks while holding locks |
 | Caveats | `event_system` does **not** use `ZEP_STATE_ERROR`; `module_manager` has a single global lock; IPC pending + shm release nests TABLE → ENTRY |
@@ -154,7 +154,7 @@ Implementation plan and intentional design choices: **[2026-05-23-state-machine-
 - `prj.conf` - Zephyr kernel and app merged config (`CONFIG_*`)
 - `Kconfig` - App extension menu item definitions (root and `src/modules/ipc_service/Kconfig`)
 - `zephyr_config.env` - Local path config
-- `src/app/app_config.h` - App feature toggles (`APP_CONFIG_*` and other macros, not menuconfig)
+- `include/zeplod/app_config.h` - App feature toggles (`APP_CONFIG_*` and other macros, not menuconfig)
 
 **For config option meanings**: See **[42-config-options.md](../40-app-development/42-config-options.md)** (Event System, Module Manager, System Services, Thread IPC, `app_config` supplementary notes).
 

@@ -62,7 +62,7 @@ Startup log output:
 ### Getting Version Information
 
 ```c
-#include "app_version.h"
+#include <zeplod/app_version.h>
 
 // Get version string
 char version[VERSION_STRING_MAX_LEN];
@@ -109,7 +109,7 @@ app status
 ### Version Comparison
 
 ```c
-#include "app_version.h"
+#include <zeplod/app_version.h>
 
 // Check if version is at least 1.0.0
 if (VERSION_AT_LEAST(1, 0, 0)) {
@@ -236,7 +236,7 @@ git clean -fdx
 | File | Description |
 |------|-------------|
 | `APP_VERSION` | Single source of truth for the version number (X.Y.Z) |
-| `src/app/app_version.h` | Version API header |
+| `include/zeplod/app_version.h` | Version API header |
 | `src/app/app_version.c` | Version API implementation |
 | `CMakeLists.txt` | Reads `APP_VERSION`, injects version macros via `-D` |
 

@@ -159,7 +159,7 @@ API: **`app_kv_save()`**, **`app_kv_load()`** (see **`app_kv.h`**); error code *
 
 ## 6. Feature Switches in Application Header Files (non-Kconfig)
 
-**`APP_CONFIG_*`** etc. in `src/app/app_config.h` are **compile-time macros**, not in `menuconfig`, common items below (as per file):
+**`APP_CONFIG_*`** etc. in `include/zeplod/app_config.h` are **compile-time macros**, not in `menuconfig`, common items below (as per file):
 
 | Macro | Description |
 |-------|-------------|

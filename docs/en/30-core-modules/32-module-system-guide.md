@@ -85,7 +85,7 @@ The Module System provides a dynamic, extensible component management framework 
 
 ## Application Startup and Initialization Order (Zephyr SYS_INIT)
 
-This template completes application and subsystem initialization **before `main()` enters** through Zephyr **`SYS_INIT(fn, POST_KERNEL, prio)`**; **within the same `POST_KERNEL` stage, smaller `prio` values execute earlier** (consistent with **`APP_INIT_PRIO_*`** macros in `src/app/app_config.h`).
+This template completes application and subsystem initialization **before `main()` enters** through Zephyr **`SYS_INIT(fn, POST_KERNEL, prio)`**; **within the same `POST_KERNEL` stage, smaller `prio` values execute earlier** (consistent with **`APP_INIT_PRIO_*`** macros in `include/zeplod/app_config.h`).
 
 ### Startup Stage (`main` before)
 
@@ -714,7 +714,7 @@ Usage remains the same, e.g., `DECLARE_MODULE_INTERFACE(my_module);`, `DECLARE_M
 #ifndef MY_MODULE_H
 #define MY_MODULE_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 // Module configuration structure
 typedef struct {
@@ -740,7 +740,7 @@ int my_module_do_something(void);
 **Module Implementation (my_module.c)**:
 
 ```c
-#include "my_module.h"
+#include <zeplod/my_module.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(my_module, LOG_LEVEL_INF);
@@ -867,8 +867,8 @@ DECLARE_MODULE_INTERFACE(my_module);
 **Main firmware**: Calls to `module_manager_init()` and **`module_manager_register()`** occur during **`SYS_INIT(POST_KERNEL, …)`** stage (see "Application Startup and Initialization Order" above); the following code demonstrates **manual order**, suitable for understanding APIs or **`tests/`** scenarios that don't link `app_main.c`.
 
 ```c
-#include "module_manager.h"
-#include "my_module.h"
+#include <zeplod/module_manager.h>
+#include <zeplod/my_module.h>
 
 void app_main(void)
 {
@@ -938,7 +938,7 @@ void app_main(void)
 #ifndef EXAMPLE_MODULE_GPIO_H
 #define EXAMPLE_MODULE_GPIO_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 #include <zephyr/drivers/gpio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -977,7 +977,7 @@ int example_module_gpio_set_blink_interval(uint32_t interval_ms);
 #### Implementation File (example_module_gpio.c)
 
 ```c
-#include "example_module_gpio.h"
+#include <zeplod/example_module_gpio.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
@@ -1203,8 +1203,8 @@ DECLARE_MODULE_INTERFACE(example_module_gpio);
 #### Usage Example
 
 ```c
-#include "module_manager.h"
-#include "example_module_gpio.h"
+#include <zeplod/module_manager.h>
+#include <zeplod/example_module_gpio.h>
 
 void gpio_module_example(void)
 {
@@ -1621,8 +1621,8 @@ void debug_stats(void)
 ### Header File Includes
 
 ```c
-#include "module_manager.h"  // Module Manager API
-#include "module_base.h"     // Module base interface and macros
+#include <zeplod/module_manager.h>  // Module Manager API
+#include <zeplod/module_base.h>     // Module base interface and macros
 ```
 
 ### Example Modules

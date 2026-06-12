@@ -842,7 +842,7 @@ uint32_t event_dispatcher_get_current_latency(void);
 #### 1. Initialize Event System
 
 ```c
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 void app_main(void)
 {
@@ -1010,7 +1010,7 @@ void unsubscribe_from_events(void)
 ```c
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 LOG_MODULE_REGISTER(event_example, LOG_LEVEL_INF);
 
@@ -1142,7 +1142,7 @@ void event_system_example_init(void)
 ### Using Event System in ISR
 
 ```c
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 // Method 1: Use event_publish_copy_rt (recommended, real-time safe)
 static void gpio_callback_rt(const struct device *dev,
@@ -1481,10 +1481,12 @@ static void good_callback(const event_t *event, void *user_data)
 
 ### Header File Includes
 
+Public API lives under `include/zeplod/`; use `#include <zeplod/...>` or the umbrella `zeplod_framework.h`.
+
 ```c
-#include "event_system.h"      // Core API
-#include "event_dispatcher.h"  // Dispatcher API
-#include "event_queue.h"       // Queue API
+#include <zeplod/event_system.h>      // Core API
+#include <zeplod/event_dispatcher.h>  // Dispatcher API
+/* event_queue.h is internal; use event_system / event_dispatcher APIs in application code */
 ```
 
 ### Related Documentation
