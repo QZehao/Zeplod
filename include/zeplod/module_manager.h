@@ -26,7 +26,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {

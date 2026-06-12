@@ -27,7 +27,7 @@
 #include <zephyr/kernel.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 #ifdef __cplusplus
 extern "C" {

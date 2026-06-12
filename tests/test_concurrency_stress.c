@@ -13,13 +13,13 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 
-#include "event_dispatcher.h"
-#include "event_system.h"
-#include "module_manager.h"
+#include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system.h>
+#include <zeplod/module_manager.h>
 #include "ztest_sync.h"
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE)
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 #endif
 
 LOG_MODULE_REGISTER(test_concurrency_stress);

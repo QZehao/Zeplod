@@ -22,9 +22,9 @@
 #include <string.h>
 
 #if IS_ENABLED(CONFIG_EXAMPLE_MODULE_UART)
-#include "example_module_uart.h"
+#include <zeplod/example_module_uart.h>
 #endif
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 #include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_ipc_service);

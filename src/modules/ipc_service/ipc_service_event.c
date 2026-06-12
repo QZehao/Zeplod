@@ -22,7 +22,7 @@
  *
  */
 
-#include "ipc_service_event.h"
+#include <zeplod/ipc_service_event.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(thread_ipc_evt, CONFIG_THREAD_IPC_SERVICE_LOG_LEVEL);

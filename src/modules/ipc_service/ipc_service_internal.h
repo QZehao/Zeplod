@@ -11,9 +11,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
-#include "ipc_service.h"
-#include "state_machine.h"
-#include "zepl_thread_service.h"
+#include <zeplod/ipc_service.h>
+#include <zeplod/state_machine.h>
+#include <zeplod/zepl_thread_service.h>
 
 #ifndef IPC_SERVICE_MAX_QUEUE_SIZE
 #define IPC_SERVICE_MAX_QUEUE_SIZE 1024U

@@ -11,13 +11,13 @@
  *
  */
 
-#include "module_manager_compat.h"
+#include <zeplod/module_manager_compat.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <errno.h>
 #include <string.h>
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 LOG_MODULE_REGISTER(module_manager_compat, CONFIG_SYS_LOG_LEVEL);
 
@@ -29,7 +29,7 @@ static int module_compat_map_pro_err(int pr) {
 }
 
 #else
-#include "module_manager.h"
+#include <zeplod/module_manager.h>
 #endif
 
 int module_compat_init(const module_compat_config_t* config) {

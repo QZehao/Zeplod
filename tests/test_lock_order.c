@@ -5,7 +5,7 @@
 
 #include <zephyr/ztest.h>
 
-#include "lock_order.h"
+#include <zeplod/lock_order.h>
 
 static void lock_order_suite_teardown(void* fixture) {
     ARG_UNUSED(fixture);

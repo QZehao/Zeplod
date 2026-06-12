@@ -16,7 +16,7 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "sys_memory.h"
+#include <zeplod/sys_memory.h>
 
 LOG_MODULE_REGISTER(test_sys_memory);
 

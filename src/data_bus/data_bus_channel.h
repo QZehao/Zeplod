@@ -17,7 +17,7 @@
 #ifndef DATA_BUS_CHANNEL_H
 #define DATA_BUS_CHANNEL_H
 
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 
 #ifdef __cplusplus
 extern "C" {

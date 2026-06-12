@@ -14,13 +14,13 @@
  *
  */
 
-#include "example_module_ipc.h"
-#include "app_config.h"
-#include "ipc_service.h"
-#include "module_manager.h"
+#include <zeplod/example_module_ipc.h>
+#include <zeplod/app_config.h>
+#include <zeplod/ipc_service.h>
+#include <zeplod/module_manager.h>
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE)
-#include "ipc_service_event.h"
+#include <zeplod/ipc_service_event.h>
 #endif
 
 #include <zephyr/init.h>

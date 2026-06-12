@@ -17,8 +17,8 @@
 #ifndef DATA_BUS_INTERNAL_H
 #define DATA_BUS_INTERNAL_H
 
-#include "data_bus.h"
-#include "zepl_thread_service.h"
+#include <zeplod/data_bus.h>
+#include <zeplod/zepl_thread_service.h>
 
 #ifndef DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS
 #define DATA_BUS_DISPATCHER_JOIN_TIMEOUT_MS ZEPL_THREAD_SERVICE_JOIN_TIMEOUT_MS

@@ -28,7 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -91,7 +91,7 @@ void module_compat_reset_stats(void);
 
 #if !MODULE_COMPAT_USE_PRO
 
-#include "module_manager.h"
+#include <zeplod/module_manager.h>
 
 #define module_compat_register(interface, config, module_id) module_manager_register((interface), (config), (module_id))
 #define module_compat_unregister(module_id)                  module_manager_unregister((module_id))
@@ -113,7 +113,7 @@ void module_compat_reset_stats(void);
 
 #else /* MODULE_COMPAT_USE_PRO */
 
-#include "module_manager.h"
+#include <zeplod/module_manager.h>
 #include "module_manager_pro.h"
 
 int module_compat_register(const module_interface_t* interface, void* config, uint32_t* module_id);

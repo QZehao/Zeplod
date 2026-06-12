@@ -17,7 +17,7 @@
 #ifndef EXAMPLE_MODULE_GPIO_H
 #define EXAMPLE_MODULE_GPIO_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {

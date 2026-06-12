@@ -23,7 +23,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 #include <string.h>
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 #include "data_bus_channel.h"
 #include "data_bus_internal.h"
 #include "data_bus_memory.h"

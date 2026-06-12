@@ -35,8 +35,8 @@
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE)
 
-#include "event_system.h"
-#include "ipc_service.h"
+#include <zeplod/event_system.h>
+#include <zeplod/ipc_service.h>
 
 #ifdef __cplusplus
 extern "C" {

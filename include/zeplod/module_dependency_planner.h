@@ -19,7 +19,7 @@
 #ifndef MODULE_DEPENDENCY_PLANNER_H
 #define MODULE_DEPENDENCY_PLANNER_H
 
-#include "module_manager.h"
+#include <zeplod/module_manager.h>
 
 #ifdef __cplusplus
 extern "C" {

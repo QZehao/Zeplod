@@ -16,7 +16,7 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "sys_timer.h"
+#include <zeplod/sys_timer.h>
 
 LOG_MODULE_REGISTER(test_sys_timer);
 

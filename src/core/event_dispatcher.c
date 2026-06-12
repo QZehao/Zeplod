@@ -22,7 +22,7 @@
  *
  */
 
-#include "event_dispatcher.h"
+#include <zeplod/event_dispatcher.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/time_units.h>

@@ -11,7 +11,7 @@
  * 2026-04-01       1.0            zeh            正式发布
  *
  */
-#include "sys_log.h"
+#include <zeplod/sys_log.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
@@ -565,7 +565,7 @@ void sys_log_dump(sys_log_level_t level_filter) {
  * SYS_INIT 自动初始化
  * ============================================================================= */
 
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 static int sys_log_auto_init(void) {
 #if APP_CONFIG_ENABLE_LOGGING

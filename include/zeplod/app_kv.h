@@ -18,7 +18,7 @@
 #ifndef APP_KV_H
 #define APP_KV_H
 
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 #include <stddef.h>
 #include <stdint.h>

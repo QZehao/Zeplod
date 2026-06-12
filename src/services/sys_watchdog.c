@@ -12,7 +12,7 @@
  *
  */
 
-#include "sys_watchdog.h"
+#include <zeplod/sys_watchdog.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/watchdog.h>
@@ -608,7 +608,7 @@ static void wdt_expire_handler(void) {
  * SYS_INIT 自动初始化
  * ============================================================================= */
 
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 static int sys_wdt_auto_init(void) {
 #if APP_CONFIG_ENABLE_WATCHDOG

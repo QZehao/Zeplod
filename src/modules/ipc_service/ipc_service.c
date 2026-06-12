@@ -11,10 +11,10 @@
  * 2026-05-28 1.1     zeh    按职责拆分到多源文件
  */
 
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 #include "ipc_service_internal.h"
 
-#include "lock_order.h"
+#include <zeplod/lock_order.h>
 
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>

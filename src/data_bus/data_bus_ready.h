@@ -9,7 +9,7 @@
 #ifndef DATA_BUS_READY_H
 #define DATA_BUS_READY_H
 
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 
 #ifdef __cplusplus
 extern "C" {

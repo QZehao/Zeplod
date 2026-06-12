@@ -16,9 +16,9 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
 #include <string.h>
-#include "event_system.h"
-#include "example_module_b.h"
-#include "module_manager.h"
+#include <zeplod/event_system.h>
+#include <zeplod/example_module_b.h>
+#include <zeplod/module_manager.h>
 
 LOG_MODULE_REGISTER(test_example_module_b);
 

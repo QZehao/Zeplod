@@ -40,7 +40,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "state_machine.h"
+#include <zeplod/state_machine.h>
 
 #if !IS_ENABLED(CONFIG_THREAD_IPC_SERVICE)
 #error "ipc_service.h requires CONFIG_THREAD_IPC_SERVICE=y (see THREAD_IPC_SERVICE in Kconfig)"
@@ -48,7 +48,7 @@
 
 /* 包含共享内存管理器（如果启用） */
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
-#include "ipc_shared_mem.h"
+#include <zeplod/ipc_shared_mem.h>
 #endif
 
 #ifdef __cplusplus

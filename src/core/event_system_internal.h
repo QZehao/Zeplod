@@ -12,9 +12,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
-#include "event_system.h"
-#include "lock_order.h"
-#include "state_machine.h"
+#include <zeplod/event_system.h>
+#include <zeplod/lock_order.h>
+#include <zeplod/state_machine.h>
 
 /** 最大支持的事件类型数量（从 Kconfig 获取） */
 #define MAX_EVENT_TYPES         CONFIG_EVENT_MAX_TYPES

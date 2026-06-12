@@ -11,7 +11,7 @@
 #include <string.h>
 #include "module_manager_internal.h"
 #include "module_manager_planner_internal.h"
-#include "state_machine.h"
+#include <zeplod/state_machine.h>
 
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
 

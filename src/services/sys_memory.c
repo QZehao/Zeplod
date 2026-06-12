@@ -15,7 +15,7 @@
  *
  */
 
-#include "sys_memory.h"
+#include <zeplod/sys_memory.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <limits.h>
@@ -1029,7 +1029,7 @@ void* sys_mem_alloc_with_info(sys_mem_pool_type_t type, size_t size, const char*
  * SYS_INIT 自动初始化
  * ============================================================================= */
 
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 static int sys_mem_auto_init(void) {
 #if APP_CONFIG_ENABLE_MEMORY_MGR

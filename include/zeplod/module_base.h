@@ -31,7 +31,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 #ifdef __cplusplus
 extern "C" {

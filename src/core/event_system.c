@@ -14,7 +14,7 @@
  * @date 2026-04-01
  */
 
-#include "event_system.h"
+#include <zeplod/event_system.h>
 #include <zephyr/logging/log.h>
 #include "event_system_internal.h"
 

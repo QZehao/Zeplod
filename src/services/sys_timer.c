@@ -12,7 +12,7 @@
  *
  */
 
-#include "sys_timer.h"
+#include <zeplod/sys_timer.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
@@ -690,7 +690,7 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
  * SYS_INIT 自动初始化
  * ============================================================================= */
 
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
 static int sys_timer_auto_init(void) {
 #if APP_CONFIG_ENABLE_TIMER_SVC

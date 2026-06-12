@@ -6,19 +6,19 @@
  * @date 2026-05-28
  */
 
-#include "app_config.h"
-#include "app_kv.h"
-#include "app_main.h"
-#include "app_version.h"
-#include "event_dispatcher.h"
-#include "event_system_compat.h"
-#include "module_manager_compat.h"
-#include "sys_log.h"
-#include "sys_memory.h"
-#include "sys_watchdog.h"
+#include <zeplod/app_config.h>
+#include <zeplod/app_kv.h>
+#include <zeplod/app_main.h>
+#include <zeplod/app_version.h>
+#include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system_compat.h>
+#include <zeplod/module_manager_compat.h>
+#include <zeplod/sys_log.h>
+#include <zeplod/sys_memory.h>
+#include <zeplod/sys_watchdog.h>
 
 #ifdef CONFIG_DATA_BUS
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 #endif
 
 #include <errno.h>

@@ -7,7 +7,7 @@
 
 #include <errno.h>
 
-#include "state_machine.h"
+#include <zeplod/state_machine.h>
 
 typedef struct {
     const char* boot_name;

@@ -26,9 +26,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
-#include "app_config.h"
+#include <zeplod/app_config.h>
 
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 
 LOG_MODULE_REGISTER(ipc_example);
 

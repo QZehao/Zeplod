@@ -12,7 +12,7 @@
  *
  */
 
-#include "app_kv.h"
+#include <zeplod/app_kv.h>
 
 #include <errno.h>
 #include <limits.h>

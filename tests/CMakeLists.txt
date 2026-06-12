@@ -132,12 +132,11 @@ endif()
 # 包含路径
 # =============================================================================
 target_include_directories(app PRIVATE
-	${APP_SRC_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/../include
 	${APP_SRC_DIR}/core
-	${APP_SRC_DIR}/services
 	${APP_SRC_DIR}/modules
-	${APP_SRC_DIR}/modules_examples
-	${APP_SRC_DIR}/app
+	${APP_SRC_DIR}/modules/ipc_service
+	${APP_SRC_DIR}/data_bus
 )
 
 target_compile_definitions(app PRIVATE

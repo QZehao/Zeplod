@@ -358,11 +358,11 @@ target_compile_definitions(app PRIVATE
 # 版本信息说明：版本宏（PROJECT_VERSION_* / PROJECT_VERSION / GIT_* / BUILD_*）统一通过
 # 上方 target_compile_definitions 的 -D 注入，源头为仓库根 APP_VERSION 文件。
 # 不再生成/包含 app_version_config.h（曾为无人 include 的死代码）。
+# 对外 API：include/zeplod/*.h；实现细节头文件保留在各 src 子目录
 target_include_directories(app PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/services
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules_examples
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/ipc_service
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/data_bus
 )

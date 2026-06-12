@@ -14,7 +14,7 @@
 #ifndef EXAMPLE_MODULE_A_H
 #define EXAMPLE_MODULE_A_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {

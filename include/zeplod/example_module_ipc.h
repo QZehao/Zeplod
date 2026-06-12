@@ -17,7 +17,7 @@
 #ifndef EXAMPLE_MODULE_IPC_H
 #define EXAMPLE_MODULE_IPC_H
 
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {

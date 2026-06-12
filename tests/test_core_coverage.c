@@ -6,13 +6,13 @@
 #include <errno.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
-#include "event_dispatcher.h"
+#include <zeplod/event_dispatcher.h>
 #include "event_queue.h"
-#include "event_system.h"
-#include "event_system_compat.h"
+#include <zeplod/event_system.h>
+#include <zeplod/event_system_compat.h>
 #include "event_system_internal.h"
-#include "lock_order.h"
-#include "state_machine.h"
+#include <zeplod/lock_order.h>
+#include <zeplod/state_machine.h>
 #include "ztest_sync.h"
 
 static atomic_t g_cov_stats_dispatched;

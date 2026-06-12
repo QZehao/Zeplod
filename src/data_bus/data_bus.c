@@ -20,7 +20,7 @@
  *
  */
 
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>

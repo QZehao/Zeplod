@@ -18,7 +18,7 @@
 #define EXAMPLE_MODULE_UART_H
 
 #include <stddef.h>
-#include "module_base.h"
+#include <zeplod/module_base.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -13,7 +13,7 @@
 #ifndef IPC_PENDING_TABLE_H
 #define IPC_PENDING_TABLE_H
 
-#include "ipc_service.h"
+#include <zeplod/ipc_service.h>
 
 #include <stdbool.h>
 #include <stddef.h>

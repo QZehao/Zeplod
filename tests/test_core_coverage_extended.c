@@ -7,11 +7,11 @@
 #include <string.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
-#include "event_dispatcher.h"
+#include <zeplod/event_dispatcher.h>
 #include "event_memory.h"
 #include "event_queue.h"
-#include "event_system.h"
-#include "event_system_compat.h"
+#include <zeplod/event_system.h>
+#include <zeplod/event_system_compat.h>
 #include "ztest_sync.h"
 
 static void ext_cov_teardown(void* fixture) {

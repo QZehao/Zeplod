@@ -9,7 +9,7 @@
 #ifndef TEST_EVENT_STUBS_H
 #define TEST_EVENT_STUBS_H
 
-#include "event_system.h"
+#include <zeplod/event_system.h>
 
 /**
  * @brief 空操作订阅回调，仅用于占位订阅槽位

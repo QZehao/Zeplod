@@ -11,9 +11,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
-#include "module_base.h"
-#include "module_manager.h"
-#include "state_machine.h"
+#include <zeplod/module_base.h>
+#include <zeplod/module_manager.h>
+#include <zeplod/state_machine.h>
 
 #define MM_MODULE_NAME_MAX  32
 #define MM_DRAIN_TIMEOUT_MS 1000U

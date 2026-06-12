@@ -17,10 +17,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "event_dispatcher.h"
+#include <zeplod/event_dispatcher.h>
 #include "event_memory.h"
 #include "event_queue.h"
-#include "event_system.h"
+#include <zeplod/event_system.h>
 #include "event_system_internal.h"
 #include "test_event_stubs.h"
 #include "ztest_sync.h"

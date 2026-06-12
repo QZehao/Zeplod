@@ -7,7 +7,7 @@
  */
 
 #include <zephyr/logging/log.h>
-#include "event_dispatcher.h"
+#include <zeplod/event_dispatcher.h>
 #include "event_queue.h"
 #include "event_system_internal.h"
 

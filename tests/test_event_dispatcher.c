@@ -16,8 +16,8 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "event_dispatcher.h"
-#include "event_system.h"
+#include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system.h>
 #include "ztest_sync.h"
 
 LOG_MODULE_REGISTER(test_event_dispatcher);

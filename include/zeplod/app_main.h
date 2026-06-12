@@ -15,8 +15,8 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
-#include "app_config.h"
-#include "app_version.h"
+#include <zeplod/app_config.h>
+#include <zeplod/app_version.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -16,14 +16,14 @@
  *
  */
 
-#include "example_module_multi_dep.h"
+#include <zeplod/example_module_multi_dep.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <errno.h>
-#include "app_config.h"
-#include "event_system.h"
-#include "module_manager.h"
+#include <zeplod/app_config.h>
+#include <zeplod/event_system.h>
+#include <zeplod/module_manager.h>
 
 LOG_MODULE_REGISTER(example_module_multi_dep, CONFIG_SYS_LOG_LEVEL);
 

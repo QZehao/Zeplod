@@ -21,7 +21,7 @@
  *
  */
 
-#include "state_machine.h"
+#include <zeplod/state_machine.h>
 
 #include <errno.h>
 #include <stddef.h>

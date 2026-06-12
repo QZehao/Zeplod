@@ -6,12 +6,8 @@
 
 target_sources(app PRIVATE
     app_main.c
-    app_main.h
-    app_config.h
     app_kv.c
-    app_kv.h
     app_version.c
-    app_version.h
 )
 
 # 应用 Shell 命令仅在 CONFIG_APP_ENABLE_SHELL 时编译。
@@ -19,7 +15,3 @@ target_sources(app PRIVATE
 if(CONFIG_APP_ENABLE_SHELL)
     target_sources(app PRIVATE app_shell.c)
 endif()
-
-target_include_directories(app PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)

@@ -13,16 +13,16 @@
  *
  */
 
-#include "app_main.h"
-#include "app_banner.h"
-#include "app_kv.h"
-#include "event_dispatcher.h"
-#include "event_system.h"
-#include "event_system_compat.h"
-#include "module_manager_compat.h"
-#include "sys_log.h"
-#include "sys_timer.h"
-#include "sys_watchdog.h"
+#include <zeplod/app_main.h>
+#include <zeplod/app_banner.h>
+#include <zeplod/app_kv.h>
+#include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system.h>
+#include <zeplod/event_system_compat.h>
+#include <zeplod/module_manager_compat.h>
+#include <zeplod/sys_log.h>
+#include <zeplod/sys_timer.h>
+#include <zeplod/sys_watchdog.h>
 
 #include <errno.h>
 #include <stdlib.h>

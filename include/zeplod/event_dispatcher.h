@@ -28,8 +28,8 @@
 #include <zephyr/kernel.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "event_system.h"
-#include "zepl_thread_service.h"
+#include <zeplod/event_system.h>
+#include <zeplod/zepl_thread_service.h>
 
 #ifdef __cplusplus
 extern "C" {

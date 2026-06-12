@@ -19,8 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app_config.h"
-#include "app_version.h"
+#include <zeplod/app_config.h>
+#include <zeplod/app_version.h>
 
 LOG_MODULE_REGISTER(app_version, CONFIG_SYS_LOG_LEVEL);
 

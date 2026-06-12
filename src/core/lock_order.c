@@ -20,7 +20,7 @@
  *
  */
 
-#include "lock_order.h"
+#include <zeplod/lock_order.h>
 
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/__assert.h>

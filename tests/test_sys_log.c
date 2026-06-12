@@ -15,7 +15,7 @@
  */
 
 #include <zephyr/ztest.h>
-#include "sys_log.h"
+#include <zeplod/sys_log.h>
 
 ZTEST_SUITE(sys_log_tests, NULL, NULL, NULL, NULL, NULL);
 

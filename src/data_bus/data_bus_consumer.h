@@ -18,7 +18,7 @@
 #ifndef DATA_BUS_CONSUMER_H
 #define DATA_BUS_CONSUMER_H
 
-#include "data_bus.h"
+#include <zeplod/data_bus.h>
 
 #ifdef __cplusplus
 extern "C" {

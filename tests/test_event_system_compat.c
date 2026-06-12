@@ -6,9 +6,9 @@
 #include <errno.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
-#include "event_dispatcher.h"
-#include "event_system.h"
-#include "event_system_compat.h"
+#include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system.h>
+#include <zeplod/event_system_compat.h>
 #include "ztest_sync.h"
 
 static atomic_t g_compat_stats_dispatched;
