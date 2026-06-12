@@ -73,6 +73,11 @@ typedef int (*data_bus_fill_fn_t)(void* buf, size_t len, void* user_data);
  * ============================================================================ */
 
 #define DATA_BUS_CHANNEL_DEFAULT   0U
+/**
+ * 单槽覆盖：新发布顶替队列中的旧块（适合高频传感器）。
+ * @note ISR 发布无法顶替 k_malloc 兜底（堆）块（避免 ISR 中 k_free），此时丢弃新数据并计入 drop。
+ *       若 OVERWRITE 通道会同时被线程侧大载荷发布与 ISR 发布，建议启用 CONFIG_DATA_BUS_NO_MALLOC。
+ */
 #define DATA_BUS_CHANNEL_OVERWRITE BIT(0)
 
 typedef struct {
@@ -396,7 +401,10 @@ void data_bus_channel_get_stats(const data_bus_channel_t* ch, data_bus_stats_t* 
  */
 void data_bus_reset_stats(data_bus_channel_t* ch);
 
-/** @brief 获取 Data Bus 聚合统计；未初始化时返回全 0 */
+/**
+ * @brief 获取 Data Bus 聚合统计；未初始化时返回全 0
+ * @note 仅支持线程上下文；ISR 中调用时返回全 0。
+ */
 void data_bus_get_overview(data_bus_overview_t* overview);
 
 #ifdef __cplusplus

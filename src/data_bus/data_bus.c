@@ -363,7 +363,8 @@ void data_bus_get_overview(data_bus_overview_t* overview) {
 
     memset(overview, 0, sizeof(*overview));
 
-    if (data_bus_require_initialized() != 0) {
+    /* g_channels_lock 为互斥锁，ISR 中不可获取 */
+    if (k_is_in_isr() || data_bus_require_initialized() != 0) {
         return;
     }
 

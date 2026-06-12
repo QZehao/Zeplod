@@ -14,9 +14,9 @@
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
  * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
  * 2026-05-20       2.2            zeh            obj_init 运行时校验；消费者固定槽位 reset/destroy
- * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验
- * active 2026-05-20       2.4            zeh            enqueue 持锁二次校验 active；入队失败统一回滚；deinit 去重
- * drain
+ * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验 active
+ * 2026-05-20       2.4            zeh            enqueue 持锁二次校验 active；入队失败统一回滚；deinit drain 去重
+ * 2026-06-12       2.5            zeh            overwrite 顶替块锁外释放；ISR 拒绝顶替堆块，避免 ISR 中 k_free
  *
  */
 
@@ -456,12 +456,13 @@ data_bus_channel_t* data_bus_channel_find(const char* name) {
  * 内部辅助：将块入队到通道
  * ============================================================================ */
 
-static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t* out_seq) {
+static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* block, uint32_t* out_seq, bool in_isr) {
 #if IS_ENABLED(CONFIG_DATA_BUS_DEBUG_REFCNT)
     __ASSERT(atomic_get(&block->ref_count) == 0, "block ref_count must be 0 before enqueue");
 #endif
 
-    k_spinlock_key_t key = k_spin_lock(&ch->lock);
+    data_bus_block_t* evicted = NULL;
+    k_spinlock_key_t  key = k_spin_lock(&ch->lock);
 
     /* SMP：与 destroy 竞态时拒绝入队，避免访问已释放的 ch（调用方须 mem_free block） */
     if (!atomic_get(&ch->active) || atomic_get(&g_shutting_down)) {
@@ -472,15 +473,20 @@ static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* bloc
     if (channel_is_overwrite(ch) && ch->queue_used > 0U) {
         data_bus_block_t* old = channel_queue_peek_front(ch);
 
-        if (old != NULL && atomic_get(&old->ref_count) == 1) {
-            (void) channel_queue_dequeue(ch);
-            data_bus_block_release(old);
-            ch->drop_count++;
-        } else {
-            /* 旧块仍被 retain：丢弃新数据，避免 UAF */
+        /*
+         * 拒绝顶替的两种情形：
+         *   1) 旧块仍被 retain（ref_count != 1）：顶替会造成 UAF。
+         *   2) ISR 中顶替 k_malloc 兜底块（slab == NULL）：释放会触发 ISR 上下文的 k_free，
+         *      违反「ISR 仅 slab、无堆操作」契约。
+         * 两种情形均丢弃新数据。
+         */
+        if (old == NULL || atomic_get(&old->ref_count) != 1 || (in_isr && old->slab == NULL)) {
             k_spin_unlock(&ch->lock, key);
             return false;
         }
+        (void) channel_queue_dequeue(ch);
+        evicted = old; /* 延迟到解锁后释放，缩短自旋锁临界区并避免持锁 free */
+        ch->drop_count++;
     } else if (ch->queue_used >= channel_queue_capacity(ch)) {
         k_spin_unlock(&ch->lock, key);
         return false;
@@ -493,6 +499,10 @@ static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* bloc
     if (!channel_queue_enqueue(ch, block)) {
         atomic_set(&block->ref_count, 0);
         k_spin_unlock(&ch->lock, key);
+        /* 容量校验已通过，入队不应失败；保守起见仍在锁外归还被顶替块 */
+        if (evicted != NULL) {
+            data_bus_block_release(evicted);
+        }
         return false;
     }
 
@@ -506,6 +516,11 @@ static bool channel_enqueue_block(data_bus_channel_t* ch, data_bus_block_t* bloc
     }
 
     k_spin_unlock(&ch->lock, key);
+
+    /* 锁外释放被顶替的旧块：此刻已脱离队列且 ref_count==1，无人可再访问，释放安全 */
+    if (evicted != NULL) {
+        data_bus_block_release(evicted);
+    }
     return true;
 }
 
@@ -607,7 +622,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
     size_t   published_len = block->len;
 
     if (in_isr) {
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
     } else {
         k_mutex_lock(&g_channels_lock, K_FOREVER);
         if (!channel_in_table_locked(ch)) {
@@ -622,7 +637,7 @@ int data_bus_publish(data_bus_channel_t* ch, const void* data, size_t len) {
             channel_publish_release(ch);
             return -ESHUTDOWN;
         }
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
         k_mutex_unlock(&g_channels_lock);
     }
 
@@ -687,7 +702,7 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
 #endif
 
     if (in_isr) {
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
     } else {
         k_mutex_lock(&g_channels_lock, K_FOREVER);
         if (!channel_in_table_locked(ch)) {
@@ -700,7 +715,7 @@ int data_bus_publish_block(data_bus_channel_t* ch, data_bus_block_t* block) {
             channel_publish_release(ch);
             return -ESHUTDOWN;
         }
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
         k_mutex_unlock(&g_channels_lock);
     }
     if (!enqueued) {
@@ -789,7 +804,7 @@ int data_bus_publish_inplace(data_bus_channel_t* ch, size_t len, data_bus_fill_f
     size_t   published_len = block->len;
 
     if (in_isr) {
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
     } else {
         k_mutex_lock(&g_channels_lock, K_FOREVER);
         if (!channel_in_table_locked(ch)) {
@@ -804,7 +819,7 @@ int data_bus_publish_inplace(data_bus_channel_t* ch, size_t len, data_bus_fill_f
             channel_publish_release(ch);
             return -ESHUTDOWN;
         }
-        enqueued = channel_enqueue_block(ch, block, &published_seq);
+        enqueued = channel_enqueue_block(ch, block, &published_seq, in_isr);
         k_mutex_unlock(&g_channels_lock);
     }
 
