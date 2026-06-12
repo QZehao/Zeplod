@@ -85,11 +85,8 @@ void ipc_service_dispatcher_thread(void* p1, void* p2, void* p3) {
                 ipc_pending_table_release(service, entry);
                 ipc_service_pending_unlock(service);
 
-                if (cb != NULL) {
-                    cb(rid, res, rdata, rsize, ud);
-                } else {
-                    LOG_ERR("NULL callback detected for request %u", rid);
-                }
+                /* 进入本分支的前提即 entry->callback != NULL，cb 必非空。 */
+                cb(rid, res, rdata, rsize, ud);
 
 #if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
                 if (shm_handle != 0) {

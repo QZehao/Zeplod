@@ -22,11 +22,20 @@ static int ipc_call_sync_impl(ipc_service_t* service, const void* data, size_t d
                               ipc_shm_handle_t* out_shm_handle,
 #endif
                               k_timeout_t timeout) {
-    if (!ipc_service_is_accepting_requests(service)) {
+    if (out_data == NULL || out_data_size == NULL) {
         return -EINVAL;
     }
 
-    if (out_data == NULL || out_data_size == NULL) {
+    /* 输出参数在任何错误返回前都置为确定值，调用方无需依赖自行初始化。 */
+    *out_data = NULL;
+    *out_data_size = 0;
+#if IS_ENABLED(CONFIG_THREAD_IPC_SERVICE_SHARED_MEM)
+    if (out_shm_handle != NULL) {
+        *out_shm_handle = 0;
+    }
+#endif
+
+    if (!ipc_service_is_accepting_requests(service)) {
         return -EINVAL;
     }
 
@@ -187,10 +196,6 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
 
     ipc_request_id_t request_id = ipc_generate_request_id();
 
-    if (out_request_id != NULL) {
-        *out_request_id = request_id;
-    }
-
     ipc_service_pending_lock(service);
 
     ipc_pending_request_t* entry = ipc_pending_table_alloc(service);
@@ -230,6 +235,11 @@ int ipc_call_async(ipc_service_t* service, const void* data, size_t data_size, i
         return ret;
     }
 
+    /* 仅在请求成功入队后才写出 ID，避免失败路径污染调用方的 request_id。 */
+    if (out_request_id != NULL) {
+        *out_request_id = request_id;
+    }
+
     return 0;
 }
 
@@ -238,15 +248,18 @@ int ipc_call_future(ipc_service_t* service, const void* data, size_t data_size,
                     ipc_shm_handle_t in_shm_handle,
 #endif
                     ipc_future_t** out_future) {
+    if (out_future == NULL) {
+        return -EINVAL;
+    }
+
+    /* 输出参数在任何错误返回前都置为确定值。 */
+    *out_future = NULL;
+
     if (!ipc_service_is_accepting_requests(service)) {
         return -EINVAL;
     }
 
     if (data == NULL && data_size != 0) {
-        return -EINVAL;
-    }
-
-    if (out_future == NULL) {
         return -EINVAL;
     }
 

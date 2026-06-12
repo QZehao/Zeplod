@@ -426,6 +426,8 @@ size_t ipc_service_get_pending_count(ipc_service_t* service);
  * @note 仅当请求仍在 pending 表中时可取消；已完成并出表后不可取消
  * @note 已完成但尚未被同步调用方收尾的请求返回 -EALREADY，不会覆盖已产生的响应结果
  * @note 取消成功后 worker 若稍后从队列取出该 request_id，将跳过 service_func（不再投递响应）
+ * @note 若 worker 已开始执行 service_func，取消无法中断其副作用；仅保证回调不被触发、
+ *       响应被丢弃（dispatcher 按 request_id 找不到 pending 条目而安全释放）
  */
 int ipc_service_cancel(ipc_service_t* service, ipc_request_id_t request_id);
 
