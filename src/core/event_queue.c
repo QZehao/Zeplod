@@ -159,6 +159,11 @@ static void event_queue_record_drop(event_queue_cb_t* cb) {
 
 /**
  * @brief BLOCK 策略下 K_FOREVER 入队：分段阻塞并轮询 running，避免 stop 时永久卡在 k_msgq_put
+ *
+ * @note 退出循环最长滞后一个 CONFIG_EVENT_QUEUE_BLOCK_RETRY_MS。event_system_stop()
+ *       先置 running=0 再 ops_wait_zero()（上限 EVENT_SYSTEM_OP_WAIT_TIMEOUT_MS，5000ms），
+ *       因此 BLOCK_RETRY_MS 必须远小于该超时，否则被阻塞的发布者可能拖到 stop 返回
+ *       EVENT_ERR_TIMEOUT。BLOCK 策略不建议用于实时路径。
  */
 static int event_msgq_put(struct k_msgq* queue, const void* data, k_timeout_t timeout) {
     if (K_TIMEOUT_EQ(timeout, K_FOREVER)) {
@@ -470,7 +475,7 @@ event_status_t event_queue_init(struct k_msgq* queue, void* buffer, size_t capac
 
     k_mutex_unlock(&g_queue_cb_lock);
 
-    LOG_DBG("Event queue initialized: capacity=%d", capacity);
+    LOG_DBG("Event queue initialized: capacity=%zu", capacity);
     return EVENT_OK;
 }
 

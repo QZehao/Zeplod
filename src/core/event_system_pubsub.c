@@ -168,7 +168,9 @@ event_status_t event_unregister_type(event_type_t type) {
 
     atomic_set(&entry->registered, 0);
     entry->name = NULL;
-    entry->subscriber_count = 0;
+    /* 清空名称存储：register_type 以 name_storage[0] 作为占用判据，
+     * 若此处不清，注销后以不同名字重注册会被误拒为 EVENT_ERR_INVALID_ARG。 */
+    entry->name_storage[0] = '\0';
 
     event_system_entry_unlock(entry);
 

@@ -616,7 +616,10 @@ void event_free(event_t* event);
  *
  * @note 如果类型未注册，返回 "UNREGISTERED"
  * @note 如果类型 ID 无效，返回 "UNKNOWN"
- * @note 已注册名称在本次 event_system_init()/shutdown() 生命周期内保持不变；返回指针不得跨 shutdown 使用
+ * @note 返回的是指向内部名称缓冲的指针，函数返回后不再持锁。仅当调用方能保证此后
+ *       不会对该类型并发执行 event_unregister_type()/event_register_type() 时，指针内容才稳定；
+ *       否则可能读到被覆盖或撕裂的字符串。返回指针不得跨 event_system_shutdown() 使用。
+ *       如需长期保存，请在调用后立即拷贝到调用方缓冲区。
  */
 const char* event_get_type_name(event_type_t type);
 

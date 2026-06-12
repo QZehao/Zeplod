@@ -123,11 +123,6 @@ static void process_event(const event_t* event);
 static uint32_t calculate_idle_time_us(uint64_t last_event_time);
 
 /**
- * @brief 当前上下文是否允许调用 process_one / process_all
- *
- * @pre 已持有 g_dispatcher.lock
- */
-/**
  * @brief 校验分发器配置参数
  *
  * @param config 配置指针，不可为 NULL
@@ -207,6 +202,11 @@ static void dispatcher_apply_thread_stopped_locked(uint32_t join_gen) {
     }
 }
 
+/**
+ * @brief 当前上下文是否允许调用 process_one / process_all
+ *
+ * @pre 已持有 g_dispatcher.lock
+ */
 static bool dispatcher_can_process_locked(dispatcher_state_t state, bool thread_started, bool ever_started) {
     if (state == DISPATCHER_PAUSED) {
         return false;
@@ -1018,7 +1018,7 @@ static void process_event(const event_t* event) {
 
     k_mutex_unlock(&g_dispatcher.lock);
 
-    LOG_DBG("Processed event type=%d, latency=%dus", event->type, latency_us);
+    LOG_DBG("Processed event type=%u, latency=%uus", (unsigned int) event->type, latency_us);
 }
 
 /**
