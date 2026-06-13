@@ -14,12 +14,12 @@
 #ifndef ZEPLOD_FRAMEWORK_H
 #define ZEPLOD_FRAMEWORK_H
 
-#include <zeplod/zeplod_api_defs.h>
-#include <zeplod/event_system.h>
 #include <zeplod/event_dispatcher.h>
+#include <zeplod/event_system.h>
 #include <zeplod/event_system_compat.h>
-#include <zeplod/state_machine.h>
 #include <zeplod/lock_order.h>
+#include <zeplod/state_machine.h>
 #include <zeplod/zepl_thread_service.h>
+#include <zeplod/zeplod_api_defs.h>
 
 #endif /* ZEPLOD_FRAMEWORK_H */

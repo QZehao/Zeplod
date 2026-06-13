@@ -18,5 +18,4 @@ static inline void test_event_noop_callback(const event_t* event, void* user_dat
     ARG_UNUSED(event);
     ARG_UNUSED(user_data);
 }
-
 #endif /* TEST_EVENT_STUBS_H */

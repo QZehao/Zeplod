@@ -1,16 +1,19 @@
 /**
  * @file ota_module.c
- * @brief OTA 模块生命周期与更新流程
+ * @brief OTA 模块实现
  * @author zeh (china_qzh@163.com)
- * @version 1.2
+ * @version 1.5
  * @date 2026-06-13
  *
  * @par 修改日志:
  *
  *    Date         Version        Author          Description
- * 2026-06-13       1.0            zeh            初始版本（Phase 1 null 传输）
- * 2026-06-13       1.1            zeh            幂等 init、锁序、锁外发事件、ERROR 恢复
- * 2026-06-13       1.2            zeh            传输后端 Kconfig 选择；request_reboot
+ * 2026-06-13       1.0            zeh            Phase 1 初始版本
+ * 2026-06-13       1.1            zeh            幂等 init、锁序、锁外发事件
+ * 2026-06-13       1.2            zeh            传输后端 Kconfig；request_reboot
+ * 2026-06-13       1.3            zeh            MCUmgr SMP 被动接入桥接
+ * 2026-06-13       1.4            zeh            双 ingest 路径；会话互斥
+ * 2026-06-13       1.5            zeh            start 回滚；MCUmgr abort/错误传播
  *
  */
 
@@ -20,6 +23,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
+
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+#include <zephyr/dfu/mcuboot.h>
+#include "ota_module_mcumgr.h"
+#endif
 
 #include <errno.h>
 #include <string.h>
@@ -34,15 +42,22 @@ LOG_MODULE_REGISTER(ota_module, CONFIG_SYS_LOG_LEVEL);
  * 内部数据结构
  * ============================================================================= */
 
+typedef enum {
+    OTA_INGEST_NONE = 0,
+    OTA_INGEST_MCUMGR,
+    OTA_INGEST_ACTIVE,
+} ota_ingest_owner_t;
+
 typedef struct {
-    ota_sm_t                  sm;
-    const ota_transport_ops_t* transport;
-    module_status_t           status;
-    size_t                    image_size;
-    struct k_mutex            lock;
-    bool                      lock_ready;
-    bool                      events_registered;
-    bool                      transport_open;
+    ota_sm_t                   sm;
+    const ota_transport_ops_t* active_transport;
+    ota_ingest_owner_t         ingest_owner;
+    module_status_t            status;
+    size_t                     image_size;
+    struct k_mutex             lock;
+    bool                       lock_ready;
+    bool                       events_registered;
+    bool                       session_open;
 } ota_module_cb_t;
 
 /* =============================================================================
@@ -126,10 +141,17 @@ static int ota_publish_progress(const ota_progress_t* prog) {
 }
 
 static void ota_reset_session_locked(void) {
-    if (g_ota.transport_open && g_ota.transport != NULL && g_ota.transport->abort != NULL) {
-        g_ota.transport->abort((ota_transport_ops_t*) g_ota.transport);
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+    if (g_ota.session_open && g_ota.ingest_owner == OTA_INGEST_MCUMGR) {
+        ota_transport_mcumgr_smp_cancel_upload();
     }
-    g_ota.transport_open = false;
+#endif
+    if (g_ota.session_open && g_ota.ingest_owner == OTA_INGEST_ACTIVE && g_ota.active_transport != NULL &&
+        g_ota.active_transport->abort != NULL) {
+        g_ota.active_transport->abort((ota_transport_ops_t*) g_ota.active_transport);
+    }
+    g_ota.session_open = false;
+    g_ota.ingest_owner = OTA_INGEST_NONE;
     ota_sm_init(&g_ota.sm);
     g_ota.image_size = 0U;
 }
@@ -137,10 +159,12 @@ static void ota_reset_session_locked(void) {
 static int ota_transport_fail_locked(int err, ota_progress_t* out_prog) {
     (void) ota_sm_on_error(&g_ota.sm, err);
     ota_build_progress(out_prog, OTA_STATE_ERROR, err);
-    if (g_ota.transport != NULL && g_ota.transport->abort != NULL) {
-        g_ota.transport->abort((ota_transport_ops_t*) g_ota.transport);
+    if (g_ota.ingest_owner == OTA_INGEST_ACTIVE && g_ota.active_transport != NULL &&
+        g_ota.active_transport->abort != NULL) {
+        g_ota.active_transport->abort((ota_transport_ops_t*) g_ota.active_transport);
     }
-    g_ota.transport_open = false;
+    g_ota.session_open = false;
+    g_ota.ingest_owner = OTA_INGEST_NONE;
     return err;
 }
 
@@ -186,13 +210,16 @@ int ota_module_init(void* config) {
     }
 
     ota_sm_init(&g_ota.sm);
-#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUBOOT)
-    g_ota.transport = ota_transport_mcuboot_get();
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_NULL)
+    g_ota.active_transport = ota_transport_null_get();
+#elif IS_ENABLED(CONFIG_OTA_TRANSPORT_ACTIVE)
+    g_ota.active_transport = ota_transport_mcuboot_get();
 #else
-    g_ota.transport = ota_transport_null_get();
+    g_ota.active_transport = NULL;
 #endif
+    g_ota.ingest_owner = OTA_INGEST_NONE;
     g_ota.image_size = 0U;
-    g_ota.transport_open = false;
+    g_ota.session_open = false;
     g_ota.status = MODULE_STATUS_INITIALIZED;
 
     ret = ota_register_event_types();
@@ -201,11 +228,21 @@ int ota_module_init(void* config) {
         return ret;
     }
 
-    LOG_INF("OTA module initialized (%s transport)",
-#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUBOOT)
-            "mcuboot");
+    LOG_INF("OTA module initialized (mcumgr_smp=%d active=%d null=%d)",
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+            1,
 #else
-            "null");
+            0,
+#endif
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_ACTIVE)
+            1,
+#else
+            0,
+#endif
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_NULL)
+            1);
+#else
+            0);
 #endif
     return 0;
 }
@@ -222,6 +259,37 @@ int ota_module_start(void) {
         ota_unlock();
         return 0;
     }
+    ota_unlock();
+
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+    {
+        const ota_transport_ops_t* smp = ota_transport_mcumgr_smp_get();
+        int                        hook_ret;
+
+        if (smp != NULL && smp->open != NULL) {
+            hook_ret = smp->open((ota_transport_ops_t*) smp);
+            if (hook_ret != 0) {
+                LOG_ERR("MCUmgr SMP ingest arm failed: %d", hook_ret);
+                return APP_ERR_OTA_TRANSPORT;
+            }
+        }
+    }
+#endif
+
+    ota_lock();
+    if (g_ota.status == MODULE_STATUS_UNINITIALIZED) {
+        ota_unlock();
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+        {
+            const ota_transport_ops_t* smp = ota_transport_mcumgr_smp_get();
+
+            if (smp != NULL && smp->close != NULL) {
+                (void) smp->close((ota_transport_ops_t*) smp);
+            }
+        }
+#endif
+        return APP_ERR_INIT;
+    }
     g_ota.status = MODULE_STATUS_RUNNING;
     ota_unlock();
 
@@ -236,6 +304,16 @@ int ota_module_stop(void) {
     ota_reset_session_locked();
     g_ota.status = MODULE_STATUS_STOPPED;
     ota_unlock();
+
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+    {
+        const ota_transport_ops_t* smp = ota_transport_mcumgr_smp_get();
+
+        if (smp != NULL && smp->close != NULL) {
+            (void) smp->close((ota_transport_ops_t*) smp);
+        }
+    }
+#endif
 
     LOG_INF("OTA module stopped");
     return 0;
@@ -288,7 +366,18 @@ int ota_module_begin_update(void) {
         return APP_ERR_INIT;
     }
 
-    if (g_ota.transport == NULL || g_ota.transport->open == NULL) {
+#if !IS_ENABLED(CONFIG_OTA_TRANSPORT_ACTIVE)
+    ota_unlock();
+    LOG_WRN("Active ingest disabled; use MCUmgr SMP or enable CONFIG_OTA_TRANSPORT_ACTIVE");
+    return APP_ERR_OTA_TRANSPORT;
+#endif
+
+    if (g_ota.ingest_owner == OTA_INGEST_MCUMGR) {
+        ota_unlock();
+        return APP_ERR_OTA_INVALID_STATE;
+    }
+
+    if (g_ota.active_transport == NULL || g_ota.active_transport->open == NULL) {
         ota_unlock();
         return APP_ERR_OTA_TRANSPORT;
     }
@@ -304,7 +393,7 @@ int ota_module_begin_update(void) {
         return APP_ERR_OTA_INVALID_STATE;
     }
 
-    ret = g_ota.transport->open((ota_transport_ops_t*) g_ota.transport);
+    ret = g_ota.active_transport->open((ota_transport_ops_t*) g_ota.active_transport);
     if (ret != 0) {
         ret = ota_transport_fail_locked(ret, &prog);
         ota_unlock();
@@ -312,7 +401,8 @@ int ota_module_begin_update(void) {
         return APP_ERR_OTA_TRANSPORT;
     }
 
-    g_ota.transport_open = true;
+    g_ota.ingest_owner = OTA_INGEST_ACTIVE;
+    g_ota.session_open = true;
     g_ota.image_size = 0U;
     ota_build_progress(&prog, OTA_STATE_DOWNLOADING, 0);
     ota_unlock();
@@ -330,12 +420,13 @@ int ota_module_write_chunk(size_t offset, const uint8_t* data, size_t len) {
 
     ota_lock();
 
-    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_DOWNLOADING || !g_ota.transport_open) {
+    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_DOWNLOADING || !g_ota.session_open ||
+        g_ota.ingest_owner != OTA_INGEST_ACTIVE) {
         ota_unlock();
         return APP_ERR_OTA_INVALID_STATE;
     }
 
-    ret = g_ota.transport->write_chunk((ota_transport_ops_t*) g_ota.transport, offset, data, len);
+    ret = g_ota.active_transport->write_chunk((ota_transport_ops_t*) g_ota.active_transport, offset, data, len);
     if (ret != 0) {
         ret = ota_transport_fail_locked(ret, &prog);
         ota_unlock();
@@ -358,7 +449,8 @@ int ota_module_finish_update(void) {
 
     ota_lock();
 
-    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_DOWNLOADING || !g_ota.transport_open) {
+    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_DOWNLOADING || !g_ota.session_open ||
+        g_ota.ingest_owner != OTA_INGEST_ACTIVE) {
         ota_unlock();
         return APP_ERR_OTA_INVALID_STATE;
     }
@@ -374,11 +466,12 @@ int ota_module_finish_update(void) {
 
     ota_lock();
     /* 释放锁期间可能发生并发 abort/stop，重锁后须重新校验会话仍有效 */
-    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_VERIFYING || !g_ota.transport_open) {
+    if (ota_sm_get_state(&g_ota.sm) != OTA_STATE_VERIFYING || !g_ota.session_open ||
+        g_ota.ingest_owner != OTA_INGEST_ACTIVE) {
         ota_unlock();
         return APP_ERR_OTA_INVALID_STATE;
     }
-    ret = g_ota.transport->verify((ota_transport_ops_t*) g_ota.transport);
+    ret = g_ota.active_transport->verify((ota_transport_ops_t*) g_ota.active_transport);
     if (ret != 0) {
         ret = ota_transport_fail_locked(ret, &prog);
         ota_unlock();
@@ -392,10 +485,11 @@ int ota_module_finish_update(void) {
         return APP_ERR_OTA_INVALID_STATE;
     }
 
-    if (g_ota.transport->close != NULL) {
-        (void) g_ota.transport->close((ota_transport_ops_t*) g_ota.transport);
+    if (g_ota.active_transport->close != NULL) {
+        (void) g_ota.active_transport->close((ota_transport_ops_t*) g_ota.active_transport);
     }
-    g_ota.transport_open = false;
+    g_ota.session_open = false;
+    g_ota.ingest_owner = OTA_INGEST_NONE;
     ota_build_progress(&prog, OTA_STATE_READY_REBOOT, 0);
     ota_unlock();
     (void) ota_publish_progress(&prog);
@@ -439,6 +533,149 @@ int ota_module_request_reboot(void) {
     sys_reboot(SYS_REBOOT_WARM);
     return 0;
 }
+
+/* =============================================================================
+ * MCUmgr img_mgmt 桥接（CONFIG_OTA_TRANSPORT_MCUMGR_SMP）
+ * ============================================================================= */
+
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+static void ota_mcumgr_fail_locked(int err, ota_progress_t* out_prog) {
+    (void) ota_transport_fail_locked(err, out_prog);
+}
+
+bool ota_module_mcumgr_try_claim_session(void) {
+    bool ok;
+
+    ota_lock();
+    ok = (g_ota.status == MODULE_STATUS_RUNNING) &&
+         (g_ota.ingest_owner == OTA_INGEST_NONE || g_ota.ingest_owner == OTA_INGEST_MCUMGR);
+    if (ok && g_ota.ingest_owner == OTA_INGEST_NONE) {
+        g_ota.ingest_owner = OTA_INGEST_MCUMGR;
+    }
+    ota_unlock();
+    return ok;
+}
+
+bool ota_module_mcumgr_is_accepting(void) {
+    ota_state_t st;
+    bool        ok;
+
+    ota_lock();
+    st = ota_sm_get_state(&g_ota.sm);
+    ok = (g_ota.status == MODULE_STATUS_RUNNING) && (g_ota.ingest_owner == OTA_INGEST_MCUMGR) &&
+         (st == OTA_STATE_IDLE || st == OTA_STATE_DOWNLOADING || st == OTA_STATE_VERIFYING);
+    ota_unlock();
+    return ok;
+}
+
+bool ota_module_mcumgr_on_dfu_started(void) {
+    ota_progress_t prog;
+    ota_state_t    st;
+    int            ret;
+
+    ota_lock();
+    st = ota_sm_get_state(&g_ota.sm);
+    if (st == OTA_STATE_ERROR || st == OTA_STATE_READY_REBOOT) {
+        ota_reset_session_locked();
+        g_ota.ingest_owner = OTA_INGEST_MCUMGR;
+    }
+
+    ret = ota_sm_on_download_start(&g_ota.sm);
+    if (ret != 0) {
+        g_ota.ingest_owner = OTA_INGEST_NONE;
+        ota_unlock();
+        return false;
+    }
+
+    g_ota.session_open = true;
+    g_ota.image_size = 0U;
+    ota_build_progress(&prog, OTA_STATE_DOWNLOADING, 0);
+    ota_unlock();
+    (void) ota_publish_progress(&prog);
+    return true;
+}
+
+void ota_module_mcumgr_on_chunk_progress(size_t image_size) {
+    ota_progress_t prog;
+
+    ota_lock();
+    if (!g_ota.session_open || g_ota.ingest_owner != OTA_INGEST_MCUMGR ||
+        ota_sm_get_state(&g_ota.sm) != OTA_STATE_DOWNLOADING) {
+        ota_unlock();
+        return;
+    }
+
+    g_ota.image_size = image_size;
+    ota_build_progress(&prog, OTA_STATE_DOWNLOADING, 0);
+    ota_unlock();
+    (void) ota_publish_progress(&prog);
+}
+
+void ota_module_mcumgr_on_dfu_pending(void) {
+    ota_progress_t prog;
+    int            ret;
+
+    ota_lock();
+    if (!g_ota.session_open || g_ota.ingest_owner != OTA_INGEST_MCUMGR) {
+        ota_mcumgr_fail_locked(-EINVAL, &prog);
+        ota_unlock();
+        (void) ota_publish_progress(&prog);
+        return;
+    }
+
+    ret = ota_sm_on_download_complete(&g_ota.sm);
+    if (ret != 0) {
+        ota_mcumgr_fail_locked(ret, &prog);
+        ota_unlock();
+        (void) ota_publish_progress(&prog);
+        return;
+    }
+    ota_build_progress(&prog, OTA_STATE_VERIFYING, 0);
+    ota_unlock();
+    (void) ota_publish_progress(&prog);
+
+    ota_lock();
+    if (!g_ota.session_open || g_ota.ingest_owner != OTA_INGEST_MCUMGR ||
+        ota_sm_get_state(&g_ota.sm) != OTA_STATE_VERIFYING) {
+        ota_mcumgr_fail_locked(-EINVAL, &prog);
+        ota_unlock();
+        (void) ota_publish_progress(&prog);
+        return;
+    }
+
+    ret = ota_sm_on_verify_ok(&g_ota.sm);
+    if (ret != 0) {
+        ota_mcumgr_fail_locked(ret, &prog);
+        ota_unlock();
+        (void) ota_publish_progress(&prog);
+        return;
+    }
+
+    ret = boot_request_upgrade(BOOT_UPGRADE_TEST);
+    if (ret != 0) {
+        ret = ota_transport_fail_locked(ret, &prog);
+        ota_unlock();
+        (void) ota_publish_progress(&prog);
+        return;
+    }
+
+    g_ota.session_open = false;
+    g_ota.ingest_owner = OTA_INGEST_NONE;
+    ota_build_progress(&prog, OTA_STATE_READY_REBOOT, 0);
+    ota_unlock();
+    (void) ota_publish_progress(&prog);
+}
+
+void ota_module_mcumgr_on_dfu_stopped(void) {
+    ota_progress_t prog;
+
+    ota_lock();
+    ota_reset_session_locked();
+    ota_build_progress(&prog, OTA_STATE_IDLE, 0);
+    ota_unlock();
+    (void) ota_publish_progress(&prog);
+}
+#endif /* CONFIG_OTA_TRANSPORT_MCUMGR_SMP */
 
 /* =============================================================================
  * 模块注册

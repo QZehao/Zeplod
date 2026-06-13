@@ -104,7 +104,7 @@ typedef int (*app_kv_migrate_fn)(uint32_t from_ver, uint32_t to_ver, void* user_
 
 /**
  * @brief 注册单步 schema 迁移（from_ver → to_ver）
- * @return APP_OK；槽位满或参数无效时返回 APP_ERR_* 
+ * @return APP_OK；槽位满或参数无效时返回 APP_ERR_*
  * @note 须满足 from_ver < to_ver；同一步骤重复注册返回 APP_ERR_ALREADY_EXISTS
  */
 int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_fn fn, void* user_data);

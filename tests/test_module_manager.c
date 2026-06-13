@@ -185,8 +185,7 @@ static void* module_manager_suite_setup(void) {
     zassert_true(ret == 0 || ret == -EALREADY, "模块管理器初始化失败: %d", ret);
 
     ret = module_manager_start();
-    zassert_true(ret == 0 || ret == -EALREADY || ret == MODULE_ERR_ALREADY_RUNNING, "模块管理器启动失败: %d",
-                 ret);
+    zassert_true(ret == 0 || ret == -EALREADY || ret == MODULE_ERR_ALREADY_RUNNING, "模块管理器启动失败: %d", ret);
 
     return NULL;
 }
@@ -649,7 +648,7 @@ ZTEST(module_manager, test_unregister_during_init_returns_busy) {
         k_thread_create(&g_slow_register_thread, g_slow_register_stack, K_THREAD_STACK_SIZEOF(g_slow_register_stack),
                         slow_register_thread_entry, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
 
-    int wait_ms = 0;
+    int      wait_ms = 0;
     uint32_t slow_id = 0U;
 
     while (atomic_get(&g_slow_init_entered) == 0 && wait_ms < 500) {

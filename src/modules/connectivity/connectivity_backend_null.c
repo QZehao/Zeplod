@@ -30,8 +30,8 @@ typedef struct {
  * 静态变量
  * ============================================================================= */
 
-static connectivity_null_ctx_t     g_null_ctx;
-static connectivity_backend_ops_t  g_null_ops;
+static connectivity_null_ctx_t    g_null_ctx;
+static connectivity_backend_ops_t g_null_ops;
 
 /* =============================================================================
  * 后端回调

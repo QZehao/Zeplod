@@ -25,5 +25,4 @@
     "  %-14s %s\r\n"                                                                                                   \
     "  %-14s 0x%06X\r\n"                                                                                               \
     "  %-14s %s\r\n"
-
 #endif /* APP_BANNER_H */

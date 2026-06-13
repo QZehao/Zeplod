@@ -25,7 +25,6 @@ extern "C" {
 void mm_dep_planner_sort_priority_asc(mm_dep_order_entry_t* entries, int n);
 
 #if IS_ENABLED(CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES)
-
 /** 按 priority 降序（停止时作 fallback） */
 void mm_dep_planner_sort_priority_desc(mm_dep_order_entry_t* entries, int n);
 
@@ -41,7 +40,6 @@ int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n);
  * @pre 调用方不得持有 module_manager_lock
  */
 int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n);
-
 #endif /* CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES */
 
 #ifdef __cplusplus

@@ -48,6 +48,8 @@ IncludeCategories:
     Priority: 3
 
 # 空格和空行
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
 SpaceAfterCStyleCast: true
 SpaceAfterLogicalNot: false
 SpaceAfterTemplateKeyword: true

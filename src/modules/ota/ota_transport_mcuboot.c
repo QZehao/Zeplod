@@ -39,8 +39,8 @@ typedef struct {
  * 静态变量
  * ============================================================================= */
 
-static ota_mcuboot_ctx_t     g_mcuboot_ctx;
-static ota_transport_ops_t   g_mcuboot_ops;
+static ota_mcuboot_ctx_t   g_mcuboot_ctx;
+static ota_transport_ops_t g_mcuboot_ops;
 
 /* =============================================================================
  * 前置声明

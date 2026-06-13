@@ -154,8 +154,7 @@ ZTEST(sys_diag_tests, test_collect_modules_when_manager_enabled) {
     zassert_true(ret == 0 || ret == -EALREADY, "module_manager_init: %d", ret);
 
     ret = module_manager_start();
-    zassert_true(ret == 0 || ret == -EALREADY || ret == MODULE_ERR_ALREADY_RUNNING,
-                 "module_manager_start: %d", ret);
+    zassert_true(ret == 0 || ret == -EALREADY || ret == MODULE_ERR_ALREADY_RUNNING, "module_manager_start: %d", ret);
 
     zassert_equal(module_manager_register(&diag_stub_interface, NULL, &module_id), 0, NULL);
     zassert_true(module_id > 0U, "module id should be non-zero");

@@ -26,13 +26,13 @@ extern "C" {
 #define EVENT_FEATURE_GATE_LICENSE_CHANGED ((event_type_t) 72)
 
 /** 功能名：始终可用 */
-#define FEATURE_GATE_NAME_CORE "core"
+#define FEATURE_GATE_NAME_CORE             "core"
 
 /** 功能名：需有效 license（CONFIG_FEATURE_GATE_SLOT_CLOUD） */
-#define FEATURE_GATE_NAME_CLOUD "cloud"
+#define FEATURE_GATE_NAME_CLOUD            "cloud"
 
 /** 功能名：需有效 license（CONFIG_FEATURE_GATE_SLOT_REMOTE） */
-#define FEATURE_GATE_NAME_REMOTE "remote"
+#define FEATURE_GATE_NAME_REMOTE           "remote"
 
 typedef struct {
     bool license_valid;

@@ -125,8 +125,8 @@ ZTEST(ota_module, test_state_machine_invalid_transition) {
  * ============================================================================= */
 
 static volatile ota_state_t g_last_ota_state;
-static volatile int           g_progress_event_count;
-static struct k_sem           g_ota_sem;
+static volatile int         g_progress_event_count;
+static struct k_sem         g_ota_sem;
 
 static void ota_state_event_cb(const event_t* ev, void* user_data) {
     (void) user_data;

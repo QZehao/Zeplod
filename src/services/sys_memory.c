@@ -15,12 +15,12 @@
  *
  */
 
-#include <zeplod/sys_memory.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <limits.h>
 #include <stdalign.h>
 #include <string.h>
+#include <zeplod/sys_memory.h>
 
 LOG_MODULE_REGISTER(sys_memory, CONFIG_SYS_LOG_LEVEL);
 
@@ -591,7 +591,8 @@ int sys_mem_init(const sys_mem_config_t* config) {
         }
 
         if (configured_size < sizeof(free_block_t)) {
-            LOG_WRN("Pool %d size %u too small (min %zu), disabled", i, (uint32_t) configured_size, sizeof(free_block_t));
+            LOG_WRN("Pool %d size %u too small (min %zu), disabled", i, (uint32_t) configured_size,
+                    sizeof(free_block_t));
             pool->initialized = false;
             continue;
         }

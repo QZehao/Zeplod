@@ -79,11 +79,11 @@ typedef struct {
  * 仅在启用跟踪功能时有效。
  */
 typedef struct {
-    void*    ptr;                              ///< 分配的内存指针
-    size_t   size;                             ///< 请求的大小（字节）
-    uint32_t timestamp;                        ///< 分配时间戳（系统运行毫秒数）
-    char     module[SYS_MEM_MODULE_NAME_LEN];  ///< 分配模块名称（可选）
-    uint32_t line;                             ///< 源代码行号（可选）
+    void*    ptr;                             ///< 分配的内存指针
+    size_t   size;                            ///< 请求的大小（字节）
+    uint32_t timestamp;                       ///< 分配时间戳（系统运行毫秒数）
+    char     module[SYS_MEM_MODULE_NAME_LEN]; ///< 分配模块名称（可选）
+    uint32_t line;                            ///< 源代码行号（可选）
 } sys_mem_alloc_info_t;
 
 /* =============================================================================

@@ -14,10 +14,10 @@
 #ifndef ZEPLOD_MODULE_H
 #define ZEPLOD_MODULE_H
 
-#include <zeplod/zeplod_api_defs.h>
 #include <zeplod/module_base.h>
+#include <zeplod/module_dependency_planner.h>
 #include <zeplod/module_manager.h>
 #include <zeplod/module_manager_compat.h>
-#include <zeplod/module_dependency_planner.h>
+#include <zeplod/zeplod_api_defs.h>
 
 #endif /* ZEPLOD_MODULE_H */

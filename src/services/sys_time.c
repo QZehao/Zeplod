@@ -30,12 +30,12 @@ LOG_MODULE_REGISTER(sys_time, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 typedef struct {
-    int64_t      unix_ms_base;
-    int64_t      uptime_ms_base;
-    bool         valid;
-    bool         ready;
+    int64_t        unix_ms_base;
+    int64_t        uptime_ms_base;
+    bool           valid;
+    bool           ready;
     struct k_mutex lock;
-    bool         lock_ready;
+    bool           lock_ready;
 } sys_time_cb_t;
 
 /* =============================================================================
@@ -148,11 +148,9 @@ void sys_time_invalidate(void) {
  * ============================================================================= */
 
 #if IS_ENABLED(CONFIG_SYS_TIME_ENABLE)
-
 static int sys_time_auto_init(void) {
     return sys_time_init();
 }
 
 SYS_INIT(sys_time_auto_init, POST_KERNEL, APP_INIT_PRIO_SYS_TIME);
-
 #endif

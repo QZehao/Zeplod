@@ -21,7 +21,7 @@ ZTEST_SUITE(app_kv_migrate_tests, NULL, NULL, NULL, NULL, NULL);
 static int g_migrate_called;
 
 static int migrate_stub(uint32_t from_ver, uint32_t to_ver, void* user_data) {
-    int* called = (int*)user_data;
+    int* called = (int*) user_data;
 
     zassert_equal(from_ver, 1U, NULL);
     zassert_equal(to_ver, 2U, NULL);

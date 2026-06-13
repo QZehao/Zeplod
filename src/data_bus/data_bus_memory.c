@@ -59,7 +59,6 @@ BUILD_ASSERT(CONFIG_DATA_BUS_MAX_BLOCKS >= CONFIG_DATA_BUS_SLAB_64_COUNT + CONFI
                                                CONFIG_DATA_BUS_SLAB_256_COUNT + CONFIG_DATA_BUS_SLAB_512_COUNT +
                                                CONFIG_DATA_BUS_SLAB_1K_COUNT + CONFIG_DATA_BUS_SLAB_4K_COUNT,
              "DATA_BUS_MAX_BLOCKS must be >= total data slab blocks");
-
 #endif /* CONFIG_DATA_BUS_SLAB_ENABLE */
 
 /* ============================================================================

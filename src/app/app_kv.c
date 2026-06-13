@@ -33,7 +33,6 @@ LOG_MODULE_REGISTER(app_kv, CONFIG_SYS_LOG_LEVEL);
 #endif
 
 #if APP_CONFIG_ENABLE_APP_KV
-
 typedef struct {
     char key[APP_KV_KEY_MAX_LEN];
     char value[APP_KV_VALUE_MAX_LEN];
@@ -73,7 +72,6 @@ static void kv_strncpy_fill(char* dst, const char* src, size_t cap) {
 }
 
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST)
-
 static int find_free_locked(void) {
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
         if (!g_kv[i].in_use) {
@@ -210,7 +208,6 @@ static int kv_encode_blob_locked(uint8_t* buf, size_t cap, size_t* out_len) {
     *out_len = off;
     return APP_OK;
 }
-
 #endif /* CONFIG_APP_KV_PERSIST */
 
 #if IS_ENABLED(CONFIG_APP_KV_PERSIST) && IS_ENABLED(CONFIG_APP_KV_PERSIST_AUTOSAVE)
@@ -277,11 +274,11 @@ int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_f
         return APP_ERR_KV_FULL;
     }
 
-    g_kv_migrations[slot].from_ver   = from_ver;
-    g_kv_migrations[slot].to_ver     = to_ver;
-    g_kv_migrations[slot].fn         = fn;
+    g_kv_migrations[slot].from_ver = from_ver;
+    g_kv_migrations[slot].to_ver = to_ver;
+    g_kv_migrations[slot].fn = fn;
     g_kv_migrations[slot].user_data = user_data;
-    g_kv_migrations[slot].in_use    = true;
+    g_kv_migrations[slot].in_use = true;
     k_mutex_unlock(&g_kv_lock);
     return APP_OK;
 }
@@ -323,7 +320,7 @@ int app_kv_run_migrations(void) {
                 continue;
             }
             if (g_kv_migrations[i].from_ver == g_kv_schema_version) {
-                step  = g_kv_migrations[i];
+                step = g_kv_migrations[i];
                 found = true;
                 break;
             }
@@ -574,8 +571,7 @@ int app_kv_load(void) {
     return d == APP_OK ? APP_OK : APP_ERR_INVALID_PARAM;
 #endif
 }
-
-#else /* !APP_CONFIG_ENABLE_APP_KV */
+#else  /* !APP_CONFIG_ENABLE_APP_KV */
 
 void app_kv_init(void) {}
 
@@ -654,5 +650,4 @@ uint32_t app_kv_get_schema_version(void) {
 int app_kv_run_migrations(void) {
     return APP_ERR_DISABLED;
 }
-
 #endif /* APP_CONFIG_ENABLE_APP_KV */

@@ -9,9 +9,9 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
+#include <zeplod/state_machine.h>
 #include "module_manager_internal.h"
 #include "module_manager_planner_internal.h"
-#include <zeplod/state_machine.h>
 
 LOG_MODULE_DECLARE(module_manager, CONFIG_SYS_LOG_LEVEL);
 
@@ -456,8 +456,7 @@ int module_manager_clear_error_state(uint32_t module_id) {
         if (g_module_mgr.stats.error_modules > 0U) {
             g_module_mgr.stats.error_modules--;
         }
-        LOG_INF("Module '%s' error state cleared",
-                info->interface->name != NULL ? info->interface->name : "?");
+        LOG_INF("Module '%s' error state cleared", info->interface->name != NULL ? info->interface->name : "?");
     }
 
     module_manager_unlock();
@@ -482,8 +481,7 @@ int module_manager_clear_all_error_states(void) {
         if (g_module_mgr.stats.error_modules > 0U) {
             g_module_mgr.stats.error_modules--;
         }
-        LOG_INF("Module '%s' error state cleared (batch)",
-                info->interface->name != NULL ? info->interface->name : "?");
+        LOG_INF("Module '%s' error state cleared (batch)", info->interface->name != NULL ? info->interface->name : "?");
     }
 
     module_manager_unlock();

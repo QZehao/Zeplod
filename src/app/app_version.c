@@ -178,5 +178,4 @@ static int cmd_version(const struct shell* shell, size_t argc, char** argv) {
 }
 
 SHELL_CMD_ARG_REGISTER(version, NULL, "Show version information", cmd_version, 0, 0);
-
 #endif /* CONFIG_SHELL */

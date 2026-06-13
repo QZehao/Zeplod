@@ -3,7 +3,7 @@ menuconfig OTA_MODULE
 	default n
 	depends on EVENT_MAX_TYPES > 51
 	help
-	  Firmware OTA state machine with pluggable transport.
+	  Firmware OTA state machine with pluggable ingest paths.
 	  Requires CONFIG_EVENT_MAX_TYPES > 51 (event IDs 50-51).
 
 if OTA_MODULE
@@ -25,24 +25,35 @@ config OTA_MODULE_PRIORITY
 	default 7
 	range 1 15
 
-choice OTA_TRANSPORT
-	prompt "OTA transport backend"
-	default OTA_TRANSPORT_NULL
-	help
-	  Null transport uses RAM for native_sim / ztest.
-	  MCUboot transport writes to the secondary slot via flash_img.
-
 config OTA_TRANSPORT_NULL
-	bool "Null (RAM) transport"
+	bool "Null (RAM) transport for ztest / native_sim only"
+	default n
+	help
+	  Exclusive test mode using in-RAM simulated image. Disables product
+	  ingest options below.
 
-config OTA_TRANSPORT_MCUBOOT
-	bool "MCUboot flash_img transport"
+if !OTA_TRANSPORT_NULL
+
+config OTA_TRANSPORT_MCUMGR_SMP
+	bool "MCUmgr SMP passive ingest (primary product path)"
+	default y
+	depends on MCUMGR && IMG_MANAGER
+	help
+	  External mcumgr client pushes firmware via Zephyr img_mgmt.
+	  Enable one or more MCUMGR_TRANSPORT_* (UART, BLE, UDP) in conf.
+	  See conf/targets/mcumgr_smp.conf.
+
+config OTA_TRANSPORT_ACTIVE
+	bool "Active write_chunk ingest (custom protocol extension)"
+	default n
 	depends on IMG_MANAGER
 	help
-	  Requires MCUboot partition layout and IMG_MANAGER in board DTS.
-	  See conf/targets/mcuboot.conf.
+	  Enables ota_module_begin_update/write_chunk/finish using MCUboot
+	  flash_img backend. For Modbus, HTTP, or other self-built transports.
+	  May be combined with OTA_TRANSPORT_MCUMGR_SMP; only one ingest
+	  session may run at a time (enforced at runtime).
 
-endchoice
+endif
 
 config OTA_NULL_TRANSPORT_BUF_SIZE
 	int "Null transport simulated image size (bytes)"
@@ -54,7 +65,8 @@ config OTA_NULL_TRANSPORT_BUF_SIZE
 config OTA_EXPECTED_IMAGE_SIZE
 	int "Expected max OTA image size (progress denominator)"
 	default 4096 if OTA_TRANSPORT_NULL
-	default 524288 if OTA_TRANSPORT_MCUBOOT
+	default 524288 if OTA_TRANSPORT_ACTIVE
+	default 524288 if OTA_TRANSPORT_MCUMGR_SMP
 	help
 	  Used to compute download percent when transport has no fixed capacity.
 

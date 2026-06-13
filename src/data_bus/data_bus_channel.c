@@ -14,9 +14,9 @@
  * 2026-05-15       2.0            zeh            重构：适配统一 auto_release 模型
  * 2026-05-19       2.1            zeh            destroy 移表前先 active=0，堵住悬空 publish
  * 2026-05-20       2.2            zeh            obj_init 运行时校验；消费者固定槽位 reset/destroy
- * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验 active
- * 2026-05-20       2.4            zeh            enqueue 持锁二次校验 active；入队失败统一回滚；deinit drain 去重
- * 2026-06-12       2.5            zeh            overwrite 顶替块锁外释放；ISR 拒绝顶替堆块，避免 ISR 中 k_free
+ * 2026-05-20       2.3            zeh            destroy 在 ch->lock 下置 inactive 并排空；publish 入队前二次校验
+ * active 2026-05-20       2.4            zeh            enqueue 持锁二次校验 active；入队失败统一回滚；deinit drain
+ * 去重 2026-06-12       2.5            zeh            overwrite 顶替块锁外释放；ISR 拒绝顶替堆块，避免 ISR 中 k_free
  *
  */
 
@@ -279,8 +279,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel) 
     return data_bus_channel_create_ex(name, &default_cfg, out_channel);
 }
 
-int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg,
-                               data_bus_channel_t** out_channel) {
+int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg, data_bus_channel_t** out_channel) {
     int ready = data_bus_require_initialized();
 
     if (ready != 0) {

@@ -101,6 +101,7 @@ build_tests:
     - west build -b native_sim . --build-dir build_production -p always -- -DEXTRA_CONF_FILE=conf/targets/production.conf
     - west build -b native_sim . --build-dir build_production_mcuboot -p always -- -DEXTRA_CONF_FILE="conf/targets/production.conf;conf/targets/mcuboot.conf"
     - west build -b native_sim . --build-dir build_mcuboot -p always -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf
+    - west build -b native_sim . --build-dir build_mcumgr_smp -p always -- -DEXTRA_CONF_FILE=conf/targets/mcumgr_smp.conf
     - west build -b native_sim tests/ --build-dir build_tests_ipc -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
     - west build -t run --build-dir build_tests_ipc
     - west build -b native_sim tests/ --build-dir build_tests_full -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf;prj_ci_examples.conf"

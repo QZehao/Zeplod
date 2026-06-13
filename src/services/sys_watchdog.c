@@ -12,7 +12,6 @@
  *
  */
 
-#include <zeplod/sys_watchdog.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/watchdog.h>
@@ -21,6 +20,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
+#include <zeplod/sys_watchdog.h>
 
 LOG_MODULE_REGISTER(sys_watchdog, CONFIG_SYS_LOG_LEVEL);
 

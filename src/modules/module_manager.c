@@ -14,10 +14,10 @@
  * @date 2026-04-01
  */
 
-#include <zeplod/module_manager.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include <zeplod/lock_order.h>
+#include <zeplod/module_manager.h>
 #include "module_manager_internal.h"
 
 LOG_MODULE_REGISTER(module_manager, CONFIG_SYS_LOG_LEVEL);

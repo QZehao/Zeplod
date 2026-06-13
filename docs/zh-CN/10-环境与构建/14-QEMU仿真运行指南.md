@@ -1,6 +1,6 @@
 > 语言: **中文** | [English](../../en/10-environment-build/14-qemu-simulation-guide.md)
 
-> **本文档范围**：QEMU 编译运行、板型选择、`run_qemu.ps1`、SMP、ztest 在 QEMU 上执行。  
+> **本文档范围**：QEMU 编译运行、板型选择、`run_qemu.ps1`、SMP、ztest 在 QEMU 上执行。
 > **另见**：[63-脚本与工具说明](../60-调试与排错/63-脚本与工具说明.md)（脚本参数表）· [11-环境搭建与配置指南](11-环境搭建与配置指南.md)（`QEMU_BIN_PATH`）· [51-单元测试与持续集成说明](../50-测试与CI/51-单元测试与持续集成说明.md)（CI 概览）
 
 # QEMU 仿真运行指南
@@ -362,7 +362,7 @@ PROJECT EXECUTION SUCCESSFUL
 
 ### 6.8 单元测试覆盖率（`src/core/` 目标 ≥95%）
 
-QEMU 目标无主机 `.gcda` 文件；启用 `CONFIG_COVERAGE=y` 与 `CONFIG_COVERAGE_DUMP=y` 后，gcov 数据经串口以 `GCOV_COVERAGE_DUMP_START/END` 块输出，由 `run_qemu.ps1` 调用 Zephyr `gen_gcov_files.py` 与 **gcovr** 生成报告。
+QEMU 目标无主机 `.gcda` 文件；启用 `CONFIG_COVERAGE=y` 与 `CONFIG_COVERAGE_DUMP=y` 后，gcov 数据经串口以 `GCOV_COVERAGE_DUMP_START/END` 块输出，由 `run_qemu.ps1` 调用 Zephyr 的 gen_gcov_files.py 与 **gcovr** 生成报告。
 
 ```powershell
 . .\scripts\setup_env.ps1

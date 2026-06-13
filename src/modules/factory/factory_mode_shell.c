@@ -14,7 +14,6 @@
 #include <zephyr/shell/shell.h>
 
 #if defined(CONFIG_SHELL) && IS_ENABLED(CONFIG_FACTORY_MODE_SHELL)
-
 static const char* factory_state_name(factory_state_t st) {
     switch (st) {
     case FACTORY_STATE_INACTIVE:
@@ -66,8 +65,7 @@ static int cmd_factory_status(const struct shell* shell, size_t argc, char** arg
         shell_error(shell, "state unavailable");
         return -EIO;
     }
-    shell_print(shell, "state=%s gpio_passed=%s", factory_state_name(st.state),
-                st.gpio_passed ? "yes" : "no");
+    shell_print(shell, "state=%s gpio_passed=%s", factory_state_name(st.state), st.gpio_passed ? "yes" : "no");
     return 0;
 }
 
@@ -134,8 +132,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_factory_cal,
                                SHELL_CMD(get, NULL, "Get calibration <key>", cmd_factory_cal_get),
                                SHELL_SUBCMD_SET_END);
 
-SHELL_STATIC_SUBCMD_SET_CREATE(sub_factory,
-                               SHELL_CMD(enter, NULL, "Enter factory test mode", cmd_factory_enter),
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_factory, SHELL_CMD(enter, NULL, "Enter factory test mode", cmd_factory_enter),
                                SHELL_CMD(exit, NULL, "Exit factory test mode", cmd_factory_exit),
                                SHELL_CMD(status, NULL, "Show factory state", cmd_factory_status),
                                SHELL_CMD(gpio, NULL, "Run GPIO loopback test", cmd_factory_gpio_loopback),
@@ -144,5 +141,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_factory,
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(factory, &sub_factory, "Factory test commands", NULL);
-
 #endif /* CONFIG_SHELL && CONFIG_FACTORY_MODE_SHELL */

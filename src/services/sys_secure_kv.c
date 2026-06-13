@@ -65,8 +65,7 @@ static sys_secure_kv_cb_t g_secure_kv;
 
 static uint32_t secure_kv_mix(uint32_t h, uint8_t b);
 static uint8_t  secure_kv_keystream_byte(const uint8_t key[SECURE_KEY_BYTES], uint8_t slot_id, size_t idx);
-static void     secure_kv_crypt_buffer(uint8_t* buf, size_t len, const uint8_t key[SECURE_KEY_BYTES],
-                                       uint8_t slot_id);
+static void     secure_kv_crypt_buffer(uint8_t* buf, size_t len, const uint8_t key[SECURE_KEY_BYTES], uint8_t slot_id);
 static int      secure_kv_parse_key_hex(const char* hex, uint8_t out[SECURE_KEY_BYTES]);
 static int      secure_kv_find_locked(const char* key);
 static int      secure_kv_find_free_locked(void);

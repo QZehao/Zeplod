@@ -87,7 +87,7 @@ static int prov_register_event_types(void) {
 
 static int prov_publish_state(provisioning_state_t state, int err) {
     provisioning_status_t st = {.state = state, .error_code = err};
-    event_status_t          ev_st;
+    event_status_t        ev_st;
 
     ev_st = event_publish_copy(EVENT_PROVISIONING_STATE_CHANGED, EVENT_PRIORITY_NORMAL, &st, sizeof(st));
     if (ev_st != EVENT_OK) {

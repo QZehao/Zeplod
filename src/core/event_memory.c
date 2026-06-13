@@ -79,7 +79,6 @@ static atomic_t g_fallback_count = ATOMIC_INIT(0);
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_SLAB_EXHAUSTED_CB) && (CONFIG_EVENT_SLAB_EXHAUSTED_CB == 1)
-
 /** Slab 耗尽回调函数指针 */
 static event_slab_exhausted_cb_t g_slab_exhausted_cb = NULL;
 
@@ -101,15 +100,13 @@ static inline void notify_slab_exhausted(event_priority_t priority, const char* 
         g_slab_exhausted_cb(priority, slab_name);
     }
 }
-
-#else /* !CONFIG_EVENT_SLAB_EXHAUSTED_CB */
+#else  /* !CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
 /** 空实现的耗尽通知（编译优化后会被移除） */
 static inline void notify_slab_exhausted(event_priority_t priority, const char* slab_name) {
     (void) priority;
     (void) slab_name;
 }
-
 #endif /* CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
 void event_memory_notify_slab_exhausted(event_priority_t priority, const char* slab_name) {
@@ -121,7 +118,6 @@ void event_memory_notify_slab_exhausted(event_priority_t priority, const char* s
  * ============================================================================= */
 
 #if EVENT_SLAB_ENABLED
-
 typedef struct {
     struct k_mem_slab* slab;
     size_t             block_size;
@@ -165,7 +161,6 @@ struct k_mem_slab* event_memory_resolve_event_slab_for_ptr(void* ptr) {
 }
 
 #if EVENT_SLAB_LARGE_AVAILABLE
-
 typedef struct {
     struct k_mem_slab* slab;
     size_t             block_size;
@@ -242,7 +237,6 @@ struct k_mem_slab* event_memory_resolve_data_slab_for_ptr(void* ptr) {
 
     return NULL;
 }
-
 #endif /* EVENT_SLAB_LARGE_AVAILABLE */
 
 struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
@@ -299,8 +293,7 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len) 
 
     return NULL;
 }
-
-#else /* !EVENT_SLAB_ENABLED */
+#else  /* !EVENT_SLAB_ENABLED */
 
 struct k_mem_slab* event_memory_select_event_slab(event_priority_t priority) {
     ARG_UNUSED(priority);
@@ -325,7 +318,6 @@ struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len) 
     }
     return NULL;
 }
-
 #endif /* EVENT_SLAB_ENABLED */
 
 /* =============================================================================
@@ -346,7 +338,6 @@ void event_memory_inc_fallback_count(void) {
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
-
 bool event_slab_available(event_priority_t priority) {
     struct k_mem_slab* slab = event_memory_select_event_slab(priority);
 
@@ -409,7 +400,6 @@ void event_get_slab_stats(event_slab_stats_t* stats) {
 
     stats->fallback_count = atomic_get(&g_fallback_count);
 }
-
 #endif /* CONFIG_EVENT_RUNTIME_STATUS */
 
 /* =============================================================================
@@ -418,7 +408,6 @@ void event_get_slab_stats(event_slab_stats_t* stats) {
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_DEBUG_MEM) && (CONFIG_EVENT_DEBUG_MEM == 1)
-
 /** 调试跟踪条目 */
 typedef struct debug_track_entry {
     void*                     ptr;       /**< 分配的内存指针 */
@@ -589,5 +578,4 @@ void event_dump_leaks(void) {
     }
     k_mutex_unlock(&g_debug_dump_lock);
 }
-
 #endif /* CONFIG_EVENT_DEBUG_MEM */

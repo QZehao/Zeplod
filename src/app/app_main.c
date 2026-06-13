@@ -13,9 +13,9 @@
  *
  */
 
-#include <zeplod/app_main.h>
 #include <zeplod/app_banner.h>
 #include <zeplod/app_kv.h>
+#include <zeplod/app_main.h>
 #include <zeplod/event_dispatcher.h>
 #include <zeplod/event_system.h>
 #include <zeplod/event_system_compat.h>
@@ -288,7 +288,7 @@ int app_start(void) {
     return APP_OK;
 
 /* 仅当存在可能 goto rollback 的启动步骤时才生成回滚段，避免极简配置下出现未使用标签告警。 */
-#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT) || IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT) ||                          \
+#if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT) || IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT) ||                        \
     APP_CONFIG_ENABLE_WATCHDOG || (APP_CONFIG_ENABLE_TIMER_SVC && (APP_HEARTBEAT_INTERVAL_MS > 0))
 rollback:
     /* 按启动逆序停止本次已启动的资源；仅回滚本函数启动的部分。 */

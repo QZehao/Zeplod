@@ -32,7 +32,6 @@ LOG_MODULE_REGISTER(event_dispatcher_autoinit, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 #if IS_ENABLED(CONFIG_EVENT_DISPATCHER_AUTOINIT)
-
 /**
  * @brief 按与 init 相反的顺序回滚本函数创建的状态
  *
@@ -112,5 +111,4 @@ static int event_dispatcher_auto_init(void) {
 }
 
 SYS_INIT(event_dispatcher_auto_init, POST_KERNEL, APP_INIT_PRIO_DISPATCHER);
-
 #endif /* CONFIG_EVENT_DISPATCHER_AUTOINIT */

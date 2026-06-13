@@ -203,7 +203,6 @@ ZTEST(concurrency_stress, test_ipc_multi_client_sync_calls) {
     zassert_equal(ipc_service_get_pending_count(&g_stress_ipc), 0, NULL);
     zassert_equal(ipc_service_stop(&g_stress_ipc), 0, NULL);
 }
-
 #endif /* CONFIG_THREAD_IPC_SERVICE */
 
 ZTEST_SUITE(concurrency_stress, NULL, NULL, NULL, NULL, NULL);

@@ -36,10 +36,10 @@ extern "C" {
  * @brief 恢复动作（与 Kconfig RECOVERY_POLICY_DEFAULT_ACTION 对应）
  */
 typedef enum {
-    RECOVERY_ACTION_NONE = 0,          /**< 仅记录日志 */
-    RECOVERY_ACTION_RESTART_MODULE,    /**< stop + clear_error + start 失败模块 */
-    RECOVERY_ACTION_RESTART_ALL,       /**< stop_all + start_all */
-    RECOVERY_ACTION_REBOOT,            /**< sys_reboot(WARM) */
+    RECOVERY_ACTION_NONE = 0,       /**< 仅记录日志 */
+    RECOVERY_ACTION_RESTART_MODULE, /**< stop + clear_error + start 失败模块 */
+    RECOVERY_ACTION_RESTART_ALL,    /**< stop_all + start_all */
+    RECOVERY_ACTION_REBOOT,         /**< sys_reboot(WARM) */
 } recovery_action_t;
 
 /** recovery_policy_control 命令：重置全部重启计数 */

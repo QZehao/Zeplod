@@ -67,9 +67,9 @@ ZTEST_SUITE(factory_mode_tests, NULL, factory_suite_setup, NULL, NULL, NULL);
  * ============================================================================= */
 
 static volatile factory_state_t g_last_factory_state;
-static volatile int               g_last_factory_error;
-static volatile int               g_factory_event_count;
-static struct k_sem               g_factory_sem;
+static volatile int             g_last_factory_error;
+static volatile int             g_factory_event_count;
+static struct k_sem             g_factory_sem;
 
 static void factory_state_event_cb(const event_t* ev, void* user_data) {
     const factory_status_t* st;
@@ -137,8 +137,7 @@ ZTEST(factory_mode_tests, test_enter_publishes_events) {
     g_last_factory_error = 0;
     g_factory_event_count = 0;
 
-    zassert_equal(event_subscribe(EVENT_FACTORY_STATE_CHANGED, factory_state_event_cb, NULL, &sub_id),
-                  EVENT_OK);
+    zassert_equal(event_subscribe(EVENT_FACTORY_STATE_CHANGED, factory_state_event_cb, NULL, &sub_id), EVENT_OK);
 
     setup_factory();
     zassert_equal(factory_mode_enter(), 0, NULL);

@@ -3,16 +3,16 @@
  * @brief 补充 src/core 边界路径与统计/锁顺序覆盖
  */
 
-#include <errno.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
+#include <errno.h>
 #include <zeplod/event_dispatcher.h>
-#include "event_queue.h"
 #include <zeplod/event_system.h>
 #include <zeplod/event_system_compat.h>
-#include "event_system_internal.h"
 #include <zeplod/lock_order.h>
 #include <zeplod/state_machine.h>
+#include "event_queue.h"
+#include "event_system_internal.h"
 #include "ztest_sync.h"
 
 static atomic_t g_cov_stats_dispatched;
@@ -88,14 +88,14 @@ ZTEST(core_coverage, test_lock_order_global_resource_and_tokens) {
     zassert_equal(zepl_lock_current_key(), 0x10U, NULL);
 
     zassert_true(zepl_lock_order_is_valid(ZEP_LOCK_LEVEL_RESOURCE, 0x20U), NULL);
-    zepl_lock_enter_token((zepl_lock_token_t){.level = ZEP_LOCK_LEVEL_RESOURCE, .key = 0x20U});
+    zepl_lock_enter_token((zepl_lock_token_t) {.level = ZEP_LOCK_LEVEL_RESOURCE, .key = 0x20U});
     zassert_equal(zepl_lock_current_depth(), 2U, NULL);
 
     tok = zepl_lock_current_token();
     zassert_equal(tok.level, ZEP_LOCK_LEVEL_RESOURCE, NULL);
     zassert_equal(tok.key, 0x20U, NULL);
 
-    zepl_lock_exit_token((zepl_lock_token_t){.level = ZEP_LOCK_LEVEL_RESOURCE, .key = 0x20U});
+    zepl_lock_exit_token((zepl_lock_token_t) {.level = ZEP_LOCK_LEVEL_RESOURCE, .key = 0x20U});
     zepl_lock_exit(ZEP_LOCK_LEVEL_GLOBAL, 0x10U);
     zassert_equal(zepl_lock_current_depth(), 0U, NULL);
 }
@@ -157,10 +157,10 @@ ZTEST(core_coverage, test_state_machine_same_level_key_ordering) {
 }
 
 ZTEST(core_coverage, test_event_queue_null_and_stats_edges) {
-    struct k_msgq  queue;
-    char           buffer[2 * sizeof(event_t)];
-    queue_stats_t  stats;
-    event_t        event = {.type = 1, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq queue;
+    char          buffer[2 * sizeof(event_t)];
+    queue_stats_t stats;
+    event_t       event = {.type = 1, .priority = EVENT_PRIORITY_NORMAL};
 
     zassert_equal(event_queue_depth(NULL), 0U, NULL);
     zassert_false(event_queue_is_full(NULL), NULL);
@@ -212,10 +212,10 @@ ZTEST(core_coverage, test_event_system_lifecycle_edges) {
 }
 
 ZTEST(core_coverage, test_event_queue_purge_and_capacity) {
-    struct k_msgq  queue;
-    char           buffer[2 * sizeof(event_t)];
-    event_t        event = {.type = 2, .priority = EVENT_PRIORITY_NORMAL};
-    queue_stats_t  stats;
+    struct k_msgq queue;
+    char          buffer[2 * sizeof(event_t)];
+    event_t       event = {.type = 2, .priority = EVENT_PRIORITY_NORMAL};
+    queue_stats_t stats;
 
     zassert_equal(event_queue_init(&queue, buffer, 2), EVENT_OK, NULL);
     zassert_equal(event_queue_capacity(&queue), 2U, NULL);

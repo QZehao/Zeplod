@@ -14,8 +14,8 @@
  *
  */
 
-#include <zeplod/example_module_ipc.h>
 #include <zeplod/app_config.h>
+#include <zeplod/example_module_ipc.h>
 #include <zeplod/ipc_service.h>
 #include <zeplod/module_manager.h>
 

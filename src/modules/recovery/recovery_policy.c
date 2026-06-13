@@ -280,9 +280,8 @@ int recovery_policy_start(void) {
 
 #if IS_ENABLED(CONFIG_RECOVERY_POLICY_OTA_HOOK) && IS_ENABLED(CONFIG_OTA_MODULE)
     if (!g_recovery.ota_event_subscribed) {
-        const event_status_t st =
-            event_subscribe(EVENT_OTA_STATE_CHANGED, recovery_ota_event_handler, NULL,
-                            &g_recovery.ota_event_subscriber_id);
+        const event_status_t st = event_subscribe(EVENT_OTA_STATE_CHANGED, recovery_ota_event_handler, NULL,
+                                                  &g_recovery.ota_event_subscriber_id);
         if (st == EVENT_OK) {
             g_recovery.ota_event_subscribed = true;
         } else {

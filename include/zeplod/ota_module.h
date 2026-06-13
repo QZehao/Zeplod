@@ -2,13 +2,14 @@
  * @file ota_module.h
  * @brief OTA 模块公开 API、状态机与事件类型
  *
- * 可选模块（CONFIG_OTA_MODULE）。典型升级流程：
+ * 可选模块（CONFIG_OTA_MODULE）。产品默认经 MCUmgr SMP 被动接入；主动路径（须
+ * CONFIG_OTA_TRANSPORT_ACTIVE）：
  * ota_module_begin_update() → ota_module_write_chunk() × N → ota_module_finish_update()。
  *
  * 配置要求：CONFIG_OTA_MODULE=y，且 CONFIG_EVENT_MAX_TYPES > 51（事件 ID 50–51）。
  *
  * @author zeh (china_qzh@163.com)
- * @version 1.2
+ * @version 1.3
  * @date 2026-06-13
  *
  * @par 修改日志:
@@ -16,7 +17,8 @@
  *    Date         Version        Author          Description
  * 2026-06-13       1.0            zeh            初始版本（Phase 1 null 传输）
  * 2026-06-13       1.1            zeh            统一注释风格；同步发布 PROGRESS 事件
- * 2026-06-13       1.2            zeh            MCUboot 传输选择；ota_module_request_reboot
+ * 2026-06-13       1.2            zeh            主动传输；ota_module_request_reboot
+ * 2026-06-13       1.3            zeh            MCUmgr SMP 默认；双 ingest 互斥
  *
  */
 

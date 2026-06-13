@@ -34,15 +34,15 @@ extern "C" {
  * 各字段在对应子系统未启用或未初始化时为 0。
  */
 typedef struct {
-    uint32_t heap_free_bytes;        /**< 堆/内存池可用字节（CONFIG_SYS_MEMORY_ENABLE） */
-    uint32_t heap_used_bytes;        /**< 堆/内存池已用字节 */
-    uint32_t event_queue_depth;      /**< 事件队列当前深度 */
-    uint32_t event_queue_capacity;   /**< 事件队列容量（CONFIG_EVENT_QUEUE_SIZE） */
-    uint32_t event_dropped_count;    /**< 事件丢弃累计数（event_get_statistics） */
-    uint32_t module_count;           /**< 已注册模块总数 */
-    uint32_t module_running_count;   /**< 运行中模块数（active_modules） */
-    uint32_t module_error_count;     /**< 错误状态模块数 */
-    uint32_t uptime_ms;              /**< 系统运行时间（k_uptime_get_32） */
+    uint32_t heap_free_bytes;      /**< 堆/内存池可用字节（CONFIG_SYS_MEMORY_ENABLE） */
+    uint32_t heap_used_bytes;      /**< 堆/内存池已用字节 */
+    uint32_t event_queue_depth;    /**< 事件队列当前深度 */
+    uint32_t event_queue_capacity; /**< 事件队列容量（CONFIG_EVENT_QUEUE_SIZE） */
+    uint32_t event_dropped_count;  /**< 事件丢弃累计数（event_get_statistics） */
+    uint32_t module_count;         /**< 已注册模块总数 */
+    uint32_t module_running_count; /**< 运行中模块数（active_modules） */
+    uint32_t module_error_count;   /**< 错误状态模块数 */
+    uint32_t uptime_ms;            /**< 系统运行时间（k_uptime_get_32） */
 } sys_diag_snapshot_t;
 
 /* =============================================================================

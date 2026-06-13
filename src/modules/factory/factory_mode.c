@@ -34,9 +34,9 @@ LOG_MODULE_REGISTER(factory_mode, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 typedef struct {
-    char  key[CONFIG_FACTORY_MODE_CAL_KEY_MAX_LEN];
-    char  value[CONFIG_FACTORY_MODE_CAL_VALUE_MAX_LEN];
-    bool  used;
+    char key[CONFIG_FACTORY_MODE_CAL_KEY_MAX_LEN];
+    char value[CONFIG_FACTORY_MODE_CAL_VALUE_MAX_LEN];
+    bool used;
 } factory_cal_slot_t;
 
 typedef struct {
@@ -220,7 +220,7 @@ int factory_mode_run_gpio_loopback(void) {
 }
 
 int factory_mode_set_calibration(const char* key, const char* value) {
-    int slot;
+    int    slot;
     size_t klen;
     size_t vlen;
 

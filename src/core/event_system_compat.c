@@ -12,12 +12,12 @@
  * 2026-06-06       1.1            zeh            移除商业事件系统适配，仅保留标准实现
  */
 
-#include <zeplod/event_system_compat.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
 #include <string.h>
 #include <zeplod/app_config.h>
+#include <zeplod/event_system_compat.h>
 
 LOG_MODULE_REGISTER(event_system_compat, CONFIG_SYS_LOG_LEVEL);
 
@@ -103,7 +103,6 @@ void event_compat_reset_statistics(void) {
  * ============================================================================= */
 
 #if IS_ENABLED(CONFIG_EVENT_SYSTEM_AUTOINIT)
-
 static int event_compat_auto_init(void) {
     if (event_compat_init(NULL) != 0) {
         LOG_ERR("event_compat_init failed");
@@ -126,5 +125,4 @@ static int event_compat_auto_init(void) {
 }
 
 SYS_INIT(event_compat_auto_init, POST_KERNEL, APP_INIT_PRIO_EVENT_SYS);
-
 #endif /* CONFIG_EVENT_SYSTEM_AUTOINIT */

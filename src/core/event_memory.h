@@ -189,7 +189,6 @@ struct k_mem_slab* event_memory_select_data_slab(size_t data_len);
 struct k_mem_slab* event_memory_select_data_slab_with_fallback(size_t data_len);
 
 #if EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE
-
 /**
  * @brief 在 event 上记录数据 slab 来源标记（级联分配后释放须用实际池）
  *
@@ -209,7 +208,6 @@ struct k_mem_slab* event_memory_data_slab_from_flag(uint8_t flag);
  * @brief 按指针地址反查数据 slab 池（标记损坏时的安全释放）
  */
 struct k_mem_slab* event_memory_resolve_data_slab_for_ptr(void* ptr);
-
 #endif /* EVENT_SLAB_ENABLED && EVENT_SLAB_LARGE_AVAILABLE */
 
 /**
@@ -234,7 +232,6 @@ void event_memory_notify_slab_exhausted(event_priority_t priority, const char* s
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
-
 /**
  * @brief 检查指定优先级的 Slab 是否可用
  *
@@ -278,7 +275,6 @@ typedef struct {
  * @note 此函数会遍历所有 Slab 池，可能耗时较长
  */
 void event_get_slab_stats(event_slab_stats_t* stats);
-
 #endif /* CONFIG_EVENT_RUNTIME_STATUS */
 
 /* =============================================================================
@@ -287,7 +283,6 @@ void event_get_slab_stats(event_slab_stats_t* stats);
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_SLAB_EXHAUSTED_CB) && (CONFIG_EVENT_SLAB_EXHAUSTED_CB == 1)
-
 /**
  * @brief Slab 耗尽回调函数类型
  *
@@ -306,7 +301,6 @@ typedef void (*event_slab_exhausted_cb_t)(event_priority_t priority, const char*
  * @note 若分配失败发生在 ISR/RT 路径，回调会在相同上下文同步执行，因此回调自身必须 ISR-safe。
  */
 void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb);
-
 #endif /* CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
 /* =============================================================================
@@ -315,7 +309,6 @@ void event_register_slab_exhausted_cb(event_slab_exhausted_cb_t cb);
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_DEBUG_MEM) && (CONFIG_EVENT_DEBUG_MEM == 1)
-
 /**
  * @brief 检查内存泄漏
  *
@@ -349,8 +342,7 @@ void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority);
  * @param ptr 要取消跟踪的内存指针
  */
 void event_debug_untrack_alloc(void* ptr);
-
-#else /* !CONFIG_EVENT_DEBUG_MEM */
+#else  /* !CONFIG_EVENT_DEBUG_MEM */
 
 static inline void event_debug_track_alloc(void* ptr, size_t size, event_priority_t priority) {
     ARG_UNUSED(ptr);
@@ -361,7 +353,6 @@ static inline void event_debug_track_alloc(void* ptr, size_t size, event_priorit
 static inline void event_debug_untrack_alloc(void* ptr) {
     ARG_UNUSED(ptr);
 }
-
 #endif /* CONFIG_EVENT_DEBUG_MEM */
 
 #ifdef __cplusplus
