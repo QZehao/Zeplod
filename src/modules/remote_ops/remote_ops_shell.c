@@ -13,7 +13,6 @@
 #include <zephyr/shell/shell.h>
 
 #if defined(CONFIG_SHELL) && IS_ENABLED(CONFIG_REMOTE_OPS_SHELL)
-
 static int cmd_remote_export(const struct shell* shell, size_t argc, char** argv) {
     char buf[CONFIG_REMOTE_OPS_EXPORT_BUF_SIZE];
 
@@ -37,5 +36,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_remote,
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(remote, &sub_remote, "Remote operations hooks", NULL);
-
 #endif

@@ -81,5 +81,4 @@ static inline bool ztest_wait_atomic_nonzero(atomic_t* var, uint32_t timeout_ms)
 static inline bool ztest_wait_sem(struct k_sem* sem, k_timeout_t timeout) {
     return k_sem_take(sem, timeout) == 0;
 }
-
 #endif /* ZTEST_SYNC_H */

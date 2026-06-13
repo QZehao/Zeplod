@@ -29,27 +29,23 @@ static volatile int g_remote_export_event_count;
 static struct k_sem g_remote_export_sem;
 
 static void setup_remote_ops(void) {
-
     zassert_equal(remote_ops_init(NULL), 0, NULL);
 
     zassert_equal(remote_ops_start(), 0, NULL);
 }
 
 static void teardown_remote_ops(void) {
-
     (void) remote_ops_stop();
 
     (void) remote_ops_shutdown();
 }
 
 static void remote_export_event_cb(const event_t* ev, void* user_data) {
-
     const uint32_t* len;
 
     (void) user_data;
 
     if (ev->type != EVENT_REMOTE_OPS_DIAG_EXPORTED || ev->data_len < sizeof(uint32_t)) {
-
         return;
     }
 
@@ -63,7 +59,6 @@ static void remote_export_event_cb(const event_t* ev, void* user_data) {
 }
 
 static void* remote_ops_suite_setup(void) {
-
     int ret;
 
     k_sem_init(&g_remote_export_sem, 0, 1);
@@ -94,7 +89,6 @@ static void* remote_ops_suite_setup(void) {
 ZTEST_SUITE(remote_ops_tests, NULL, remote_ops_suite_setup, NULL, NULL, NULL);
 
 ZTEST(remote_ops_tests, test_export_diag_json) {
-
     char buf[CONFIG_REMOTE_OPS_EXPORT_BUF_SIZE];
 
     remote_ops_status_t stats;
@@ -131,7 +125,6 @@ ZTEST(remote_ops_tests, test_export_diag_json) {
 }
 
 ZTEST(remote_ops_tests, test_get_last_export_empty_before_export) {
-
     char buf[64];
 
     setup_remote_ops();
@@ -142,7 +135,6 @@ ZTEST(remote_ops_tests, test_get_last_export_empty_before_export) {
 }
 
 ZTEST(remote_ops_tests, test_export_requires_running) {
-
     zassert_equal(remote_ops_init(NULL), 0, NULL);
 
     zassert_equal(remote_ops_export_diag(), APP_ERR_INIT, NULL);
@@ -157,7 +149,6 @@ ZTEST(remote_ops_tests, test_export_requires_running) {
 }
 
 ZTEST(remote_ops_tests, test_export_before_init) {
-
     zassert_equal(remote_ops_export_diag(), APP_ERR_INIT, NULL);
 
     zassert_equal(remote_ops_get_last_export((char*) "x", 2U), APP_ERR_INIT, NULL);
@@ -166,7 +157,6 @@ ZTEST(remote_ops_tests, test_export_before_init) {
 }
 
 ZTEST(remote_ops_tests, test_get_last_export_invalid_args) {
-
     char buf[64];
 
     setup_remote_ops();

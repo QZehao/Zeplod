@@ -156,7 +156,6 @@ static void event_queue_record_drop(event_queue_cb_t* cb) {
 }
 
 #if defined(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
-
 /**
  * @brief BLOCK 策略下 K_FOREVER 入队：分段阻塞并轮询 running，避免 stop 时永久卡在 k_msgq_put
  *
@@ -185,13 +184,11 @@ static int event_msgq_put(struct k_msgq* queue, const void* data, k_timeout_t ti
 
     return k_msgq_put(queue, data, timeout);
 }
-
 #else
 
 static int event_msgq_put(struct k_msgq* queue, const void* data, k_timeout_t timeout) {
     return k_msgq_put(queue, data, timeout);
 }
-
 #endif /* CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK */
 
 /**

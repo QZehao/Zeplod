@@ -809,7 +809,6 @@ ZTEST(test_event_system, test_block_publish_unblocks_on_stop) {
     zassert_equal(k_thread_join(tid, K_MSEC(1000)), 0, NULL);
     zassert_equal(event_system_shutdown(), EVENT_OK, NULL);
 }
-
 #endif /* CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK */
 
 /**

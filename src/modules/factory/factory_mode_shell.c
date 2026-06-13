@@ -14,7 +14,6 @@
 #include <zephyr/shell/shell.h>
 
 #if defined(CONFIG_SHELL) && IS_ENABLED(CONFIG_FACTORY_MODE_SHELL)
-
 static const char* factory_state_name(factory_state_t st) {
     switch (st) {
     case FACTORY_STATE_INACTIVE:
@@ -142,5 +141,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_factory, SHELL_CMD(enter, NULL, "Enter factor
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(factory, &sub_factory, "Factory test commands", NULL);
-
 #endif /* CONFIG_SHELL && CONFIG_FACTORY_MODE_SHELL */

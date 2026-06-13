@@ -644,5 +644,4 @@ void ipc_shm_get_stats(ipc_service_t* service, uint32_t* out_active_count, uint3
 
     ipc_shm_pool_unlock(pool);
 }
-
 #endif /* CONFIG_THREAD_IPC_SERVICE_SHARED_MEM */

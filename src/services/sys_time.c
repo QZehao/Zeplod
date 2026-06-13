@@ -148,11 +148,9 @@ void sys_time_invalidate(void) {
  * ============================================================================= */
 
 #if IS_ENABLED(CONFIG_SYS_TIME_ENABLE)
-
 static int sys_time_auto_init(void) {
     return sys_time_init();
 }
 
 SYS_INIT(sys_time_auto_init, POST_KERNEL, APP_INIT_PRIO_SYS_TIME);
-
 #endif

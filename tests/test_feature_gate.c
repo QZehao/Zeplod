@@ -27,27 +27,23 @@ static volatile int g_license_event_count;
 static struct k_sem g_license_sem;
 
 static void setup_gate(void) {
-
     zassert_equal(feature_gate_init(NULL), 0, NULL);
 
     zassert_equal(feature_gate_start(), 0, NULL);
 }
 
 static void teardown_gate(void) {
-
     (void) feature_gate_stop();
 
     (void) feature_gate_shutdown();
 }
 
 static void license_event_cb(const event_t* ev, void* user_data) {
-
     const bool* valid;
 
     (void) user_data;
 
     if (ev->type != EVENT_FEATURE_GATE_LICENSE_CHANGED || ev->data_len < sizeof(bool)) {
-
         return;
     }
 
@@ -61,7 +57,6 @@ static void license_event_cb(const event_t* ev, void* user_data) {
 }
 
 static void* gate_suite_setup(void) {
-
     int ret;
 
     k_sem_init(&g_license_sem, 0, 1);
@@ -92,7 +87,6 @@ static void* gate_suite_setup(void) {
 ZTEST_SUITE(feature_gate_tests, NULL, gate_suite_setup, NULL, NULL, NULL);
 
 ZTEST(feature_gate_tests, test_core_always_enabled) {
-
     setup_gate();
 
     zassert_true(feature_gate_is_enabled(FEATURE_GATE_NAME_CORE), NULL);
@@ -101,7 +95,6 @@ ZTEST(feature_gate_tests, test_core_always_enabled) {
 }
 
 ZTEST(feature_gate_tests, test_premium_locked_until_license) {
-
     uint32_t sub_id = 0U;
 
     setup_gate();
@@ -144,7 +137,6 @@ ZTEST(feature_gate_tests, test_premium_locked_until_license) {
 }
 
 ZTEST(feature_gate_tests, test_unknown_feature_disabled) {
-
     setup_gate();
 
     zassert_false(feature_gate_is_enabled("unknown_feature"), NULL);
@@ -153,7 +145,6 @@ ZTEST(feature_gate_tests, test_unknown_feature_disabled) {
 }
 
 ZTEST(feature_gate_tests, test_api_before_init) {
-
     feature_gate_status_t st;
 
     zassert_equal(feature_gate_apply_license("zeplod-test-license"), APP_ERR_INIT, NULL);
@@ -168,11 +159,9 @@ ZTEST(feature_gate_tests, test_api_before_init) {
 }
 
 ZTEST(feature_gate_tests, test_boot_license_preapplied) {
-
     if ((strlen(CONFIG_FEATURE_GATE_BOOT_LICENSE) == 0U) ||
 
         (strcmp(CONFIG_FEATURE_GATE_BOOT_LICENSE, CONFIG_FEATURE_GATE_LICENSE) != 0)) {
-
         ztest_test_skip();
 
         return;

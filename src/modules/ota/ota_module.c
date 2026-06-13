@@ -539,7 +539,6 @@ int ota_module_request_reboot(void) {
  * ============================================================================= */
 
 #if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
-
 static void ota_mcumgr_fail_locked(int err, ota_progress_t* out_prog) {
     (void) ota_transport_fail_locked(err, out_prog);
 }
@@ -676,7 +675,6 @@ void ota_module_mcumgr_on_dfu_stopped(void) {
     ota_unlock();
     (void) ota_publish_progress(&prog);
 }
-
 #endif /* CONFIG_OTA_TRANSPORT_MCUMGR_SMP */
 
 /* =============================================================================

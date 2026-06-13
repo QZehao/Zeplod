@@ -198,7 +198,6 @@ ZTEST(core_coverage_ext, test_event_get_statistics_after_init) {
 }
 
 #if defined(CONFIG_EVENT_SLAB_EXHAUSTED_CB) && (CONFIG_EVENT_SLAB_EXHAUSTED_CB == 1)
-
 static atomic_t g_ext_slab_exhausted;
 
 static void ext_slab_exhausted_cb(event_priority_t priority, const char* slab_name) {
@@ -230,7 +229,6 @@ ZTEST(core_coverage_ext, test_slab_exhausted_callback_on_pressure) {
     event_register_slab_exhausted_cb(NULL);
     zassert_equal(event_system_shutdown(), EVENT_OK, NULL);
 }
-
 #endif
 
 ZTEST_SUITE(core_coverage_ext, NULL, NULL, NULL, ext_cov_teardown, NULL);

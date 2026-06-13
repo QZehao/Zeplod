@@ -189,7 +189,6 @@ static int sys_diag_auto_init(void) {
 SYS_INIT(sys_diag_auto_init, POST_KERNEL, APP_INIT_PRIO_SYS_DIAG);
 
 #if defined(CONFIG_SHELL)
-
 /* =============================================================================
  * Shell 命令
  * ============================================================================= */
@@ -217,5 +216,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_diag, SHELL_CMD(dump, NULL, "Dump health snap
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(diag, &sub_diag, "System diagnostics", NULL);
-
 #endif /* CONFIG_SHELL */

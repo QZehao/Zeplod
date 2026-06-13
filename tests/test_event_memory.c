@@ -184,7 +184,6 @@ ZTEST(test_event_memory, test_select_data_slab_large) {
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_RUNTIME_STATUS) && (CONFIG_EVENT_RUNTIME_STATUS == 1)
-
 /**
  * @brief 测试 Slab 可用性检查
  */
@@ -298,7 +297,6 @@ ZTEST(test_event_memory, test_slab_stats_after_allocation) {
         event_free(events[i]);
     }
 }
-
 #endif /* CONFIG_EVENT_RUNTIME_STATUS */
 
 /* =============================================================================
@@ -306,7 +304,6 @@ ZTEST(test_event_memory, test_slab_stats_after_allocation) {
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_SLAB_EXHAUSTED_CB) && (CONFIG_EVENT_SLAB_EXHAUSTED_CB == 1)
-
 static int              g_exhausted_callback_count = 0;
 static event_priority_t g_last_exhausted_priority = 0;
 
@@ -344,7 +341,6 @@ ZTEST(test_event_memory, test_clear_exhausted_callback) {
     /* 尝试触发耗尽（如果有足够内存，可能不会触发）*/
     /* 这里只是验证不会崩溃 */
 }
-
 #endif /* CONFIG_EVENT_SLAB_EXHAUSTED_CB */
 
 /* =============================================================================
@@ -352,7 +348,6 @@ ZTEST(test_event_memory, test_clear_exhausted_callback) {
  * ============================================================================= */
 
 #if defined(CONFIG_EVENT_DEBUG_MEM) && (CONFIG_EVENT_DEBUG_MEM == 1)
-
 /**
  * @brief 测试内存泄漏检测
  */
@@ -393,7 +388,6 @@ ZTEST(test_event_memory, test_dump_leaks) {
         event_free(event);
     }
 }
-
 #endif /* CONFIG_EVENT_DEBUG_MEM */
 
 /* =============================================================================

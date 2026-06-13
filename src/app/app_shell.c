@@ -291,7 +291,6 @@ static int cmd_app_memory(const struct shell* shell, size_t argc, char** argv) {
 }
 
 #if APP_CONFIG_ENABLE_TOP
-
 static void cmd_app_top_once(const struct shell* shell) {
     event_compat_stats_t event_stats;
 
@@ -374,7 +373,6 @@ static int cmd_app_top(const struct shell* shell, size_t argc, char** argv) {
 
     return 0;
 }
-
 #endif /* APP_CONFIG_ENABLE_TOP */
 
 static int cmd_app_log(const struct shell* shell, size_t argc, char** argv) {
@@ -419,7 +417,6 @@ static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
 }
 
 #ifdef CONFIG_OTA_MODULE
-
 /* =============================================================================
  * OTA Shell 命令
  * ============================================================================= */
@@ -486,7 +483,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_ota, SHELL_CMD(status, NULL, "Show OTA state"
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(ota, &sub_ota, "OTA commands", NULL);
-
 #endif /* CONFIG_OTA_MODULE */
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app_kv, SHELL_CMD(set, NULL, "Set key [value words...]", cmd_app_kv_set),
@@ -509,5 +505,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app, SHELL_CMD(status, NULL, "Show applicatio
                                SHELL_CMD(help, NULL, "Show application help", cmd_app_help), SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
-
 #endif /* CONFIG_APP_ENABLE_SHELL */

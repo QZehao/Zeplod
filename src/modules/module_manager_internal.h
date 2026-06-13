@@ -104,5 +104,4 @@ static inline bool module_manager_lifecycle_allows_op(zepl_state_t s) {
         return false;
     }
 }
-
 #endif /* MODULE_MANAGER_INTERNAL_H */

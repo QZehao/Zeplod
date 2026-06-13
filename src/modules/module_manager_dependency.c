@@ -98,7 +98,7 @@ static bool mm_dep_version_satisfied(const mm_dep_order_entry_t* entry, unsigned
 
 int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
     bool valid[CONFIG_MAX_MODULES];
-    uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
+    uint32_t(*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
     int      n_work;
@@ -290,7 +290,7 @@ int mm_dep_planner_build_start_order(mm_dep_order_entry_t* entries, int n) {
 }
 
 int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
-    uint32_t (*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
+    uint32_t(*adj)[MM_ADJ_ROW_WORDS] = g_module_mgr.topo_adj_scratch;
     int      indegree[CONFIG_MAX_MODULES];
     uint32_t pick_order[CONFIG_MAX_MODULES];
 
@@ -389,5 +389,4 @@ int mm_dep_planner_build_stop_order(mm_dep_order_entry_t* entries, int n) {
     (void) memcpy(entries, tmp, sizeof(entries[0]) * (size_t) n);
     return n;
 }
-
 #endif /* CONFIG_MODULE_MANAGER_RUNTIME_DEPENDENCIES */
