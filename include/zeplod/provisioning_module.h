@@ -41,10 +41,10 @@ extern "C" {
  * ============================================================================= */
 
 typedef enum {
-    PROVISIONING_STATE_UNPROVISIONED = 0,
-    PROVISIONING_STATE_IN_PROGRESS,
-    PROVISIONING_STATE_PROVISIONED,
-    PROVISIONING_STATE_ERROR,
+    PROVISIONING_STATE_UNPROVISIONED = 0, /**< 尚未配网 */
+    PROVISIONING_STATE_IN_PROGRESS,       /**< 配网进行中 */
+    PROVISIONING_STATE_PROVISIONED,       /**< 已完成配网 */
+    PROVISIONING_STATE_ERROR,             /**< 配网失败（预留） */
 } provisioning_state_t;
 
 typedef struct {

@@ -32,13 +32,14 @@ LOG_MODULE_REGISTER(connectivity_module, CONFIG_SYS_LOG_LEVEL);
  * 内部数据结构
  * ============================================================================= */
 
+/** 连接管理模块运行时控制块 */
 typedef struct {
-    connectivity_status_t             status;
-    const connectivity_backend_ops_t* backend;
-    module_status_t                   module_status;
-    struct k_mutex                    lock;
+    connectivity_status_t             status;        /**< 链路类型、连接状态与错误码 */
+    const connectivity_backend_ops_t* backend;       /**< Kconfig 选定的传输后端 */
+    module_status_t                   module_status; /**< 模块生命周期 */
+    struct k_mutex                    lock;          /**< 保护 status 与 module_status */
     bool                              lock_ready;
-    bool                              events_registered;
+    bool                              events_registered; /**< EVENT_CONNECTIVITY_STATE_CHANGED 已注册 */
 } connectivity_module_cb_t;
 
 /* =============================================================================
@@ -60,16 +61,19 @@ static int  conn_publish_state(const connectivity_status_t* st);
  * 锁与内部辅助
  * ============================================================================= */
 
+/** 获取模块锁（RESOURCE 层级） */
 static void conn_lock(void) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_conn.lock);
     k_mutex_lock(&g_conn.lock, K_FOREVER);
 }
 
+/** 释放模块锁 */
 static void conn_unlock(void) {
     k_mutex_unlock(&g_conn.lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_conn.lock);
 }
 
+/** 向事件系统注册连接状态变化类型（幂等） */
 static int conn_register_event_types(void) {
     event_status_t st;
 
@@ -87,6 +91,7 @@ static int conn_register_event_types(void) {
     return 0;
 }
 
+/** 发布连接状态快照；须在锁外调用 */
 static int conn_publish_state(const connectivity_status_t* st) {
     event_status_t ev_st;
 
@@ -98,11 +103,13 @@ static int conn_publish_state(const connectivity_status_t* st) {
     return 0;
 }
 
+/** 在已持锁前提下更新状态字段 */
 static void conn_set_state_locked(connectivity_state_t state, int err) {
     g_conn.status.state = state;
     g_conn.status.error_code = err;
 }
 
+/** 按 Kconfig 选择后端实现（当前仅 null 桩） */
 static const connectivity_backend_ops_t* conn_select_backend(void) {
 #if IS_ENABLED(CONFIG_CONNECTIVITY_BACKEND_NULL)
     return connectivity_backend_null_get();
@@ -111,6 +118,7 @@ static const connectivity_backend_ops_t* conn_select_backend(void) {
 #endif
 }
 
+/** 查询后端链路是否已 up（后端或回调缺失时视为 down） */
 static bool conn_backend_link_up_locked(void) {
     if (g_conn.backend == NULL || g_conn.backend->is_link_up == NULL) {
         return false;
@@ -140,6 +148,7 @@ int connectivity_module_connect(connectivity_link_type_t link_type) {
         conn_unlock();
         return APP_ERR_CONNECTIVITY;
     }
+    /* 已连接且后端确认链路 up 时幂等返回 */
     if (g_conn.status.state == CONNECTIVITY_STATE_UP && conn_backend_link_up_locked()) {
         conn_unlock();
         return 0;
@@ -151,6 +160,7 @@ int connectivity_module_connect(connectivity_link_type_t link_type) {
     conn_unlock();
     (void) conn_publish_state(&snap);
 
+    /* 锁外调用后端 connect，避免后端回调再入 */
     conn_lock();
     ret = g_conn.backend->connect((connectivity_backend_ops_t*) g_conn.backend);
     if (ret != 0) {
@@ -198,6 +208,7 @@ int connectivity_module_get_state(connectivity_status_t* out) {
     }
 
     conn_lock();
+    /* 惰性校正：缓存为 UP 但后端已 down 时同步为 DOWN */
     if (g_conn.status.state == CONNECTIVITY_STATE_UP && !conn_backend_link_up_locked()) {
         g_conn.status.link_type = CONNECTIVITY_LINK_NONE;
         conn_set_state_locked(CONNECTIVITY_STATE_DOWN, 0);
@@ -286,6 +297,7 @@ int connectivity_module_shutdown(void) {
     return 0;
 }
 
+/** Phase 3：暂无事件驱动逻辑，占位 */
 void connectivity_module_on_event(const event_t* event, void* user_data) {
     ARG_UNUSED(event);
     ARG_UNUSED(user_data);

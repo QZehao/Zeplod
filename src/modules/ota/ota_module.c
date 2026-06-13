@@ -43,21 +43,21 @@ LOG_MODULE_REGISTER(ota_module, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 typedef enum {
-    OTA_INGEST_NONE = 0,
-    OTA_INGEST_MCUMGR,
-    OTA_INGEST_ACTIVE,
+    OTA_INGEST_NONE = 0, /**< 无进行中的写入会话 */
+    OTA_INGEST_MCUMGR,   /**< SMP 被动上传占用 */
+    OTA_INGEST_ACTIVE,   /**< ota_module_begin_download 主动路径 */
 } ota_ingest_owner_t;
 
 typedef struct {
     ota_sm_t                   sm;
-    const ota_transport_ops_t* active_transport;
+    const ota_transport_ops_t* active_transport; /**< Kconfig 选定的主动传输后端 */
     ota_ingest_owner_t         ingest_owner;
     module_status_t            status;
-    size_t                     image_size;
+    size_t                     image_size; /**< 当前镜像已收字节（进度估算用） */
     struct k_mutex             lock;
     bool                       lock_ready;
     bool                       events_registered;
-    bool                       session_open;
+    bool                       session_open; /**< 传输层 open 且未完成 close/abort */
 } ota_module_cb_t;
 
 /* =============================================================================
@@ -92,6 +92,7 @@ static void ota_unlock(void) {
     zepl_lock_exit(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_ota.lock);
 }
 
+/** 按状态与已写字节估算进度百分比 */
 static uint8_t ota_percent_for_state(ota_state_t state, size_t image_size) {
     const size_t cap = (size_t) CONFIG_OTA_EXPECTED_IMAGE_SIZE;
 
@@ -122,6 +123,7 @@ static void ota_build_progress(ota_progress_t* prog, ota_state_t state, int erro
     prog->error_code = error_code;
 }
 
+/** 发布 OTA 状态与进度事件（锁外调用） */
 static int ota_publish_progress(const ota_progress_t* prog) {
     event_status_t st;
 
@@ -140,6 +142,11 @@ static int ota_publish_progress(const ota_progress_t* prog) {
     return 0;
 }
 
+/**
+ * @brief 中止当前会话并复位状态机
+ *
+ * 持锁调用：按 ingest 来源取消 MCUmgr 或主动传输，清空 image_size。
+ */
 static void ota_reset_session_locked(void) {
 #if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
     if (g_ota.session_open && g_ota.ingest_owner == OTA_INGEST_MCUMGR) {
@@ -156,6 +163,7 @@ static void ota_reset_session_locked(void) {
     g_ota.image_size = 0U;
 }
 
+/** 传输失败路径：转 ERROR、abort 传输、释放 ingest（持锁） */
 static int ota_transport_fail_locked(int err, ota_progress_t* out_prog) {
     (void) ota_sm_on_error(&g_ota.sm, err);
     ota_build_progress(out_prog, OTA_STATE_ERROR, err);
@@ -262,6 +270,7 @@ int ota_module_start(void) {
     ota_unlock();
 
 #if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+    /* 锁外 arm SMP 钩子；失败须回滚已打开的 ingest */
     {
         const ota_transport_ops_t* smp = ota_transport_mcumgr_smp_get();
         int                        hook_ret;
@@ -280,6 +289,7 @@ int ota_module_start(void) {
     if (g_ota.status == MODULE_STATUS_UNINITIALIZED) {
         ota_unlock();
 #if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUMGR_SMP)
+        /* start 中途失败：关闭已 arm 的 SMP 钩子 */
         {
             const ota_transport_ops_t* smp = ota_transport_mcumgr_smp_get();
 

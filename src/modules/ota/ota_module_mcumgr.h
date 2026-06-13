@@ -26,12 +26,19 @@
 extern "C" {
 #endif
 
+/** 尝试独占 OTA ingest 会话（MCUmgr 与主动 API 互斥） */
 bool ota_module_mcumgr_try_claim_session(void);
+/** MCUmgr DFU 是否允许开始（模块 RUNNING 且无主动 ingest 占用） */
 bool ota_module_mcumgr_is_accepting(void);
+/** img_mgmt 收到 DFU 开始；返回 false 表示拒绝会话 */
 bool ota_module_mcumgr_on_dfu_started(void);
+/** SMP 分片写入进度回调 */
 void ota_module_mcumgr_on_chunk_progress(size_t image_size);
+/** 镜像写入完成，进入 pending 校验态 */
 void ota_module_mcumgr_on_dfu_pending(void);
+/** SMP 上传结束（成功或中止） */
 void ota_module_mcumgr_on_dfu_stopped(void);
+/** 取消进行中的 SMP 上传并释放 ingest 所有权 */
 void ota_transport_mcumgr_smp_cancel_upload(void);
 
 #ifdef __cplusplus

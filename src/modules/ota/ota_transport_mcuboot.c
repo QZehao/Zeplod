@@ -29,10 +29,11 @@ LOG_MODULE_REGISTER(ota_transport_mcuboot, CONFIG_SYS_LOG_LEVEL);
  * 内部数据结构
  * ============================================================================= */
 
+/** MCUboot secondary slot 写入上下文 */
 typedef struct {
-    struct flash_img_context ctx;
-    size_t                   write_len;
-    bool                     open;
+    struct flash_img_context ctx;       /**< Zephyr flash_img 会话 */
+    size_t                   write_len; /**< 已顺序写入字节数 */
+    bool                     open;      /**< 会话是否打开 */
 } ota_mcuboot_ctx_t;
 
 /* =============================================================================
@@ -56,6 +57,7 @@ static void mcuboot_abort(ota_transport_ops_t* ops);
  * 传输回调
  * ============================================================================= */
 
+/** 初始化 flash_img，目标为 MCUboot upload slot */
 static int mcuboot_open(ota_transport_ops_t* ops) {
     ota_mcuboot_ctx_t* ctx = (ota_mcuboot_ctx_t*) ops->ctx;
     int                rc;
@@ -86,6 +88,7 @@ static int mcuboot_write_chunk(ota_transport_ops_t* ops, size_t offset, const ui
     if (!ctx->open) {
         return -EIO;
     }
+    /* flash_img 要求严格顺序写入，offset 须等于已写字节数 */
     if (offset != ctx->write_len) {
         LOG_ERR("MCUboot transport requires sequential writes (off=%zu, expected=%zu)", offset, ctx->write_len);
         return -EINVAL;
@@ -112,6 +115,7 @@ static int mcuboot_verify(ota_transport_ops_t* ops) {
         return -ENODATA;
     }
 
+    /* len=0 + flush=true 将缓冲刷入 flash 并完成镜像收尾 */
     rc = flash_img_buffered_write(&ctx->ctx, NULL, 0U, true);
     if (rc != 0) {
         LOG_ERR("flash_img flush failed: %d", rc);
@@ -134,6 +138,7 @@ static int mcuboot_close(ota_transport_ops_t* ops) {
         return -EINVAL;
     }
 
+    /* TEST 模式：下次启动试跑新镜像，失败可回滚 */
     rc = boot_request_upgrade(BOOT_UPGRADE_TEST);
     if (rc != 0) {
         LOG_ERR("boot_request_upgrade failed: %d", rc);
@@ -152,6 +157,7 @@ static void mcuboot_abort(ota_transport_ops_t* ops) {
         return;
     }
 
+    /* 中止时擦除未完成的 upload slot，避免残留半包镜像 */
     if (ctx->open && ctx->write_len > 0U && ctx->ctx.flash_area != NULL) {
         const int rc = boot_erase_img_bank((uint8_t) ctx->ctx.flash_area->fa_id);
 
