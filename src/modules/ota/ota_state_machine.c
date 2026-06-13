@@ -18,8 +18,12 @@
 
 /* =============================================================================
  * 状态机实现
+ *
+ * 合法迁移：IDLE → DOWNLOADING → VERIFYING → READY_REBOOT；
+ * 中间态遇错进入 ERROR。IDLE / READY_REBOOT 不接受 on_error。
  * ============================================================================= */
 
+/** 复位为空闲态 */
 void ota_sm_init(ota_sm_t* sm) {
     if (sm == NULL) {
         return;
@@ -35,6 +39,7 @@ ota_state_t ota_sm_get_state(const ota_sm_t* sm) {
     return sm->state;
 }
 
+/** 仅 IDLE 可进入下载 */
 int ota_sm_on_download_start(ota_sm_t* sm) {
     if (sm == NULL) {
         return -EINVAL;
@@ -47,6 +52,7 @@ int ota_sm_on_download_start(ota_sm_t* sm) {
     return 0;
 }
 
+/** 下载完成后进入校验 */
 int ota_sm_on_download_complete(ota_sm_t* sm) {
     if (sm == NULL) {
         return -EINVAL;
@@ -58,6 +64,7 @@ int ota_sm_on_download_complete(ota_sm_t* sm) {
     return 0;
 }
 
+/** 校验通过，等待重启确认 */
 int ota_sm_on_verify_ok(ota_sm_t* sm) {
     if (sm == NULL) {
         return -EINVAL;
@@ -69,6 +76,7 @@ int ota_sm_on_verify_ok(ota_sm_t* sm) {
     return 0;
 }
 
+/** 下载/校验阶段失败；记录 error_code 并转入 ERROR */
 int ota_sm_on_error(ota_sm_t* sm, int error_code) {
     if (sm == NULL) {
         return -EINVAL;

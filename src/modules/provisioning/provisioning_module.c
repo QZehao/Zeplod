@@ -31,12 +31,13 @@ LOG_MODULE_REGISTER(provisioning_module, CONFIG_SYS_LOG_LEVEL);
  * 内部数据结构
  * ============================================================================= */
 
+/** 配网模块运行时控制块（单例 g_prov） */
 typedef struct {
-    provisioning_state_t state;
-    module_status_t      module_status;
-    struct k_mutex       lock;
-    bool                 lock_ready;
-    bool                 events_registered;
+    provisioning_state_t state;             /**< 配网状态机当前阶段 */
+    module_status_t      module_status;     /**< init/start/stop 生命周期 */
+    struct k_mutex       lock;              /**< 保护 state 与 module_status */
+    bool                 lock_ready;        /**< 互斥量是否已完成 k_mutex_init */
+    bool                 events_registered; /**< EVENT_PROVISIONING_STATE_CHANGED 是否已注册 */
 } provisioning_module_cb_t;
 
 /* =============================================================================
@@ -58,16 +59,22 @@ static int  prov_publish_state(provisioning_state_t state, int err);
  * 锁与内部辅助
  * ============================================================================= */
 
+/** 获取模块锁（RESOURCE 层级，须与 zepl_lock_exit 配对） */
 static void prov_lock(void) {
     zepl_lock_enter(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_prov.lock);
     k_mutex_lock(&g_prov.lock, K_FOREVER);
 }
 
+/** 释放模块锁 */
 static void prov_unlock(void) {
     k_mutex_unlock(&g_prov.lock);
     zepl_lock_exit(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_prov.lock);
 }
 
+/**
+ * @brief 向事件系统注册配网状态变化类型（幂等）
+ * @return 0 成功；-EIO 注册失败
+ */
 static int prov_register_event_types(void) {
     event_status_t st;
 
@@ -85,6 +92,15 @@ static int prov_register_event_types(void) {
     return 0;
 }
 
+/**
+ * @brief 发布配网状态变化事件
+ *
+ * 须在锁外调用，避免事件分发线程回调再入本模块导致死锁。
+ *
+ * @param state 新状态
+ * @param err   伴随错误码（成功为 0）
+ * @return 0 成功；-EIO 发布失败（仅记日志，不中断调用方）
+ */
 static int prov_publish_state(provisioning_state_t state, int err) {
     provisioning_status_t st = {.state = state, .error_code = err};
     event_status_t        ev_st;
@@ -113,11 +129,13 @@ int provisioning_module_begin(const provisioning_credentials_t* creds) {
         prov_unlock();
         return APP_ERR_INIT;
     }
+    /* 已配网则拒绝重复 begin */
     if (g_prov.state == PROVISIONING_STATE_PROVISIONED) {
         prov_unlock();
         return APP_ERR_PROVISIONING;
     }
 
+    /* Phase 3 stub：无真实后端，同步走完 IN_PROGRESS → PROVISIONED */
     g_prov.state = PROVISIONING_STATE_IN_PROGRESS;
     prov_unlock();
     (void) prov_publish_state(PROVISIONING_STATE_IN_PROGRESS, 0);
@@ -153,6 +171,7 @@ int provisioning_module_get_device_id(char* out, size_t out_len) {
         return APP_ERR_INVALID_PARAM;
     }
 
+    /* 设备 ID 来自 Kconfig 编译期字符串，非运行时 NVS */
     if (strlen(CONFIG_PROVISIONING_DEVICE_ID) >= out_len) {
         return -ENOMEM;
     }
@@ -171,6 +190,7 @@ int provisioning_module_init(void* config) {
 
     ARG_UNUSED(config);
 
+    /* 幂等：重复 init 直接成功 */
     if (g_prov.module_status != MODULE_STATUS_UNINITIALIZED) {
         return 0;
     }
@@ -228,6 +248,7 @@ int provisioning_module_shutdown(void) {
     return 0;
 }
 
+/** Phase 3：暂无订阅外部事件，占位供后续联动 connectivity 等模块 */
 void provisioning_module_on_event(const event_t* event, void* user_data) {
     ARG_UNUSED(event);
     ARG_UNUSED(user_data);
@@ -255,6 +276,7 @@ int provisioning_module_control(int cmd, void* arg) {
 DECLARE_MODULE_INTERFACE(provisioning_module);
 
 #if IS_ENABLED(CONFIG_PROVISIONING_MODULE_AUTOINIT)
+/** SYS_INIT 钩子：将本模块注册到 module_manager */
 static int provisioning_module_auto_register(void) {
     uint32_t id;
 

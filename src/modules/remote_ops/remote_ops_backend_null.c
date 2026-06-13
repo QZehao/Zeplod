@@ -13,9 +13,10 @@
 #include <stddef.h>
 #include <string.h>
 
+/** RAM 环形缓存：保存最近一次导出的诊断 JSON（测试用） */
 typedef struct {
     char   buf[CONFIG_REMOTE_OPS_EXPORT_BUF_SIZE];
-    size_t len;
+    size_t len; /**< 有效 JSON 长度（不含 '\0'） */
     bool   inited;
 } remote_ops_null_ctx_t;
 
@@ -65,6 +66,7 @@ static int null_get_last_export(remote_ops_backend_ops_t* ops, char* out, size_t
     return 0;
 }
 
+/** 将 JSON 写入 RAM 缓存，供 get_last_export 读取 */
 static int null_export_diag(remote_ops_backend_ops_t* ops, const char* json, size_t json_len) {
     remote_ops_null_ctx_t* ctx = (remote_ops_null_ctx_t*) ops->ctx;
 
