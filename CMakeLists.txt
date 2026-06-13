@@ -238,6 +238,9 @@ add_subdirectory(src/app)
 # Business Modules (Example - Extendable)
 add_subdirectory(src/modules)
 
+# OTA module (Kconfig: CONFIG_OTA_MODULE)
+add_subdirectory(src/modules/ota)
+
 # Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
 if(CONFIG_THREAD_IPC_SERVICE)
     add_subdirectory(src/modules/ipc_service)
@@ -283,5 +286,6 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/ipc_service
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/ota
     ${CMAKE_CURRENT_SOURCE_DIR}/src/data_bus
 )

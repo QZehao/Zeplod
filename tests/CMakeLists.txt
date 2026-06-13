@@ -129,6 +129,14 @@ if(CONFIG_DATA_BUS)
 endif()
 
 # =============================================================================
+# OTA module tests
+# =============================================================================
+if(CONFIG_OTA_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/ota ${CMAKE_CURRENT_BINARY_DIR}/ota)
+	target_sources(app PRIVATE test_ota_module.c)
+endif()
+
+# =============================================================================
 # 包含路径
 # =============================================================================
 target_include_directories(app PRIVATE
@@ -136,6 +144,7 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/core
 	${APP_SRC_DIR}/modules
 	${APP_SRC_DIR}/modules/ipc_service
+	${APP_SRC_DIR}/modules/ota
 	${APP_SRC_DIR}/data_bus
 )
 

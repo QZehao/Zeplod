@@ -21,6 +21,10 @@
 #include <zeplod/data_bus.h>
 #endif
 
+#ifdef CONFIG_OTA_MODULE
+#include <zeplod/ota_module.h>
+#endif
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -413,6 +417,77 @@ static int cmd_app_help(const struct shell* shell, size_t argc, char** argv) {
 
     return 0;
 }
+
+#ifdef CONFIG_OTA_MODULE
+
+/* =============================================================================
+ * OTA Shell 命令
+ * ============================================================================= */
+
+static const char* ota_state_name(ota_state_t state) {
+    switch (state) {
+    case OTA_STATE_IDLE:
+        return "idle";
+    case OTA_STATE_DOWNLOADING:
+        return "downloading";
+    case OTA_STATE_VERIFYING:
+        return "verifying";
+    case OTA_STATE_READY_REBOOT:
+        return "ready_reboot";
+    case OTA_STATE_ERROR:
+        return "error";
+    default:
+        return "unknown";
+    }
+}
+
+static int cmd_ota_status(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    ota_state_t st;
+    if (ota_module_get_state(&st) != 0) {
+        shell_error(shell, "OTA state unavailable");
+        return -EIO;
+    }
+    shell_print(shell, "OTA state: %s", ota_state_name(st));
+    return 0;
+}
+
+static int cmd_ota_begin(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int ret = ota_module_begin_update();
+    if (ret != 0) {
+        shell_error(shell, "begin failed: %d", ret);
+        return ret;
+    }
+    shell_print(shell, "OTA download started (null transport)");
+    return 0;
+}
+
+static int cmd_ota_abort(const struct shell* shell, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int ret = ota_module_abort_update();
+    if (ret != 0) {
+        shell_error(shell, "abort failed: %d", ret);
+        return ret;
+    }
+    shell_print(shell, "OTA session aborted");
+    return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_ota, SHELL_CMD(status, NULL, "Show OTA state", cmd_ota_status),
+                               SHELL_CMD(begin, NULL, "Start OTA download (null transport)", cmd_ota_begin),
+                               SHELL_CMD(abort, NULL, "Abort OTA session and return to idle", cmd_ota_abort),
+                               SHELL_SUBCMD_SET_END);
+
+SHELL_CMD_REGISTER(ota, &sub_ota, "OTA commands", NULL);
+
+#endif /* CONFIG_OTA_MODULE */
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app_kv, SHELL_CMD(set, NULL, "Set key [value words...]", cmd_app_kv_set),
                                SHELL_CMD(get, NULL, "Get key", cmd_app_kv_get),

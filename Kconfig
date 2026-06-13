@@ -627,3 +627,9 @@ rsource "src/data_bus/Kconfig"
 
 endmenu
 
+menu "OTA Module"
+
+rsource "src/modules/ota/Kconfig"
+
+endmenu
+

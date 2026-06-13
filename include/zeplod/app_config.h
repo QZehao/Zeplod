@@ -143,6 +143,7 @@ extern "C" {
 #define APP_INIT_PRIO_SYS_TIMER       50
 #define APP_INIT_PRIO_SYS_WDT         52
 #define APP_INIT_PRIO_MODULE_MGR      54
+#define APP_INIT_PRIO_MODULE_OTA      58
 #define APP_INIT_PRIO_MODULE_A        60
 #define APP_INIT_PRIO_MODULE_B        61
 #define APP_INIT_PRIO_MODULE_GPIO     62
@@ -202,6 +203,8 @@ extern "C" {
 #define APP_ERR_DISABLED              -7
 #define APP_ERR_KV_FULL               -8
 #define APP_ERR_IO                    -9
+#define APP_ERR_OTA_INVALID_STATE     -20
+#define APP_ERR_OTA_TRANSPORT         -21
 
 /* =============================================================================
  * 构建配置
