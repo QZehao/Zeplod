@@ -289,6 +289,23 @@ int module_manager_start_module(uint32_t module_id);
 int module_manager_stop_module(uint32_t module_id);
 
 /**
+ * @brief 将模块从 ERROR 状态恢复为 STOPPED（不调用业务 stop/shutdown）
+ *
+ * @param module_id 模块 ID
+ * @return MODULE_OK；MODULE_ERR_NOT_FOUND / MODULE_ERR_NOT_INITIALIZED
+ * @note 供 recovery_policy 等在自动重启前清除 ERROR 标志
+ */
+int module_manager_clear_error_state(uint32_t module_id);
+
+/**
+ * @brief 将全部 ERROR 模块恢复为 STOPPED（不调用业务 stop/shutdown）
+ *
+ * @return MODULE_OK；MODULE_ERR_NOT_INITIALIZED
+ * @note 供 recovery_policy restart_all 等在批量启动前清除 ERROR 标志
+ */
+int module_manager_clear_all_error_states(void);
+
+/**
  * @brief 启动所有模块
  *
  * 按优先级顺序启动所有已注册但未运行的模块。

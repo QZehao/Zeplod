@@ -43,6 +43,8 @@ west build -b qemu_riscv32 . \
 # 可选功能叠加
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/ota.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/diag.conf
+west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/recovery.conf
+west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/secure_kv.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/app_kv_persist.conf
 west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/gpio_uart.conf
 ```
@@ -58,10 +60,13 @@ west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/gpio_uart.conf
 | `features/data_bus.conf` | Data Bus，CMake 默认 |
 | `features/thread_ipc.conf` | Thread IPC，CMake 默认 |
 | `features/app_kv_persist.conf` | KV 掉电持久化 |
-| `features/ota.conf` | OTA 模块（null 传输，Phase 1） |
+| `features/ota.conf` | OTA 模块（null 传输，ztest/开发） |
 | `features/diag.conf` | sys_diag 健康快照 |
+| `features/recovery.conf` | recovery_policy 模块 |
+| `features/secure_kv.conf` | sys_secure_kv 加密 KV |
 | `features/boot_fast.conf` | 快速/极限启动优化 |
 | `targets/qemu.conf` | QEMU 仿真裁剪 |
+| `targets/mcuboot.conf` | MCUboot OTA 传输叠加 |
 | `examples/gpio_uart.conf` | GPIO/UART 示例 |
 | `examples/module_ipc.conf` | Thread IPC 集成示例 |
 

@@ -23,3 +23,11 @@ endif()
 if(CONFIG_SYS_DIAG_ENABLE)
     target_sources(app PRIVATE sys_diag.c)
 endif()
+
+if(CONFIG_SYS_SECURE_KV_ENABLE)
+    target_sources(app PRIVATE sys_secure_kv.c)
+endif()
+
+if(CONFIG_SYS_FAULT_DUMP_ENABLE)
+    target_sources(app PRIVATE sys_fault_dump.c)
+endif()

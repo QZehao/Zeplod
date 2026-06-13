@@ -9,6 +9,7 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/**"
+      - "conf/**"
       - ".github/workflows/**"
       - "CMakeLists.txt"
       - "Kconfig*"
@@ -21,6 +22,7 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/**"
+      - "conf/**"
       - ".github/workflows/**"
       - "CMakeLists.txt"
       - "Kconfig*"
@@ -54,6 +56,7 @@ jobs:
               - 'src/**'
               - 'tests/**'
               - 'scripts/**'
+              - 'conf/**'
               - 'CMakeLists.txt'
               - 'Kconfig*'
               - 'prj*.conf'
@@ -226,6 +229,24 @@ jobs:
           west build -b native_sim tests/ --build-dir build_tests_app_kv -p always \
             -- -DCONF_FILE="prj.conf;prj_app_kv.conf"
           west build -t run --build-dir build_tests_app_kv
+
+      - name: Run recovery policy tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_recovery -p always \
+            -- -DCONF_FILE="prj.conf;prj_recovery.conf"
+          west build -t run --build-dir build_tests_recovery
+
+      - name: Run sys_secure_kv tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_secure_kv -p always \
+            -- -DCONF_FILE="prj.conf;prj_sys_secure_kv.conf"
+          west build -t run --build-dir build_tests_secure_kv
+
+      - name: Build MCUboot OTA config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_mcuboot -p always \
+            -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf
+          echo "MCUboot config build succeeded."
 
       - name: Run IPC tests (prj.conf + prj_native_sim)
         run: |

@@ -8,7 +8,7 @@
  * 配置要求：CONFIG_OTA_MODULE=y，且 CONFIG_EVENT_MAX_TYPES > 51（事件 ID 50–51）。
  *
  * @author zeh (china_qzh@163.com)
- * @version 1.1
+ * @version 1.2
  * @date 2026-06-13
  *
  * @par 修改日志:
@@ -16,6 +16,7 @@
  *    Date         Version        Author          Description
  * 2026-06-13       1.0            zeh            初始版本（Phase 1 null 传输）
  * 2026-06-13       1.1            zeh            统一注释风格；同步发布 PROGRESS 事件
+ * 2026-06-13       1.2            zeh            MCUboot 传输选择；ota_module_request_reboot
  *
  */
 
@@ -126,6 +127,13 @@ int ota_module_get_state(ota_state_t* out_state);
  * @return 0
  */
 int ota_module_abort_update(void);
+
+/**
+ * @brief 在 READY_REBOOT 状态下请求暖重启以切换镜像
+ * @return 0 成功（通常不返回）；APP_ERR_OTA_INVALID_STATE
+ * @note MCUboot 传输在 finish 时已调用 boot_request_upgrade(TEST)
+ */
+int ota_module_request_reboot(void);
 
 #ifdef __cplusplus
 }

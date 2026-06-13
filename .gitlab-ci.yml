@@ -76,6 +76,11 @@ build_tests:
     - west build -t run --build-dir build_tests_ota
     - west build -b native_sim tests/ --build-dir build_tests_app_kv -p always -- -DCONF_FILE="prj.conf;prj_app_kv.conf"
     - west build -t run --build-dir build_tests_app_kv
+    - west build -b native_sim tests/ --build-dir build_tests_recovery -p always -- -DCONF_FILE="prj.conf;prj_recovery.conf"
+    - west build -t run --build-dir build_tests_recovery
+    - west build -b native_sim tests/ --build-dir build_tests_secure_kv -p always -- -DCONF_FILE="prj.conf;prj_sys_secure_kv.conf"
+    - west build -t run --build-dir build_tests_secure_kv
+    - west build -b native_sim . --build-dir build_mcuboot -p always -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf
     - west build -b native_sim tests/ --build-dir build_tests_ipc -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
     - west build -t run --build-dir build_tests_ipc
     - west build -b native_sim tests/ --build-dir build_tests_full -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf;prj_ci_examples.conf"

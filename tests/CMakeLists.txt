@@ -137,10 +137,32 @@ if(CONFIG_OTA_MODULE)
 endif()
 
 # =============================================================================
+# Recovery policy tests
+# =============================================================================
+if(CONFIG_RECOVERY_POLICY_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/recovery ${CMAKE_CURRENT_BINARY_DIR}/recovery)
+	target_sources(app PRIVATE test_recovery_policy.c)
+endif()
+
+# =============================================================================
 # System diagnostics tests
 # =============================================================================
 if(CONFIG_SYS_DIAG_ENABLE)
 	target_sources(app PRIVATE test_sys_diag.c)
+endif()
+
+# =============================================================================
+# Secure KV tests
+# =============================================================================
+if(CONFIG_SYS_SECURE_KV_ENABLE)
+	target_sources(app PRIVATE test_sys_secure_kv.c)
+endif()
+
+# =============================================================================
+# Fault dump tests
+# =============================================================================
+if(CONFIG_SYS_FAULT_DUMP_ENABLE)
+	target_sources(app PRIVATE test_sys_fault_dump.c)
 endif()
 
 # =============================================================================
@@ -162,6 +184,7 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/modules
 	${APP_SRC_DIR}/modules/ipc_service
 	${APP_SRC_DIR}/modules/ota
+	${APP_SRC_DIR}/modules/recovery
 	${APP_SRC_DIR}/data_bus
 )
 

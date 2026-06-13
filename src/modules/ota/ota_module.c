@@ -2,7 +2,7 @@
  * @file ota_module.c
  * @brief OTA 模块生命周期与更新流程
  * @author zeh (china_qzh@163.com)
- * @version 1.1
+ * @version 1.2
  * @date 2026-06-13
  *
  * @par 修改日志:
@@ -10,6 +10,7 @@
  *    Date         Version        Author          Description
  * 2026-06-13       1.0            zeh            初始版本（Phase 1 null 传输）
  * 2026-06-13       1.1            zeh            幂等 init、锁序、锁外发事件、ERROR 恢复
+ * 2026-06-13       1.2            zeh            传输后端 Kconfig 选择；request_reboot
  *
  */
 
@@ -18,6 +19,7 @@
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/reboot.h>
 
 #include <errno.h>
 #include <string.h>
@@ -75,15 +77,20 @@ static void ota_unlock(void) {
     zepl_lock_exit(ZEP_LOCK_LEVEL_RESOURCE, (uintptr_t) &g_ota.lock);
 }
 
-static uint8_t ota_percent_for_state(ota_state_t state, size_t image_size, size_t buf_cap) {
+static uint8_t ota_percent_for_state(ota_state_t state, size_t image_size) {
+    const size_t cap = (size_t) CONFIG_OTA_EXPECTED_IMAGE_SIZE;
+
     switch (state) {
     case OTA_STATE_IDLE:
         return 0U;
     case OTA_STATE_DOWNLOADING:
-        if (buf_cap == 0U) {
+        if (cap == 0U) {
             return 0U;
         }
-        return (uint8_t) ((image_size * 100U) / buf_cap);
+        if (image_size >= cap) {
+            return 99U;
+        }
+        return (uint8_t) ((image_size * 100U) / cap);
     case OTA_STATE_VERIFYING:
         return 95U;
     case OTA_STATE_READY_REBOOT:
@@ -96,7 +103,7 @@ static uint8_t ota_percent_for_state(ota_state_t state, size_t image_size, size_
 
 static void ota_build_progress(ota_progress_t* prog, ota_state_t state, int error_code) {
     prog->state = state;
-    prog->percent = ota_percent_for_state(state, g_ota.image_size, CONFIG_OTA_NULL_TRANSPORT_BUF_SIZE);
+    prog->percent = ota_percent_for_state(state, g_ota.image_size);
     prog->error_code = error_code;
 }
 
@@ -179,7 +186,11 @@ int ota_module_init(void* config) {
     }
 
     ota_sm_init(&g_ota.sm);
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUBOOT)
+    g_ota.transport = ota_transport_mcuboot_get();
+#else
     g_ota.transport = ota_transport_null_get();
+#endif
     g_ota.image_size = 0U;
     g_ota.transport_open = false;
     g_ota.status = MODULE_STATUS_INITIALIZED;
@@ -190,7 +201,12 @@ int ota_module_init(void* config) {
         return ret;
     }
 
-    LOG_INF("OTA module initialized (null transport)");
+    LOG_INF("OTA module initialized (%s transport)",
+#if IS_ENABLED(CONFIG_OTA_TRANSPORT_MCUBOOT)
+            "mcuboot");
+#else
+            "null");
+#endif
     return 0;
 }
 
@@ -405,6 +421,22 @@ int ota_module_abort_update(void) {
     ota_build_progress(&prog, OTA_STATE_IDLE, 0);
     ota_unlock();
     (void) ota_publish_progress(&prog);
+    return 0;
+}
+
+int ota_module_request_reboot(void) {
+    ota_state_t st;
+
+    ota_lock();
+    st = ota_sm_get_state(&g_ota.sm);
+    ota_unlock();
+
+    if (st != OTA_STATE_READY_REBOOT) {
+        return APP_ERR_OTA_INVALID_STATE;
+    }
+
+    LOG_INF("OTA reboot requested");
+    sys_reboot(SYS_REBOOT_WARM);
     return 0;
 }
 
