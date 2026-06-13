@@ -253,6 +253,12 @@ add_subdirectory(src/modules/provisioning)
 # Factory mode module (Kconfig: CONFIG_FACTORY_MODE_MODULE)
 add_subdirectory(src/modules/factory)
 
+# Remote ops module (Kconfig: CONFIG_REMOTE_OPS_MODULE)
+add_subdirectory(src/modules/remote_ops)
+
+# Feature gate module (Kconfig: CONFIG_FEATURE_GATE_MODULE)
+add_subdirectory(src/modules/feature_gate)
+
 # Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
 if(CONFIG_THREAD_IPC_SERVICE)
     add_subdirectory(src/modules/ipc_service)
@@ -303,5 +309,7 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/connectivity
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/provisioning
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/factory
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/remote_ops
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/feature_gate
     ${CMAKE_CURRENT_SOURCE_DIR}/src/data_bus
 )

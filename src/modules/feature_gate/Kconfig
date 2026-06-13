@@ -1,0 +1,36 @@
+menuconfig FEATURE_GATE_MODULE
+	bool "Enable feature gate module (non-security license slots)"
+	default n
+	depends on EVENT_SYSTEM
+	depends on EVENT_MAX_TYPES > 72
+	help
+	  Named feature slots unlocked by license token string match.
+	  Event ID 72. Not a cryptographic DRM.
+
+if FEATURE_GATE_MODULE
+
+config FEATURE_GATE_MODULE_AUTOINIT
+	bool "Auto-register feature_gate module at boot"
+	default y
+
+config FEATURE_GATE_LICENSE
+	string "Expected license token for premium features"
+	default "zeplod-oem-dev"
+	help
+	  Runtime feature_gate_apply_license() must match this string.
+
+config FEATURE_GATE_BOOT_LICENSE
+	string "License applied at init (empty = locked at boot)"
+	default ""
+	help
+	  If non-empty and matches FEATURE_GATE_LICENSE, premium slots start unlocked.
+
+config FEATURE_GATE_SLOT_CLOUD
+	bool "Compile cloud feature slot"
+	default y
+
+config FEATURE_GATE_SLOT_REMOTE
+	bool "Compile remote_diag feature slot"
+	default y
+
+endif

@@ -149,6 +149,36 @@ int sys_diag_format(const sys_diag_snapshot_t* snap, char* buf, size_t buf_len) 
     return 0;
 }
 
+int sys_diag_export_json(const sys_diag_snapshot_t* snap, char* buf, size_t buf_len) {
+    sys_diag_snapshot_t local;
+    int                 n;
+
+    if (buf == NULL || buf_len == 0U) {
+        return -EINVAL;
+    }
+
+    if (snap == NULL) {
+        if (sys_diag_collect(&local) != 0) {
+            return -EIO;
+        }
+        snap = &local;
+    }
+
+    n = snprintf(buf, buf_len,
+                 "{\"heap_free\":%u,\"heap_used\":%u,\"evt_depth\":%u,\"evt_cap\":%u,"
+                 "\"evt_drop\":%u,\"mod_total\":%u,\"mod_run\":%u,\"mod_err\":%u,\"uptime_ms\":%u}",
+                 snap->heap_free_bytes, snap->heap_used_bytes, snap->event_queue_depth,
+                 snap->event_queue_capacity, snap->event_dropped_count, snap->module_count,
+                 snap->module_running_count, snap->module_error_count, snap->uptime_ms);
+    if (n < 0) {
+        return -EIO;
+    }
+    if ((size_t)n >= buf_len) {
+        return -ENOSPC;
+    }
+    return 0;
+}
+
 /* =============================================================================
  * SYS_INIT 自动初始化
  * ============================================================================= */

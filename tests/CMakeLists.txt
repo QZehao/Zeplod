@@ -194,6 +194,22 @@ if(CONFIG_FACTORY_MODE_MODULE)
 endif()
 
 # =============================================================================
+# Remote ops tests
+# =============================================================================
+if(CONFIG_REMOTE_OPS_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/remote_ops ${CMAKE_CURRENT_BINARY_DIR}/remote_ops)
+	target_sources(app PRIVATE test_remote_ops.c)
+endif()
+
+# =============================================================================
+# Feature gate tests
+# =============================================================================
+if(CONFIG_FEATURE_GATE_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/feature_gate ${CMAKE_CURRENT_BINARY_DIR}/feature_gate)
+	target_sources(app PRIVATE test_feature_gate.c)
+endif()
+
+# =============================================================================
 # Fault dump tests
 # =============================================================================
 if(CONFIG_SYS_FAULT_DUMP_ENABLE)
@@ -223,6 +239,8 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/modules/connectivity
 	${APP_SRC_DIR}/modules/provisioning
 	${APP_SRC_DIR}/modules/factory
+	${APP_SRC_DIR}/modules/remote_ops
+	${APP_SRC_DIR}/modules/feature_gate
 	${APP_SRC_DIR}/data_bus
 )
 

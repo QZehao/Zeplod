@@ -272,6 +272,36 @@ jobs:
             -- -DCONF_FILE="prj.conf;prj_factory_no_kv.conf"
           west build -t run --build-dir build_tests_factory_no_kv
 
+      - name: Run remote_ops tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_remote_ops -p always \
+            -- -DCONF_FILE="prj.conf;prj_remote_ops.conf"
+          west build -t run --build-dir build_tests_remote_ops
+
+      - name: Run feature_gate tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_feature_gate -p always \
+            -- -DCONF_FILE="prj.conf;prj_feature_gate.conf"
+          west build -t run --build-dir build_tests_feature_gate
+
+      - name: Run feature_gate boot license tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_feature_gate_boot -p always \
+            -- -DCONF_FILE="prj.conf;prj_feature_gate_boot.conf"
+          west build -t run --build-dir build_tests_feature_gate_boot
+
+      - name: Build scale config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_scale -p always \
+            -- -DEXTRA_CONF_FILE=conf/features/scale.conf
+          echo "scale.conf build succeeded."
+
+      - name: Build scale + sku_gateway config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_sku_gateway -p always \
+            -- -DEXTRA_CONF_FILE="conf/features/scale.conf;conf/profiles/sku_gateway.conf"
+          echo "sku_gateway config build succeeded."
+
       - name: Build production config (compile check)
         run: |
           west build -b native_sim . --build-dir build_production -p always \

@@ -449,6 +449,8 @@ typedef struct {
 - `APP_INIT_PRIO_MODULE_RECOVERY` = 57
 - `APP_INIT_PRIO_MODULE_OTA` = 58
 - `APP_INIT_PRIO_MODULE_FACTORY` = 59
+- `APP_INIT_PRIO_MODULE_REMOTE_OPS` = 66
+- `APP_INIT_PRIO_MODULE_FEATURE_GATE` = 67
 - `APP_INIT_PRIO_MODULE_A` = 60
 - `APP_INIT_PRIO_MODULE_B` = 61
 - `APP_INIT_PRIO_MODULE_GPIO` = 62
@@ -496,6 +498,10 @@ CONFIG_SYS_WATCHDOG_TIMEOUT_MS=5000
 # CONFIG_PROVISIONING_MODULE=y
 # conf/features/net_stub.conf — 三合一
 # CONFIG_FACTORY_MODE_MODULE=y
+# CONFIG_REMOTE_OPS_MODULE=y
+# CONFIG_FEATURE_GATE_MODULE=y
+# conf/features/scale.conf
+# conf/profiles/sku_gateway.conf
 # conf/targets/production.conf — 量产叠加
 # MCUboot OTA：conf/targets/mcuboot.conf
 

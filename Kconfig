@@ -726,3 +726,15 @@ rsource "src/modules/factory/Kconfig"
 
 endmenu
 
+menu "Remote Operations Module"
+
+rsource "src/modules/remote_ops/Kconfig"
+
+endmenu
+
+menu "Feature Gate Module"
+
+rsource "src/modules/feature_gate/Kconfig"
+
+endmenu
+
