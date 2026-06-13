@@ -7,6 +7,8 @@
 **适合谁读**：已有成功 **`west build` / 烧录** 经验，需要升级通道或掉电保存参数的开发者。**初学者**请先完成 **[文档索引.md](../00-入门/02-文档索引.md)** 中的路径 A，再决定是否阅读本文。  
 **签名与密钥**：勿把私钥提交进仓库，见 **[安全与密钥管理说明.md](75-安全与密钥管理说明.md)**。
 
+**框架 API（Zeplod）**：应用侧升级状态机与传输抽象见 **[39-OTA模块使用说明.md](../30-核心模块/39-OTA模块使用说明.md)**；MCUboot 传输叠加 `conf/targets/mcuboot.conf`，null 传输测试用 `conf/features/ota.conf`。
+
 ## 1. OTA / MCUboot
 
 ### 1.1 角色分工
@@ -79,6 +81,31 @@ MCUboot 通常作为 **West 工程中的一个 project** 检出到 `bootloader/m
 - [MCUboot with Zephyr](https://docs.zephyrproject.org/latest/services/device_mgmt/mcuboot.html)
 - [MCUboot sample（Zephyr）](https://docs.zephyrproject.org/latest/samples/subsys/mcuboot/README.html)
 - [Device Management (mcumgr)](https://docs.zephyrproject.org/latest/services/device_mgmt/index.html)
+
+### 1.9 硬件验证清单（量产前手测）
+
+CI 已包含 `native_sim` + `conf/targets/mcuboot.conf` **编译检查**；目标板仍须完成下列手测并记录结果：
+
+| 步骤 | 操作 | 预期 |
+|------|------|------|
+| 1 | `west build -b <nucleo> . -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf` + 板级 slot overlay | 编译通过 |
+| 2 | 烧录 MCUboot + 应用 A/B 槽 | 正常启动 slot0 |
+| 3 | 通过 OTA 写入 slot1 并 `ota_module_request_reboot()` | 重启后运行新镜像（test 模式） |
+| 4 | 下载中断电 / `ota_module_abort_update()` | 旧镜像仍可启动；secondary 已擦除 |
+| 5 | 确认新镜像（`boot_write_img_confirmed` 或等价流程） | 回滚标记清除 |
+
+记录模板：在 PR / 发布说明中填写板型、Zephyr 版本、镜像版本、断电场景与结果。
+
+### 1.10 量产固件叠加（production.conf）
+
+量产推荐在应用基线 `prj.conf` / profile 之上叠加 **`conf/targets/production.conf`**（默认关闭工厂产测、收紧日志、启用恢复/看门狗等）。需 OTA 引导链时与 **`conf/targets/mcuboot.conf`** 组合：
+
+```bash
+west build -b <board> . \
+  -- -DEXTRA_CONF_FILE="conf/targets/production.conf;conf/targets/mcuboot.conf"
+```
+
+产线固件（含 `factory_mode`）请改用 **`conf/features/factory_mode.conf`**，勿与量产 profile 混用。详见 **[46-工厂模式模块使用说明.md](../30-核心模块/46-工厂模式模块使用说明.md)** 与 **[75-安全与密钥管理说明.md](75-安全与密钥管理说明.md)**。
 
 ---
 

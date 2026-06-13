@@ -1,0 +1,21 @@
+menuconfig PROVISIONING_MODULE
+	bool "Enable provisioning module"
+	default n
+	depends on EVENT_MAX_TYPES > 61
+	help
+	  Device identity and provisioning state machine.
+	  Requires CONFIG_EVENT_MAX_TYPES > 61 (event ID 61).
+
+if PROVISIONING_MODULE
+
+config PROVISIONING_MODULE_AUTOINIT
+	bool "Auto-register provisioning module at boot"
+	default y
+
+config PROVISIONING_DEVICE_ID
+	string "Device ID string (UUID or serial)"
+	default "zeplod-dev-00000001"
+	help
+	  Exposed via provisioning_module_get_device_id(). Override per SKU in production.
+
+endif

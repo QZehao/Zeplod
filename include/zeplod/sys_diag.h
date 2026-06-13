@@ -78,6 +78,16 @@ int sys_diag_collect(sys_diag_snapshot_t* out);
  */
 int sys_diag_format(const sys_diag_snapshot_t* snap, char* buf, size_t buf_len);
 
+/**
+ * @brief 将快照序列化为紧凑 JSON（单行，供远程运维通道）
+ *
+ * @param snap 快照；为 NULL 时内部 collect
+ * @param buf 输出缓冲
+ * @param buf_len 缓冲大小（含 NUL）
+ * @return 0 成功；-EINVAL；-ENOSPC；-EIO
+ */
+int sys_diag_export_json(const sys_diag_snapshot_t* snap, char* buf, size_t buf_len);
+
 #ifdef __cplusplus
 }
 #endif

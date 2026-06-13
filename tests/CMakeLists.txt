@@ -137,10 +137,83 @@ if(CONFIG_OTA_MODULE)
 endif()
 
 # =============================================================================
+# Recovery policy tests
+# =============================================================================
+if(CONFIG_RECOVERY_POLICY_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/recovery ${CMAKE_CURRENT_BINARY_DIR}/recovery)
+	target_sources(app PRIVATE test_recovery_policy.c)
+endif()
+
+# =============================================================================
 # System diagnostics tests
 # =============================================================================
 if(CONFIG_SYS_DIAG_ENABLE)
 	target_sources(app PRIVATE test_sys_diag.c)
+endif()
+
+# =============================================================================
+# Secure KV tests
+# =============================================================================
+if(CONFIG_SYS_SECURE_KV_ENABLE)
+	target_sources(app PRIVATE test_sys_secure_kv.c)
+endif()
+
+# =============================================================================
+# sys_time tests
+# =============================================================================
+if(CONFIG_SYS_TIME_ENABLE)
+	target_sources(app PRIVATE test_sys_time.c)
+endif()
+
+# =============================================================================
+# Connectivity module tests
+# =============================================================================
+if(CONFIG_CONNECTIVITY_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/connectivity ${CMAKE_CURRENT_BINARY_DIR}/connectivity)
+	target_sources(app PRIVATE test_connectivity_module.c)
+endif()
+
+# =============================================================================
+# Provisioning module tests
+# =============================================================================
+if(CONFIG_PROVISIONING_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/provisioning ${CMAKE_CURRENT_BINARY_DIR}/provisioning)
+	target_sources(app PRIVATE test_provisioning_module.c)
+endif()
+
+# =============================================================================
+# Factory mode tests
+# =============================================================================
+if(CONFIG_FACTORY_MODE_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/factory ${CMAKE_CURRENT_BINARY_DIR}/factory)
+	if(CONFIG_APP_KV_ENABLE)
+		target_sources(app PRIVATE test_factory_mode.c)
+	else()
+		target_sources(app PRIVATE test_factory_mode_no_kv.c)
+	endif()
+endif()
+
+# =============================================================================
+# Remote ops tests
+# =============================================================================
+if(CONFIG_REMOTE_OPS_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/remote_ops ${CMAKE_CURRENT_BINARY_DIR}/remote_ops)
+	target_sources(app PRIVATE test_remote_ops.c)
+endif()
+
+# =============================================================================
+# Feature gate tests
+# =============================================================================
+if(CONFIG_FEATURE_GATE_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/feature_gate ${CMAKE_CURRENT_BINARY_DIR}/feature_gate)
+	target_sources(app PRIVATE test_feature_gate.c)
+endif()
+
+# =============================================================================
+# Fault dump tests
+# =============================================================================
+if(CONFIG_SYS_FAULT_DUMP_ENABLE)
+	target_sources(app PRIVATE test_sys_fault_dump.c)
 endif()
 
 # =============================================================================
@@ -162,6 +235,12 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/modules
 	${APP_SRC_DIR}/modules/ipc_service
 	${APP_SRC_DIR}/modules/ota
+	${APP_SRC_DIR}/modules/recovery
+	${APP_SRC_DIR}/modules/connectivity
+	${APP_SRC_DIR}/modules/provisioning
+	${APP_SRC_DIR}/modules/factory
+	${APP_SRC_DIR}/modules/remote_ops
+	${APP_SRC_DIR}/modules/feature_gate
 	${APP_SRC_DIR}/data_bus
 )
 

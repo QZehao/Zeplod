@@ -137,6 +137,9 @@ extern "C" {
 #define APP_INIT_PRIO_SYS_LOG         20
 #define APP_INIT_PRIO_SYS_MEM         30
 #define APP_INIT_PRIO_SYS_DIAG        31
+#define APP_INIT_PRIO_SYS_SECURE_KV   32
+#define APP_INIT_PRIO_SYS_FAULT_DUMP  33
+#define APP_INIT_PRIO_SYS_TIME        34
 #define APP_INIT_PRIO_EVENT_SYS       40
 #define APP_INIT_PRIO_DISPATCHER      45
 #define APP_INIT_PRIO_DATA_BUS        46
@@ -144,7 +147,13 @@ extern "C" {
 #define APP_INIT_PRIO_SYS_TIMER       50
 #define APP_INIT_PRIO_SYS_WDT         52
 #define APP_INIT_PRIO_MODULE_MGR      54
+#define APP_INIT_PRIO_MODULE_CONNECTIVITY 55
+#define APP_INIT_PRIO_MODULE_PROVISIONING 56
+#define APP_INIT_PRIO_MODULE_RECOVERY 57
 #define APP_INIT_PRIO_MODULE_OTA      58
+#define APP_INIT_PRIO_MODULE_FACTORY  59
+#define APP_INIT_PRIO_MODULE_REMOTE_OPS 66
+#define APP_INIT_PRIO_MODULE_FEATURE_GATE 67
 #define APP_INIT_PRIO_MODULE_A        60
 #define APP_INIT_PRIO_MODULE_B        61
 #define APP_INIT_PRIO_MODULE_GPIO     62
@@ -207,6 +216,12 @@ extern "C" {
 #define APP_ERR_ALREADY_EXISTS        -10
 #define APP_ERR_OTA_INVALID_STATE     -20
 #define APP_ERR_OTA_TRANSPORT         -21
+#define APP_ERR_CONNECTIVITY          -30
+#define APP_ERR_PROVISIONING          -31
+#define APP_ERR_TIME                  -32
+#define APP_ERR_FACTORY               -40
+#define APP_ERR_REMOTE_OPS            -50
+#define APP_ERR_FEATURE_GATE          -51
 
 /* =============================================================================
  * 构建配置

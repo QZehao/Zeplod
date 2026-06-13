@@ -6,13 +6,14 @@
  * Phase 2 可接入 MCUboot / img_mgmt 等后端。
  *
  * @author zeh (china_qzh@163.com)
- * @version 1.0
+ * @version 1.1
  * @date 2026-06-13
  *
  * @par 修改日志:
  *
  *    Date         Version        Author          Description
  * 2026-06-13       1.0            zeh            初始版本
+ * 2026-06-13       1.1            zeh            增加 ota_transport_mcuboot_get
  *
  */
 
@@ -55,6 +56,14 @@ struct ota_transport_ops {
  * @return 静态 vtable 指针，生命周期为整个进程
  */
 const ota_transport_ops_t* ota_transport_null_get(void);
+
+#if defined(CONFIG_OTA_TRANSPORT_MCUBOOT) || defined(__DOXYGEN__)
+/**
+ * @brief 获取 MCUboot flash_img 传输实例
+ * @return 静态 vtable 指针；须 CONFIG_OTA_TRANSPORT_MCUBOOT=y
+ */
+const ota_transport_ops_t* ota_transport_mcuboot_get(void);
+#endif
 
 #ifdef __cplusplus
 }

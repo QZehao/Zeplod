@@ -438,6 +438,58 @@ int module_manager_stop_module(uint32_t module_id) {
     return MODULE_OK;
 }
 
+int module_manager_clear_error_state(uint32_t module_id) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
+    module_manager_lock();
+
+    module_info_t* info = find_module_by_id_locked(module_id);
+    if (info == NULL || info->interface == NULL) {
+        module_manager_unlock();
+        return MODULE_ERR_NOT_FOUND;
+    }
+
+    if (info->status == MODULE_STATUS_ERROR) {
+        info->status = MODULE_STATUS_STOPPED;
+        if (g_module_mgr.stats.error_modules > 0U) {
+            g_module_mgr.stats.error_modules--;
+        }
+        LOG_INF("Module '%s' error state cleared",
+                info->interface->name != NULL ? info->interface->name : "?");
+    }
+
+    module_manager_unlock();
+    return MODULE_OK;
+}
+
+int module_manager_clear_all_error_states(void) {
+    if (!atomic_get(&g_module_mgr_initialized)) {
+        return MODULE_ERR_NOT_INITIALIZED;
+    }
+
+    module_manager_lock();
+
+    for (int i = 0; i < CONFIG_MAX_MODULES; i++) {
+        module_info_t* info = &g_module_mgr.modules[i];
+
+        if (info->interface == NULL || info->status != MODULE_STATUS_ERROR) {
+            continue;
+        }
+
+        info->status = MODULE_STATUS_STOPPED;
+        if (g_module_mgr.stats.error_modules > 0U) {
+            g_module_mgr.stats.error_modules--;
+        }
+        LOG_INF("Module '%s' error state cleared (batch)",
+                info->interface->name != NULL ? info->interface->name : "?");
+    }
+
+    module_manager_unlock();
+    return MODULE_OK;
+}
+
 /**
  * @brief 检查条目的所有依赖项当前是否处于 RUNNING。
  *

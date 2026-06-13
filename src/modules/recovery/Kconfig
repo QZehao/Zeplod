@@ -1,0 +1,53 @@
+menuconfig RECOVERY_POLICY_MODULE
+	bool "Enable recovery policy module"
+	default n
+	depends on MODULE_MANAGER && EVENT_SYSTEM
+	help
+	  React to module_manager MODULE_MGR_EVENT_ERROR with graded recovery
+	  (restart module, restart all, or system reboot).
+
+if RECOVERY_POLICY_MODULE
+
+config RECOVERY_POLICY_AUTOINIT
+	bool "Auto-register recovery policy at boot"
+	default y
+
+config RECOVERY_POLICY_MAX_RESTARTS
+	int "Max automatic restarts per module before escalation"
+	default 3
+	range 1 16
+
+config RECOVERY_POLICY_OTA_HOOK
+	bool "React to OTA_STATE_ERROR events"
+	default y
+	depends on OTA_MODULE
+	help
+	  Subscribe to EVENT_OTA_STATE_CHANGED and run recovery on the OTA
+	  module when state becomes OTA_STATE_ERROR.
+
+config RECOVERY_POLICY_WATCHDOG_HOOK
+	bool "Register watchdog pre-expire recovery hook"
+	default y
+	depends on SYS_WATCHDOG_ENABLE
+	help
+	  On watchdog feed timeout warning, attempt restart_all before reset.
+
+choice RECOVERY_POLICY_DEFAULT_ACTION
+	prompt "Default recovery action on module ERROR"
+	default RECOVERY_POLICY_ACTION_RESTART_MODULE
+
+config RECOVERY_POLICY_ACTION_NONE
+	bool "Log only (no recovery)"
+
+config RECOVERY_POLICY_ACTION_RESTART_MODULE
+	bool "Stop and restart failing module"
+
+config RECOVERY_POLICY_ACTION_RESTART_ALL
+	bool "Stop all modules and start_all"
+
+config RECOVERY_POLICY_ACTION_REBOOT
+	bool "Warm reboot immediately"
+
+endchoice
+
+endif

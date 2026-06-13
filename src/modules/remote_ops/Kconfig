@@ -1,0 +1,39 @@
+menuconfig REMOTE_OPS_MODULE
+	bool "Enable remote operations hooks module"
+	default n
+	depends on EVENT_SYSTEM
+	depends on EVENT_MAX_TYPES > 71
+	depends on SYS_DIAG_ENABLE
+	help
+	  Export sys_diag JSON via pluggable backend (null RAM cache in Phase 5).
+	  Event ID 71. mcumgr transport in a future conf/targets overlay.
+
+if REMOTE_OPS_MODULE
+
+config REMOTE_OPS_MODULE_AUTOINIT
+	bool "Auto-register remote_ops module at boot"
+	default y
+
+choice REMOTE_OPS_BACKEND
+	prompt "Remote ops backend"
+	default REMOTE_OPS_BACKEND_NULL
+	help
+	  Null backend caches the last JSON export in RAM for ztest.
+	  mcumgr transport can be added in a future conf/targets overlay.
+
+config REMOTE_OPS_BACKEND_NULL
+	bool "Null (RAM cache) backend"
+
+endchoice
+
+config REMOTE_OPS_SHELL
+	bool "Register remote shell commands"
+	default y
+	depends on SHELL
+
+config REMOTE_OPS_EXPORT_BUF_SIZE
+	int "Max JSON export payload bytes"
+	default 384
+	range 128 1024
+
+endif

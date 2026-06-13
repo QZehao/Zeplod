@@ -105,6 +105,34 @@ ZTEST(sys_diag_tests, test_format_buffer_too_small) {
     zassert_equal(sys_diag_format(&snap, buf, sizeof(buf)), -ENOSPC, NULL);
 }
 
+ZTEST(sys_diag_tests, test_export_json_contains_fields) {
+    setup_event_for_diag();
+
+    sys_diag_snapshot_t snap;
+    char                buf[384];
+
+    zassert_equal(sys_diag_collect(&snap), 0, NULL);
+    zassert_equal(sys_diag_export_json(&snap, buf, sizeof(buf)), 0, NULL);
+    zassert_not_null(strstr(buf, "\"uptime_ms\""), NULL);
+    zassert_not_null(strstr(buf, "\"heap_free\""), NULL);
+}
+
+ZTEST(sys_diag_tests, test_export_json_null_snap_collects) {
+    char buf[384];
+
+    setup_event_for_diag();
+    zassert_equal(sys_diag_export_json(NULL, buf, sizeof(buf)), 0, NULL);
+    zassert_true(buf[0] == '{', NULL);
+}
+
+ZTEST(sys_diag_tests, test_export_json_buffer_too_small) {
+    sys_diag_snapshot_t snap;
+    char                buf[16];
+
+    memset(&snap, 0, sizeof(snap));
+    zassert_equal(sys_diag_export_json(&snap, buf, sizeof(buf)), -ENOSPC, NULL);
+}
+
 #if defined(CONFIG_SYS_MEMORY_ENABLE)
 ZTEST(sys_diag_tests, test_collect_heap_when_memory_enabled) {
     zassert_equal(sys_mem_init(NULL), 0, NULL);

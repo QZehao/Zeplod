@@ -9,6 +9,7 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/**"
+      - "conf/**"
       - ".github/workflows/**"
       - "CMakeLists.txt"
       - "Kconfig*"
@@ -21,6 +22,7 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/**"
+      - "conf/**"
       - ".github/workflows/**"
       - "CMakeLists.txt"
       - "Kconfig*"
@@ -54,6 +56,7 @@ jobs:
               - 'src/**'
               - 'tests/**'
               - 'scripts/**'
+              - 'conf/**'
               - 'CMakeLists.txt'
               - 'Kconfig*'
               - 'prj*.conf'
@@ -226,6 +229,96 @@ jobs:
           west build -b native_sim tests/ --build-dir build_tests_app_kv -p always \
             -- -DCONF_FILE="prj.conf;prj_app_kv.conf"
           west build -t run --build-dir build_tests_app_kv
+
+      - name: Run recovery policy tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_recovery -p always \
+            -- -DCONF_FILE="prj.conf;prj_recovery.conf"
+          west build -t run --build-dir build_tests_recovery
+
+      - name: Run sys_secure_kv tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_secure_kv -p always \
+            -- -DCONF_FILE="prj.conf;prj_sys_secure_kv.conf"
+          west build -t run --build-dir build_tests_secure_kv
+
+      - name: Run sys_time tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_sys_time -p always \
+            -- -DCONF_FILE="prj.conf;prj_sys_time.conf"
+          west build -t run --build-dir build_tests_sys_time
+
+      - name: Run connectivity module tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_connectivity -p always \
+            -- -DCONF_FILE="prj.conf;prj_connectivity.conf"
+          west build -t run --build-dir build_tests_connectivity
+
+      - name: Run provisioning module tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_provisioning -p always \
+            -- -DCONF_FILE="prj.conf;prj_provisioning.conf"
+          west build -t run --build-dir build_tests_provisioning
+
+      - name: Run factory mode tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_factory -p always \
+            -- -DCONF_FILE="prj.conf;prj_factory.conf"
+          west build -t run --build-dir build_tests_factory
+
+      - name: Run factory mode tests (no app_kv)
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_factory_no_kv -p always \
+            -- -DCONF_FILE="prj.conf;prj_factory_no_kv.conf"
+          west build -t run --build-dir build_tests_factory_no_kv
+
+      - name: Run remote_ops tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_remote_ops -p always \
+            -- -DCONF_FILE="prj.conf;prj_remote_ops.conf"
+          west build -t run --build-dir build_tests_remote_ops
+
+      - name: Run feature_gate tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_feature_gate -p always \
+            -- -DCONF_FILE="prj.conf;prj_feature_gate.conf"
+          west build -t run --build-dir build_tests_feature_gate
+
+      - name: Run feature_gate boot license tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_feature_gate_boot -p always \
+            -- -DCONF_FILE="prj.conf;prj_feature_gate_boot.conf"
+          west build -t run --build-dir build_tests_feature_gate_boot
+
+      - name: Build scale config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_scale -p always \
+            -- -DEXTRA_CONF_FILE=conf/features/scale.conf
+          echo "scale.conf build succeeded."
+
+      - name: Build scale + sku_gateway config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_sku_gateway -p always \
+            -- -DEXTRA_CONF_FILE="conf/features/scale.conf;conf/profiles/sku_gateway.conf"
+          echo "sku_gateway config build succeeded."
+
+      - name: Build production config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_production -p always \
+            -- -DEXTRA_CONF_FILE=conf/targets/production.conf
+          echo "Production config build succeeded."
+
+      - name: Build production + MCUboot config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_production_mcuboot -p always \
+            -- -DEXTRA_CONF_FILE="conf/targets/production.conf;conf/targets/mcuboot.conf"
+          echo "Production + MCUboot config build succeeded."
+
+      - name: Build MCUboot OTA config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_mcuboot -p always \
+            -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf
+          echo "MCUboot config build succeeded."
 
       - name: Run IPC tests (prj.conf + prj_native_sim)
         run: |

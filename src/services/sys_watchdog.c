@@ -275,6 +275,18 @@ int sys_wdt_feed(void) {
     return 0;
 }
 
+int sys_wdt_set_pre_expire_callback(sys_wdt_user_cb_t callback, void* user_data) {
+    if (g_wdt.config.name == NULL) {
+        return -EINVAL;
+    }
+
+    k_mutex_lock(&g_wdt.lock, K_FOREVER);
+    g_wdt.config.pre_expire_callback = callback;
+    g_wdt.config.callback_user_data = user_data;
+    k_mutex_unlock(&g_wdt.lock);
+    return 0;
+}
+
 int sys_wdt_pause(void) {
     k_mutex_lock(&g_wdt.lock, K_FOREVER);
 

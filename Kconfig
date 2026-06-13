@@ -499,6 +499,68 @@ config SYS_DIAG_ENABLE
 	  Aggregate memory, event queue, and module health snapshots.
 	  Provides sys_diag_collect() and optional shell "diag dump".
 
+config SYS_SECURE_KV_ENABLE
+	bool "Enable secure KV service (encrypted values in RAM)"
+	default n
+	help
+	  Store sensitive binary values with software keystream encryption.
+	  Key from CONFIG_SYS_SECURE_KV_KEY_HEX (32 hex chars). Replace with
+	  PSA/AES-GCM for production.
+
+if SYS_SECURE_KV_ENABLE
+
+config SYS_SECURE_KV_KEY_HEX
+	string "AES-128 key as 32 hex characters"
+	default "00112233445566778899aabbccddeeff"
+	help
+	  Development key only — do not commit production secrets.
+
+config SYS_SECURE_KV_MAX_ENTRIES
+	int "Maximum secure KV entries"
+	default 8
+	range 1 32
+
+config SYS_SECURE_KV_KEY_MAX_LEN
+	int "Maximum key string length"
+	default 32
+	range 8 64
+
+config SYS_SECURE_KV_VALUE_MAX_LEN
+	int "Maximum encrypted value length (bytes)"
+	default 128
+	range 16 512
+
+endif
+
+config SYS_TIME_ENABLE
+	bool "Enable wall-clock time service (sys_time)"
+	default n
+	help
+	  Software wall clock based on k_uptime after sys_time_set_unix_ms().
+	  SNTP backend can be added in a future overlay.
+
+config SYS_FAULT_DUMP_ENABLE
+	bool "Enable fault event ring (retained RAM)"
+	default y if RECOVERY_POLICY_MODULE
+	default n
+	help
+	  Record recent fault events in .noinit RAM for post-reset export.
+	  Used by recovery_policy on module/OTA/watchdog paths.
+
+if SYS_FAULT_DUMP_ENABLE
+
+config SYS_FAULT_DUMP_RING_SIZE
+	int "Fault dump ring capacity (entries)"
+	default 16
+	range 4 64
+
+config SYS_FAULT_DUMP_PAYLOAD_MAX
+	int "Max payload bytes per fault dump entry"
+	default 24
+	range 8 64
+
+endif
+
 endmenu
 
 menu "Application Features Configuration"
@@ -637,6 +699,42 @@ endmenu
 menu "OTA Module"
 
 rsource "src/modules/ota/Kconfig"
+
+endmenu
+
+menu "Recovery Policy Module"
+
+rsource "src/modules/recovery/Kconfig"
+
+endmenu
+
+menu "Connectivity Module"
+
+rsource "src/modules/connectivity/Kconfig"
+
+endmenu
+
+menu "Provisioning Module"
+
+rsource "src/modules/provisioning/Kconfig"
+
+endmenu
+
+menu "Factory Mode Module"
+
+rsource "src/modules/factory/Kconfig"
+
+endmenu
+
+menu "Remote Operations Module"
+
+rsource "src/modules/remote_ops/Kconfig"
+
+endmenu
+
+menu "Feature Gate Module"
+
+rsource "src/modules/feature_gate/Kconfig"
 
 endmenu
 

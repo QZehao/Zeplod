@@ -1,0 +1,27 @@
+menuconfig CONNECTIVITY_MODULE
+	bool "Enable connectivity module"
+	default n
+	depends on EVENT_MAX_TYPES > 60
+	help
+	  Link up/down abstraction with pluggable backend.
+	  Requires CONFIG_EVENT_MAX_TYPES > 60 (event ID 60).
+
+if CONNECTIVITY_MODULE
+
+config CONNECTIVITY_MODULE_AUTOINIT
+	bool "Auto-register connectivity module at boot"
+	default y
+
+choice CONNECTIVITY_BACKEND
+	prompt "Connectivity backend"
+	default CONNECTIVITY_BACKEND_NULL
+	help
+	  Null backend synchronously simulates link up/down for ztest.
+	  Wi-Fi backend can be added in Phase 4.
+
+config CONNECTIVITY_BACKEND_NULL
+	bool "Null (sync stub) backend"
+
+endchoice
+
+endif

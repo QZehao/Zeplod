@@ -107,6 +107,15 @@ int sys_wdt_stop(void);
 int sys_wdt_feed(void);
 
 /**
+ * @brief 设置过期前回调（可运行时更新，供 recovery 等注册）
+ *
+ * @param callback 回调；NULL 清除
+ * @param user_data 用户数据
+ * @return 0 成功；-EINVAL 看门狗未初始化
+ */
+int sys_wdt_set_pre_expire_callback(sys_wdt_user_cb_t callback, void* user_data);
+
+/**
  * @brief 暂停看门狗（调试用）
  * @return 成功返回 0，失败返回负错误码
  */

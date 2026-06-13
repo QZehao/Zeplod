@@ -241,6 +241,24 @@ add_subdirectory(src/modules)
 # OTA module (Kconfig: CONFIG_OTA_MODULE)
 add_subdirectory(src/modules/ota)
 
+# Recovery policy module (Kconfig: CONFIG_RECOVERY_POLICY_MODULE)
+add_subdirectory(src/modules/recovery)
+
+# Connectivity module (Kconfig: CONFIG_CONNECTIVITY_MODULE)
+add_subdirectory(src/modules/connectivity)
+
+# Provisioning module (Kconfig: CONFIG_PROVISIONING_MODULE)
+add_subdirectory(src/modules/provisioning)
+
+# Factory mode module (Kconfig: CONFIG_FACTORY_MODE_MODULE)
+add_subdirectory(src/modules/factory)
+
+# Remote ops module (Kconfig: CONFIG_REMOTE_OPS_MODULE)
+add_subdirectory(src/modules/remote_ops)
+
+# Feature gate module (Kconfig: CONFIG_FEATURE_GATE_MODULE)
+add_subdirectory(src/modules/feature_gate)
+
 # Thread IPC service (Kconfig: CONFIG_THREAD_IPC_SERVICE; avoids Zephyr IPC_SERVICE name clash)
 if(CONFIG_THREAD_IPC_SERVICE)
     add_subdirectory(src/modules/ipc_service)
@@ -287,5 +305,11 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/ipc_service
     ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/ota
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/recovery
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/connectivity
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/provisioning
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/factory
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/remote_ops
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/feature_gate
     ${CMAKE_CURRENT_SOURCE_DIR}/src/data_bus
 )

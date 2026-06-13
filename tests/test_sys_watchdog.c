@@ -168,6 +168,13 @@ ZTEST(sys_watchdog, test_custom_config) {
     zassert_equal(sys_wdt_stop(), 0, NULL);
 }
 
+ZTEST(sys_watchdog, test_set_pre_expire_callback) {
+    zassert_equal(sys_wdt_init(NULL), 0, NULL);
+    zassert_equal(sys_wdt_set_pre_expire_callback(NULL, NULL), 0, NULL);
+    zassert_equal(sys_wdt_set_pre_expire_callback(NULL, NULL), 0, "clear callback");
+    (void) sys_wdt_stop();
+}
+
 ZTEST(sys_watchdog, test_monitor_thread) {
     zassert_equal(sys_wdt_init(NULL), 0, NULL);
     zassert_equal(sys_wdt_start(), 0, NULL);
