@@ -320,6 +320,12 @@ jobs:
             -- -DEXTRA_CONF_FILE=conf/targets/mcuboot.conf
           echo "MCUboot config build succeeded."
 
+      - name: Build MCUmgr SMP OTA config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_mcumgr_smp -p always \
+            -- -DEXTRA_CONF_FILE=conf/targets/mcumgr_smp.conf
+          echo "MCUmgr SMP OTA config build succeeded."
+
       - name: Run IPC tests (prj.conf + prj_native_sim)
         run: |
           west build -b native_sim tests/ --build-dir build_tests_ipc -p always \

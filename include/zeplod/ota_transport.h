@@ -3,10 +3,10 @@
  * @brief OTA 传输层抽象（可插拔 vtable）
  *
  * Phase 1 提供 null 传输（RAM 模拟镜像，供 native_sim 测试）；
- * Phase 2 可接入 MCUboot / img_mgmt 等后端。
+ * 产品默认 MCUmgr SMP 被动接入；可选 OTA_TRANSPORT_ACTIVE 自建 write_chunk 扩展。
  *
  * @author zeh (china_qzh@163.com)
- * @version 1.1
+ * @version 1.3
  * @date 2026-06-13
  *
  * @par 修改日志:
@@ -14,6 +14,8 @@
  *    Date         Version        Author          Description
  * 2026-06-13       1.0            zeh            初始版本
  * 2026-06-13       1.1            zeh            增加 ota_transport_mcuboot_get
+ * 2026-06-13       1.2            zeh            增加 ota_transport_mcumgr_smp_get
+ * 2026-06-13       1.3            zeh            MCUmgr SMP 命名；双 ingest 模型
  *
  */
 
@@ -57,12 +59,20 @@ struct ota_transport_ops {
  */
 const ota_transport_ops_t* ota_transport_null_get(void);
 
-#if defined(CONFIG_OTA_TRANSPORT_MCUBOOT) || defined(__DOXYGEN__)
+#if defined(CONFIG_OTA_TRANSPORT_ACTIVE) || defined(__DOXYGEN__)
 /**
- * @brief 获取 MCUboot flash_img 传输实例
- * @return 静态 vtable 指针；须 CONFIG_OTA_TRANSPORT_MCUBOOT=y
+ * @brief 获取 MCUboot flash_img 主动传输实例（自建协议扩展）
+ * @return 静态 vtable 指针；须 CONFIG_OTA_TRANSPORT_ACTIVE=y
  */
 const ota_transport_ops_t* ota_transport_mcuboot_get(void);
+#endif
+
+#if defined(CONFIG_OTA_TRANSPORT_MCUMGR_SMP) || defined(__DOXYGEN__)
+/**
+ * @brief 获取 MCUmgr SMP 被动接入实例
+ * @return 静态 vtable 指针；须 CONFIG_OTA_TRANSPORT_MCUMGR_SMP=y
+ */
+const ota_transport_ops_t* ota_transport_mcumgr_smp_get(void);
 #endif
 
 #ifdef __cplusplus

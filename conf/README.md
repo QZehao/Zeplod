@@ -82,7 +82,8 @@ west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/gpio_uart.conf
 | `features/boot_fast.conf` | 快速/极限启动优化 |
 | `targets/production.conf` | 量产固件叠加（关闭 factory） |
 | `targets/qemu.conf` | QEMU 仿真裁剪 |
-| `targets/mcuboot.conf` | MCUboot OTA 传输叠加 |
+| `targets/mcuboot.conf` | 主动 ingest（write_chunk / flash_img） |
+| `targets/mcumgr_smp.conf` | MCUmgr SMP 被动接入（产品推荐） |
 | `examples/gpio_uart.conf` | GPIO/UART 示例 |
 | `examples/module_ipc.conf` | Thread IPC 集成示例 |
 
