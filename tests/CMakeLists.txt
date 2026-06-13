@@ -159,6 +159,29 @@ if(CONFIG_SYS_SECURE_KV_ENABLE)
 endif()
 
 # =============================================================================
+# sys_time tests
+# =============================================================================
+if(CONFIG_SYS_TIME_ENABLE)
+	target_sources(app PRIVATE test_sys_time.c)
+endif()
+
+# =============================================================================
+# Connectivity module tests
+# =============================================================================
+if(CONFIG_CONNECTIVITY_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/connectivity ${CMAKE_CURRENT_BINARY_DIR}/connectivity)
+	target_sources(app PRIVATE test_connectivity_module.c)
+endif()
+
+# =============================================================================
+# Provisioning module tests
+# =============================================================================
+if(CONFIG_PROVISIONING_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/provisioning ${CMAKE_CURRENT_BINARY_DIR}/provisioning)
+	target_sources(app PRIVATE test_provisioning_module.c)
+endif()
+
+# =============================================================================
 # Fault dump tests
 # =============================================================================
 if(CONFIG_SYS_FAULT_DUMP_ENABLE)
@@ -185,6 +208,8 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/modules/ipc_service
 	${APP_SRC_DIR}/modules/ota
 	${APP_SRC_DIR}/modules/recovery
+	${APP_SRC_DIR}/modules/connectivity
+	${APP_SRC_DIR}/modules/provisioning
 	${APP_SRC_DIR}/data_bus
 )
 

@@ -1,0 +1,104 @@
+/**
+ * @file provisioning_module.h
+ * @brief 配网模块头文件
+ *
+ * 可选模块（CONFIG_PROVISIONING_MODULE）。设备身份与配网状态机，发布事件 61。
+ * 配置要求：CONFIG_EVENT_MAX_TYPES > 61。
+ *
+ * @author zeh (china_qzh@163.com)
+ * @version 1.0
+ * @date 2026-06-13
+ *
+ * @par 修改日志:
+ *
+ *    Date         Version        Author          Description
+ * 2026-06-13       1.0            zeh            Phase 3 初始版本
+ *
+ */
+
+#ifndef PROVISIONING_MODULE_H
+#define PROVISIONING_MODULE_H
+
+#include <zeplod/event_system.h>
+#include <zeplod/module_base.h>
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* =============================================================================
+ * 事件类型
+ * ============================================================================= */
+
+/** 配网状态变化（负载 provisioning_status_t） */
+#define EVENT_PROVISIONING_STATE_CHANGED ((event_type_t) 61)
+
+/* =============================================================================
+ * 类型定义
+ * ============================================================================= */
+
+typedef enum {
+    PROVISIONING_STATE_UNPROVISIONED = 0,
+    PROVISIONING_STATE_IN_PROGRESS,
+    PROVISIONING_STATE_PROVISIONED,
+    PROVISIONING_STATE_ERROR,
+} provisioning_state_t;
+
+typedef struct {
+    provisioning_state_t state;
+    int                  error_code;
+} provisioning_status_t;
+
+typedef struct {
+    const char* ssid;
+    const char* psk;
+} provisioning_credentials_t;
+
+/* =============================================================================
+ * 模块接口
+ * ============================================================================= */
+
+int             provisioning_module_init(void* config);
+int             provisioning_module_start(void);
+int             provisioning_module_stop(void);
+int             provisioning_module_shutdown(void);
+void            provisioning_module_on_event(const event_t* event, void* user_data);
+module_status_t provisioning_module_get_status(void);
+int             provisioning_module_control(int cmd, void* arg);
+
+/* =============================================================================
+ * 模块专用 API
+ * ============================================================================= */
+
+/**
+ * @brief 开始配网（须已 start；Phase 3 stub 立即成功）
+ * @param creds 凭据（可为 NULL，stub 忽略）
+ * @return 0 成功；APP_ERR_PROVISIONING / APP_ERR_INVALID_PARAM
+ */
+int provisioning_module_begin(const provisioning_credentials_t* creds);
+
+/**
+ * @brief 重置为未配网
+ * @return 0
+ */
+int provisioning_module_reset(void);
+
+/**
+ * @brief 查询配网状态
+ */
+int provisioning_module_get_state(provisioning_state_t* out_state);
+
+/**
+ * @brief 读取设备 ID 字符串（来自 Kconfig 或测试默认值）
+ * @return 0 成功；-EINVAL / -ENOMEM
+ */
+int provisioning_module_get_device_id(char* out, size_t out_len);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* PROVISIONING_MODULE_H */

@@ -532,6 +532,13 @@ config SYS_SECURE_KV_VALUE_MAX_LEN
 
 endif
 
+config SYS_TIME_ENABLE
+	bool "Enable wall-clock time service (sys_time)"
+	default n
+	help
+	  Software wall clock based on k_uptime after sys_time_set_unix_ms().
+	  SNTP backend can be added in a future overlay.
+
 config SYS_FAULT_DUMP_ENABLE
 	bool "Enable fault event ring (retained RAM)"
 	default y if RECOVERY_POLICY_MODULE
@@ -698,6 +705,18 @@ endmenu
 menu "Recovery Policy Module"
 
 rsource "src/modules/recovery/Kconfig"
+
+endmenu
+
+menu "Connectivity Module"
+
+rsource "src/modules/connectivity/Kconfig"
+
+endmenu
+
+menu "Provisioning Module"
+
+rsource "src/modules/provisioning/Kconfig"
 
 endmenu
 

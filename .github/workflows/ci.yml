@@ -242,6 +242,24 @@ jobs:
             -- -DCONF_FILE="prj.conf;prj_sys_secure_kv.conf"
           west build -t run --build-dir build_tests_secure_kv
 
+      - name: Run sys_time tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_sys_time -p always \
+            -- -DCONF_FILE="prj.conf;prj_sys_time.conf"
+          west build -t run --build-dir build_tests_sys_time
+
+      - name: Run connectivity module tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_connectivity -p always \
+            -- -DCONF_FILE="prj.conf;prj_connectivity.conf"
+          west build -t run --build-dir build_tests_connectivity
+
+      - name: Run provisioning module tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_provisioning -p always \
+            -- -DCONF_FILE="prj.conf;prj_provisioning.conf"
+          west build -t run --build-dir build_tests_provisioning
+
       - name: Build MCUboot OTA config (compile check)
         run: |
           west build -b native_sim . --build-dir build_mcuboot -p always \
