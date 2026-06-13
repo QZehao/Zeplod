@@ -141,7 +141,7 @@
 - ✅ 需要线程安全的模块间通信
 - ✅ 产品形态多样、需要功能裁剪
 - ✅ 团队协作开发、需要统一规范
-- ✅ **32KB SRAM 极限场景**（使用 `prj_tiny.conf` 极限配置）
+- ✅ **32KB SRAM 极限场景**（使用 `conf/profiles/tiny.conf` 极限配置）
 
 本框架**不太适合**以下场景：
 
@@ -150,16 +150,16 @@
 - ❌ 对Flash/RAM占用极度敏感的低成本产品
 - ❌ 不需要模块间通信的独立功能设备
 
-> 💡 **32KB SRAM 解决方案**：使用 `prj_tiny.conf` 极限配置，框架占用 **< 10KB**，预留 **> 22KB** 给 APP 模块。详见 [配置方案对比指南](docs/zh-CN/40-应用开发/43-配置方案对比指南.md)。
+> 💡 **32KB SRAM 解决方案**：使用 `conf/profiles/tiny.conf` 极限配置，框架占用 **< 10KB**，预留 **> 22KB** 给 APP 模块。详见 [配置方案对比指南](docs/zh-CN/40-应用开发/43-配置方案对比指南.md) 与 [conf/README.md](conf/README.md)。
 
 ### 📊 内存配置方案
 
 | 配置方案 | 目标 SRAM | 框架占用 | APP 可用 | 配置文件 |
 |---------|----------|---------|---------|---------|
-| 标准版 | ≥ 256KB | ~190KB | ~66KB+ | `prj.conf` |
-| 平衡版 | 64-128KB | ~40KB | ~24-88KB | `prj.conf;prj_sram.conf` |
-| 极简版 | 32-64KB | ~18KB | ~14-46KB | `prj.conf;prj_min.conf` |
-| **极限版** | **≤ 32KB** | **< 10KB** | **> 22KB** | `prj.conf;prj_tiny.conf` |
+| 标准版 | ≥ 256KB | ~190KB | ~66KB+ | 默认 `west build`（CMake 自动合并 standard + features） |
+| 平衡版 | 64-128KB | ~40KB | ~24-88KB | `-DEXTRA_CONF_FILE=conf/profiles/balanced.conf` |
+| 极简版 | 32-64KB | ~18KB | ~14-46KB | `-DEXTRA_CONF_FILE=conf/profiles/minimal.conf` |
+| **极限版** | **≤ 32KB** | **< 10KB** | **> 22KB** | `-DCONF_FILE="prj.conf;conf/profiles/tiny.conf"` |
 
 ## 项目结构
 
@@ -169,13 +169,12 @@ zeplod/
 ├── CMakeLists.txt                    # 构建配置（独立应用需 ZEPHYR_BASE 或 zephyr_config.env）
 ├── Kconfig                           # 应用 Kconfig（含事件/模块/IPC 等）
 ├── Kconfig.zephyr                    # Zephyr 顶层 Kconfig 入口
-├── prj.conf                          # 默认 Zephyr 配置（最小配置）
-├── prj_min.conf                      # 极简版配置（32-64KB SRAM，框架占用 ~18KB）
-├── prj_sram.conf                     # 平衡版配置（64-128KB SRAM，框架占用 ~40KB）
-├── prj_tiny.conf                     # 极限版配置（≤ 32KB SRAM，框架占用 < 10KB）
-├── prj_app_kv_persist.conf           # 应用 KV 掉电保存示例
-├── prj_example_gpio_uart.conf        # GPIO/UART 示例叠加配置
-├── prj_example_module_ipc.conf       # IPC 示例叠加配置
+├── prj.conf                          # 公共基线（框架核心开关）
+├── conf/                             # 叠加配置片段（见 conf/README.md）
+│   ├── profiles/                     # standard（默认）/ balanced / minimal / tiny
+│   ├── features/                     # data_bus、thread_ipc（默认）及可选功能
+│   ├── targets/                      # qemu
+│   └── examples/                     # gpio_uart、module_ipc
 ├── app.overlay                       # 通用设备树覆盖
 ├── west.yml                          # West 清单（默认 4.3.0-rc3）
 ├── zephyr_config.env                 # 本地路径（由 template 复制生成，勿提交密钥）
@@ -376,7 +375,7 @@ west build -b <your_board> .
 west build -b native_sim .
 
 # 使用特定配置文件（可合并多个）
-west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;conf/examples/module_ipc.conf"
 
 # 清理并重新构建
 west build -t pristine
@@ -564,7 +563,7 @@ app memory
 # 日志转储
 app log [level]
 
-# 应用键值（字符串 key/value；掉电保存见 prj_app_kv_persist.conf + boards/nucleo_l4r5zi.overlay）
+# 应用键值（字符串 key/value；掉电保存见 conf/features/app_kv_persist.conf + boards/nucleo_l4r5zi.overlay）
 app kv list
 app kv set mykey hello world
 app kv get mykey

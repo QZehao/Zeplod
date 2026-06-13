@@ -116,7 +116,7 @@ function Get-ZephyrQemuConfFile {
     }
 
     if ($Layout.Mode -eq "framework") {
-        return "prj.conf;prj_qemu.conf"
+        return "prj.conf;conf/profiles/standard.conf;conf/features/data_bus.conf;conf/features/thread_ipc.conf;conf/targets/qemu.conf"
     }
 
     $appPrj = Get-AppPrjConfName -AppRoot $Layout.AppRoot -Manifest $manifest
@@ -124,8 +124,8 @@ function Get-ZephyrQemuConfFile {
     $parts = @("framework/prj.conf")
     if ($appPrj) { $parts += $appPrj }
     if ($appPrjQemu) { $parts += $appPrjQemu }
-    if (Test-Path (Join-Path $Layout.AppRoot "framework/prj_qemu.conf")) {
-        $parts += "framework/prj_qemu.conf"
+    if (Test-Path (Join-Path $Layout.AppRoot "framework/conf/targets/qemu.conf")) {
+        $parts += "framework/conf/targets/qemu.conf"
     }
     if ($parts.Count -gt 1) {
         return ($parts -join ";")

@@ -27,13 +27,13 @@ APP 仓库的典型关系：
 flowchart TB
   subgraph app_repo [APP 仓库根]
     CML[CMakeLists.txt]
-    PRC["*_prj.conf / *_prj_qemu.conf"]
+    PRC["*_prj.conf / *_conf/targets/qemu.conf"]
     SRC[src/ 业务源码]
     MOD[modules/ 树外 Zephyr 模块]
     ENV[zephyr_app.env 可选]
   end
   subgraph fw [framework/ 子模块 = zeplod]
-    FPRJ[prj.conf / prj_qemu.conf]
+    FPRJ[prj.conf / conf/targets/qemu.conf]
     FSCR[scripts/]
     FCFG[zephyr_config.env]
     FOVR[app.overlay / boards/*.overlay]
@@ -58,7 +58,7 @@ my_product/                          # Git 仓库根 = Zephyr 应用根
 ├── CMakeLists.txt                   # 顶层入口（必须）
 ├── APP_VERSION                      # 可选，单行 semver：1.0.0
 ├── my_product_prj.conf              # APP 专用 Kconfig 叠加（实板）
-├── my_product_prj_qemu.conf         # 可选，QEMU 仿真裁剪
+├── my_product_conf/targets/qemu.conf         # 可选，QEMU 仿真裁剪
 ├── my_product.overlay               # 可选，APP 专用设备树（实板）
 ├── zephyr_app.env                   # 可选，脚本与 CONF 覆盖
 ├── src/                             # 业务 C 源码（按模块分子目录）
@@ -72,7 +72,7 @@ my_product/                          # Git 仓库根 = Zephyr 应用根
 └── framework/                       # zeplod 子模块（勿改业务逻辑进 framework）
     ├── cmake/zeplod_app_overlays.cmake
     ├── prj.conf
-    ├── prj_qemu.conf
+    ├── conf/targets/qemu.conf
     ├── zephyr_config.env            # 从 template 复制，勿提交
     └── scripts/
 ```
@@ -82,7 +82,7 @@ my_product/                          # Git 仓库根 = Zephyr 应用根
 | 文件 | 命名规则 | 说明 |
 |------|----------|------|
 | Kconfig 实板片段 | `<工程名>_prj.conf` 或 `*_prj.conf` | 与 `framework/prj.conf` 合并 |
-| Kconfig QEMU 片段 | `<前缀>_prj_qemu.conf` | 与实板片段成对；关闭无仿真硬件的选项 |
+| Kconfig QEMU 片段 | `<前缀>_conf/targets/qemu.conf` | 与实板片段成对；关闭无仿真硬件的选项 |
 | 设备树（可选） | `<工程名>.overlay` 或 `app.overlay` | 实板专用；勿把 STM32 SRAM 类 overlay 用于 QEMU |
 
 ---
@@ -196,7 +196,7 @@ CONFIG_EXAMPLE_MODULE_B_ENABLE=n
 
 框架侧 `CONFIG_*` 释义见 [42-项目配置项说明.md](../40-应用开发/42-项目配置项说明.md)。
 
-### 3.5 创建 `my_product_prj_qemu.conf`（强烈建议）
+### 3.5 创建 `my_product_conf/targets/qemu.conf`（强烈建议）
 
 实板启用的网络、CAN、Flash、NVS 等在 QEMU 上往往无对应设备，应单独裁剪：
 
@@ -211,7 +211,7 @@ CONFIG_NVS=n
 QEMU 构建时 CONF 合并顺序（脚本自动拼接）：
 
 ```text
-framework/prj.conf → <app>_prj.conf → <app>_prj_qemu.conf → framework/prj_qemu.conf
+framework/prj.conf → <app>_prj.conf → <app>_conf/targets/qemu.conf → framework/conf/targets/qemu.conf
 ```
 
 详见 [14-QEMU仿真运行指南.md](14-QEMU仿真运行指南.md)。
@@ -235,8 +235,8 @@ build:
 
 ```bash
 APP_PRJ_CONF=my_product_prj.conf
-APP_PRJ_QEMU_CONF=my_product_prj_qemu.conf
-QEMU_CONF=framework/prj.conf;my_product_prj.conf;my_product_prj_qemu.conf;framework/prj_qemu.conf
+APP_PRJ_QEMU_CONF=my_product_conf/targets/qemu.conf
+QEMU_CONF=framework/prj.conf;my_product_prj.conf;my_product_conf/targets/qemu.conf;framework/conf/targets/qemu.conf
 ZEPHYR_EXTRA_MODULES=modules/my_product
 ```
 
@@ -266,8 +266,8 @@ west flash -d build
 | `zephyr_app.env` | APP 根 | 覆盖 `APP_PRJ_CONF`、`QEMU_CONF` 等（可选） |
 | `framework/prj.conf` | framework/ | 框架默认 Kconfig |
 | `<app>_prj.conf` | APP 根 | 业务 Kconfig 叠加（实板 + 仿真基底） |
-| `<app>_prj_qemu.conf` | APP 根 | QEMU 专用裁剪 |
-| `framework/prj_qemu.conf` | framework/ | 框架仿真通用裁剪 |
+| `<app>_conf/targets/qemu.conf` | APP 根 | QEMU 专用裁剪 |
+| `framework/conf/targets/qemu.conf` | framework/ | 框架仿真通用裁剪 |
 | `framework/app.overlay` | framework/ | 框架默认实板 overlay（如 SRAM 扩展） |
 | `framework/boards/qemu_*.overlay` | framework/ | QEMU 板型 overlay |
 | `<app>.overlay` | APP 根 | APP 实板设备树（可选；通过 `DTC_OVERLAY_FILE` 或板级命名合并） |
@@ -290,7 +290,7 @@ west build -b nucleo_l4r5zi . -p always -- \
 |------|----------------|----------|
 | 工作目录 | zeplod 根 | APP 根 |
 | `setup_env` 读配置 | `./zephyr_config.env` | `./framework/zephyr_config.env` |
-| QEMU CONF 合并 | `prj.conf;prj_qemu.conf` | 自动拼接 `framework/prj.conf` + `*_prj.conf` + `*_prj_qemu.conf` |
+| QEMU CONF 合并 | `prj.conf;conf/targets/qemu.conf` | 自动拼接 `framework/prj.conf` + `*_prj.conf` + `*_conf/targets/qemu.conf` |
 | `run_qemu.ps1` | `.\scripts\run_qemu.ps1` | `.\framework\scripts\run_qemu.ps1` |
 
 常用命令：
@@ -334,7 +334,7 @@ west build -b nucleo_l4r5zi . -p always -- \
 - [ ] `framework/zephyr_config.env` 已配置且未提交  
 - [ ] APP 根 `CMakeLists.txt` 含 `add_subdirectory(framework)` 与 `zeplod_append_app_devicetree_overlays`  
 - [ ] 存在 `<app>_prj.conf`，示例模块已按产品裁剪  
-- [ ] 存在 `<app>_prj_qemu.conf`，`run_qemu.ps1` 日志中 CONF 含四段合并  
+- [ ] 存在 `<app>_conf/targets/qemu.conf`，`run_qemu.ps1` 日志中 CONF 含四段合并  
 - [ ] `modules/<name>/zephyr/module.yml` 与 `ZEPHYR_EXTRA_MODULES` 一致  
 - [ ] `west build -b qemu_riscv32 . -p always` 通过（Windows 冒烟）  
 - [ ] 目标实板 `west build -b <board> .` 通过  
@@ -348,7 +348,7 @@ west build -b nucleo_l4r5zi . -p always -- \
 | 现象 | 原因 | 处理 |
 |------|------|------|
 | `undefined node label 'sram0'` | QEMU 合并了 `framework/app.overlay` | 使用 `zeplod_app_overlays.cmake`，升级 framework 子模块 |
-| QEMU 仍编译网络/CAN | 缺少 `*_prj_qemu.conf` 或子模块脚本过旧 | 添加 QEMU conf；更新 `framework/scripts/project_layout.*` |
+| QEMU 仍编译网络/CAN | 缺少 `*_conf/targets/qemu.conf` 或子模块脚本过旧 | 添加 QEMU conf；更新 `framework/scripts/project_layout.*` |
 | `ZEPHYR_BASE not set` | 未配置 `framework/zephyr_config.env` | 从 template 复制并填写 |
 | 中文日志乱码（Windows） | 控制台 GBK vs 固件 UTF-8 | 使用新版 `run_qemu.ps1` 或见 [14-QEMU §8.11](14-QEMU仿真运行指南.md#811-windows-上中文日志乱码) |
 | 脚本仍走 framework 模式 | 顶层 CMake 无 `add_subdirectory(framework)` | 修正 CMakeLists 或设 `ZEPHYR_APP_ROOT` |
@@ -359,7 +359,7 @@ west build -b nucleo_l4r5zi . -p always -- \
 
 ## 10. 参考
 
-- 示例仓库：**zephyr_gateway**（`gateway_prj.conf` / `gateway_prj_qemu.conf` / `modules/zephyr_gateway`）  
+- 示例仓库：**zephyr_gateway**（`gateway_prj.conf` / `gateway_conf/targets/qemu.conf` / `modules/zephyr_gateway`）  
 - [12-Freestanding应用与构建基础.md](12-Freestanding应用与构建基础.md) — freestanding 与 BOARD_ROOT  
 - [14-QEMU仿真运行指南.md](14-QEMU仿真运行指南.md) — 仿真与 ztest  
 - 框架仓库：`zephyr_app.env.template`、`cmake/zeplod_app_overlays.cmake`

@@ -98,6 +98,27 @@ set(APP_VERSION_STRING "${PROJECT_VERSION}")
 # Only use BOARD_ROOT if you have custom boards in the boards/ directory
 # list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/boards)
 
+# =============================================================================
+# 默认 Kconfig 合并链（可被 -DCONF_FILE / -DEXTRA_CONF_FILE 覆盖或追加）
+# =============================================================================
+#
+# prj.conf          公共基线
+# standard.conf     标准内存档位
+# data_bus.conf     Data Bus 功能
+# thread_ipc.conf   Thread IPC 功能
+#
+# 档位切换：west build ... -- -DEXTRA_CONF_FILE=conf/profiles/balanced.conf
+# =============================================================================
+
+if(NOT DEFINED CONF_FILE)
+    set(CONF_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/prj.conf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/conf/profiles/standard.conf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/conf/features/data_bus.conf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/conf/features/thread_ipc.conf"
+    )
+endif()
+
 # Find Zephyr package
 # For freestanding applications, explicitly specify ZEPHYR_BASE
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

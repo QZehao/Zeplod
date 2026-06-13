@@ -119,7 +119,7 @@ if ($Tests) {
         $WestSource = "."
     }
     if ($Layout.Mode -eq "app") {
-        $ConfFile = "prj.conf;prj_qemu.conf"
+        $ConfFile = "prj.conf;conf/profiles/standard.conf;conf/features/data_bus.conf;conf/features/thread_ipc.conf;conf/targets/qemu.conf"
     } else {
         $ConfFile = Get-ZephyrQemuConfFile -Layout $Layout
     }

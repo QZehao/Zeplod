@@ -79,7 +79,7 @@ cd D:\Code\3-Project\zephyr_gateway
 .\framework\scripts\run_qemu.ps1
 ```
 
-默认板型 `qemu_riscv32`；framework 模式使用 `prj.conf;prj_qemu.conf`，APP 模式使用 `framework/prj.conf;<app>_prj.conf;framework/prj_qemu.conf`（可由 `zephyr_app.env` 覆盖）。
+默认板型 `qemu_riscv32`；framework 模式使用 `prj.conf;conf/targets/qemu.conf`，APP 模式使用 `framework/prj.conf;<app>_prj.conf;framework/conf/targets/qemu.conf`（可由 `zephyr_app.env` 覆盖）。
 
 常用参数：
 
@@ -122,7 +122,7 @@ west build -t run --build-dir build_qemu_qemu_riscv32
 | **`qemu_cortex_m3`** / **`qemu_cortex_m0`** | ⚠️ | 可编译；当前应用在 ARM M 系 QEMU 上可能 HardFault，见 §8.4 |
 | **`qemu_kvm_arm64`** | ❌ | 仅 Linux + KVM，Windows 不可用 |
 
-仿真建议使用叠加配置 **`prj_qemu.conf`**（在 `prj.conf` 基础上削减 RAM/栈，并保持软件看门狗关闭）。
+仿真建议使用叠加配置 **`conf/targets/qemu.conf`**（在 `prj.conf` 基础上削减 RAM/栈，并保持软件看门狗关闭）。
 
 ### 3.2 编译
 
@@ -131,7 +131,7 @@ west build -t run --build-dir build_qemu_qemu_riscv32
 . .\scripts\setup_env.ps1
 
 west build -b qemu_riscv32 -d build_qemu . -p always `
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 ```
 
 ```bash
@@ -139,7 +139,7 @@ west build -b qemu_riscv32 -d build_qemu . -p always `
 source scripts/setup_env.sh
 
 west build -b qemu_riscv32 -d build_qemu . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 ```
 
 构建日志中应出现：
@@ -162,7 +162,7 @@ west build -t run --build-dir build_qemu
 
 ```bash
 west build -b qemu_cortex_m3 -d build_qemu_m3 . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 west build -t run --build-dir build_qemu_m3
 ```
 
@@ -175,16 +175,16 @@ west build -t run --build-dir build_qemu_m3
 | 文件 | 作用 |
 |------|------|
 | **`prj.conf`** | 主配置（默认功能集） |
-| **`prj_qemu.conf`** | QEMU 叠加：减小堆/栈/事件池，关闭 KV，单示例模块，看门狗保持关闭 |
+| **`conf/targets/qemu.conf`** | QEMU 叠加：减小堆/栈/事件池，关闭 KV，单示例模块，看门狗保持关闭 |
 | **`boards/qemu_*.overlay`** | 板级设备树覆盖（UART、部分板 SRAM 扩展等） |
 
-仅做冒烟、不需完整功能时，可叠加 `prj_qemu.conf`；需要与量产配置一致的行为时，可仅用 `prj.conf`（注意小内存 QEMU 板可能链接或运行失败）。
+仅做冒烟、不需完整功能时，可叠加 `conf/targets/qemu.conf`；需要与量产配置一致的行为时，可仅用 `prj.conf`（注意小内存 QEMU 板可能链接或运行失败）。
 
 ---
 
 ## 5. 多核（SMP）仿真验证
 
-在 QEMU 上做 **双核 SMP** 冒烟时，需选用 Zephyr 提供的 **SMP 板型变体**（板级 defconfig 含 `CONFIG_SMP=y`、`CONFIG_MP_MAX_NUM_CPUS=2`）。本工程 `prj.conf` / `prj_qemu.conf` **未禁用 SMP**，使用下列板型时会自动启用多核。
+在 QEMU 上做 **双核 SMP** 冒烟时，需选用 Zephyr 提供的 **SMP 板型变体**（板级 defconfig 含 `CONFIG_SMP=y`、`CONFIG_MP_MAX_NUM_CPUS=2`）。本工程 `prj.conf` / `conf/targets/qemu.conf` **未禁用 SMP**，使用下列板型时会自动启用多核。
 
 ### 5.1 可用 SMP 板型（Windows）
 
@@ -217,7 +217,7 @@ west build -t run --build-dir build_qemu_m3
 . .\scripts\setup_env.ps1
 
 west build -b qemu_riscv32/qemu_virt_riscv32/smp -d build_qemu_smp . -p always `
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 
 west build -t run --build-dir build_qemu_smp
 ```
@@ -332,14 +332,14 @@ west build -t run --build-dir build_tests_qemu
 | `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | `run_tests_full.ps1` / `run_tests_full.sh` | 再上示例模块 |
 | `prj.conf` | 手动 `-DCONF_FILE` | 最小冒烟（无扩展层） |
 
-测试使用 **`tests/prj.conf`**（非主应用根目录的 **`prj_qemu.conf`**）。`tests/prj.conf` 已针对仿真环境精简堆栈并关闭看门狗。
+测试使用 **`tests/prj.conf`**（非主应用根目录的 **`conf/targets/qemu.conf`**）。`tests/prj.conf` 已针对仿真环境精简堆栈并关闭看门狗。
 
 ### 6.5 与主应用仿真的区别
 
 | 项目 | 主应用（`run_qemu.ps1`） | 单元测试（`run_tests.ps1` + QEMU 板型） |
 |------|--------------------------|----------------------------------------|
 | 源码目录 | 仓库根 `.` | `tests/` |
-| 默认 CONF | `prj.conf;prj_qemu.conf` | `tests/prj.conf` + 叠加层 |
+| 默认 CONF | `prj.conf;conf/targets/qemu.conf` | `tests/prj.conf` + 叠加层 |
 | 入口 | `app_main` | ztest |
 | Devicetree overlay | 根目录 `boards/qemu_*.overlay` 自动合并 | 应用根为 `tests/`，根目录 overlay **不会**自动合并；`qemu_riscv32` 默认内存通常足够 |
 
@@ -438,9 +438,9 @@ QEMU 默认将串口绑定到 **stdio**。请在本地 PowerShell / 终端窗口
 
 Zephyr 官方 `hello_world` 在同板型上可正常运行，本应用在 ARM Cortex-M QEMU 上存在已知兼容问题。**Windows 上请优先使用 `qemu_riscv32`**。若必须在 M 系 QEMU 上调试，请单独排查 ARM 相关初始化路径。
 
-### 8.5 叠加 `prj_sram.conf` 后链接失败 `undefined reference to sys_reboot`
+### 8.5 叠加 `conf/profiles/balanced.conf` 后链接失败 `undefined reference to sys_reboot`
 
-`prj_sram.conf` 启用了软件看门狗相关选项，部分 QEMU 板未提供 `sys_reboot` 实现。仿真请使用 **`prj_qemu.conf`**，其中保持 **`CONFIG_SYS_WATCHDOG_ENABLE=n`**。
+`conf/profiles/balanced.conf` 启用了软件看门狗相关选项，部分 QEMU 板未提供 `sys_reboot` 实现。仿真请使用 **`conf/targets/qemu.conf`**，其中保持 **`CONFIG_SYS_WATCHDOG_ENABLE=n`**。
 
 ### 8.6 SMP 配置失败：合并了 `app.overlay` 或 DTS 报错
 
@@ -505,7 +505,7 @@ chcp 65001
 - [51-单元测试与持续集成说明.md](../50-测试与CI/51-单元测试与持续集成说明.md) — ztest 覆盖范围与 CI 矩阵
 
 - [12-Freestanding应用与构建基础.md](12-Freestanding应用与构建基础.md) — `west build`、overlay 通用规则
-- [15-新建APP开发指南.md](15-新建APP开发指南.md) — 创建 APP 仓库、`*_prj_qemu.conf` 与脚本配置
+- [15-新建APP开发指南.md](15-新建APP开发指南.md) — 创建 APP 仓库、`*_conf/targets/qemu.conf` 与脚本配置
 - [44-设备树与内存配置手册.md](../40-应用开发/44-设备树与内存配置手册.md) — `boards/*.overlay` 合并机制
 - [53-硬件测试运行指南.md](../50-测试与CI/53-硬件测试运行指南.md) — 真实硬件烧录与测试
 - [63-脚本与工具说明.md](../60-调试与排错/63-脚本与工具说明.md) — `run_qemu.ps1` 等脚本

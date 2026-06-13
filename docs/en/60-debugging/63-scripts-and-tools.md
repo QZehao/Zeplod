@@ -75,7 +75,7 @@ source scripts/setup_env.sh
 .\scripts\run_qemu.ps1 -Target framework   # APP repo: build framework/ only
 ```
 
-`-Board` accepts any Zephyr QEMU board name (including SMP qualifiers). In APP mode, `CONF_FILE` merges `framework/prj.conf`, `*_prj.conf`, and `framework/prj_qemu.conf` unless `ZEPHYR_QEMU_CONF` is set. See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** §5 for SMP boards.
+`-Board` accepts any Zephyr QEMU board name (including SMP qualifiers). In APP mode, `CONF_FILE` merges `framework/prj.conf`, `*_prj.conf`, and `framework/conf/targets/qemu.conf` unless `ZEPHYR_QEMU_CONF` is set. See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)** §5 for SMP boards.
 
 Requires **`QEMU_BIN_PATH`** in **`zephyr_config.env`**. See **[14-qemu-simulation-guide.md](../10-environment-build/14-qemu-simulation-guide.md)**.
 
@@ -161,7 +161,7 @@ See **[15-creating-new-app-guide.md](../10-environment-build/15-creating-new-app
 
 ```bash
 APP_PRJ_CONF=gateway_prj.conf
-QEMU_CONF=framework/prj.conf;gateway_prj.conf;framework/prj_qemu.conf
+QEMU_CONF=framework/prj.conf;gateway_prj.conf;framework/conf/targets/qemu.conf
 ```
 
 ## 6. Advanced environment variables

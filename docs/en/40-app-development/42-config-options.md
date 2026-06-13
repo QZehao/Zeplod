@@ -93,7 +93,7 @@ Event system static memory ≈ CONFIG_EVENT_MAX_TYPES × (16 + CONFIG_EVENT_MAX_
 | `CONFIG_EXAMPLE_MODULE_UART_USE_ZEPHYR_CONSOLE` | bool | y | `EXAMPLE_MODULE_UART` | When y: use `DEVICE_DT_GET(DT_CHOSEN(zephyr_console))`; when n: use `device_get_binding(CONFIG_EXAMPLE_MODULE_UART_DEVICE_NAME)`. |
 | `CONFIG_EXAMPLE_MODULE_UART_DEVICE_NAME` | string | `UART_0` | `EXAMPLE_MODULE_UART` | Device name string when above is n. |
 
-**Note**: `module_interface_t.depends_on`, `DECLARE_MODULE_*` macros and examples see [Module System Detailed Usage Guide.md](../30-core-modules/32-模块系统详细使用说明.md). GPIO/UART overlay config examples see repository root **`prj_example_gpio_uart.conf`**.
+**Note**: `module_interface_t.depends_on`, `DECLARE_MODULE_*` macros and examples see [Module System Detailed Usage Guide.md](../30-core-modules/32-模块系统详细使用说明.md). GPIO/UART overlay config examples see repository root **`conf/examples/gpio_uart.conf`**.
 
 ---
 
@@ -142,7 +142,7 @@ Corresponds to menu **"Thread IPC service (in-app)"**, defined in `src/modules/i
 
 ## 5. Application KV Store (optional persistent)
 
-Menu **"Application KV store"** in root **`Kconfig`**. **`CONFIG_APP_KV_PERSIST`** depends on **`CONFIG_FLASH=y`** (on-chip Flash driver,连带 **`FLASH_PAGE_LAYOUT`** / **`FLASH_HAS_DRIVER_ENABLED`**), plus **`CONFIG_SETTINGS`**, **`CONFIG_SETTINGS_NVS`** etc. NVS is Zephyr internal **choice** backend, application **Kconfig cannot use `select`**, must explicitly enable in **`prj.conf` / fragment** in order; typical combination see **`prj_app_kv_persist.conf`**. Targets without Flash (e.g., **`native_posix`**) should not merge persistent config.
+Menu **"Application KV store"** in root **`Kconfig`**. **`CONFIG_APP_KV_PERSIST`** depends on **`CONFIG_FLASH=y`** (on-chip Flash driver,连带 **`FLASH_PAGE_LAYOUT`** / **`FLASH_HAS_DRIVER_ENABLED`**), plus **`CONFIG_SETTINGS`**, **`CONFIG_SETTINGS_NVS`** etc. NVS is Zephyr internal **choice** backend, application **Kconfig cannot use `select`**, must explicitly enable in **`prj.conf` / fragment** in order; typical combination see **`conf/features/app_kv_persist.conf`**. Targets without Flash (e.g., **`native_posix`**) should not merge persistent config.
 
 If **`Deprecated symbol FLASH_CODE_PARTITION_ADDRESS_INVALID`** appears: on ARM + XIP with non-zero Flash base, if **`/chosen` does not set `zephyr,code-partition`**, Kconfig treats partition address as 0 triggering this deprecated symbol. This repository's **`boards/nucleo_l4r5zi.overlay`** already supplements **`&flash0` / `partitions` `ranges`**, adding **`slot0_partition`** and **`zephyr,code-partition`** to eliminate this warning. If also wanting **link stage** to not place firmware in `storage` partition, can additionally specify **`CONFIG_USE_DT_CODE_PARTITION=y`** (depends on above chosen). Other boards follow [Zephyr 4.4 Migration Guide](https://docs.zephyrproject.org/latest/releases/migration-guide-4.4.html) to supplement `ranges` for Flash and `fixed-partitions`. Upstream overview at [zephyr#104862](https://github.com/zephyrproject-rtos/zephyr/issues/104862).
 
@@ -151,7 +151,7 @@ If **`Deprecated symbol FLASH_CODE_PARTITION_ADDRESS_INVALID`** appears: on ARM 
 | `CONFIG_APP_KV_PERSIST` | bool | n | Serialize entire **`app_kv`** table as single Settings record to flash; **`app_kv_init()`** auto-loads at boot. Requires **`SETTINGS`** + **`SETTINGS_NVS`** and devicetree **`zephyr,settings-partition`**. |
 | `CONFIG_APP_KV_PERSIST_AUTOSAVE` | bool | n | Write flash after every **`app_kv_set`** / `remove` / `clear`**; **high wear**, generally use **`app_kv_save()`** or Shell **`app kv save`**. |
 
-**Board-level**: `nucleo_l4r5zi` can use repository **`boards/nucleo_l4r5zi.overlay`** (board-level dts already has **`storage_partition`**). Other boards must specify partition in chosen. Merge config example: **`prj_app_kv_persist.conf`**.
+**Board-level**: `nucleo_l4r5zi` can use repository **`boards/nucleo_l4r5zi.overlay`** (board-level dts already has **`storage_partition`**). Other boards must specify partition in chosen. Merge config example: **`conf/features/app_kv_persist.conf`**.
 
 API: **`app_kv_save()`**, **`app_kv_load()`** (see **`app_kv.h`**); error code **`APP_ERR_IO`**.
 

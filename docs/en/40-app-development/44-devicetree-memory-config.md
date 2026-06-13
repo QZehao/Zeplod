@@ -133,9 +133,9 @@ In **`app.overlay`**:
 
 This makes linker **`RAM`** **640KB**, consistent with **`west build`** end **Memory region** output.
 
-### 6.3 Relationship with `prj_sram.conf`
+### 6.3 Relationship with `conf/profiles/balanced.conf`
 
-- **`prj_sram.conf`** is **illustrative** fragment (comments), usable with **`prj.conf`**; **heap size** etc. still configured by **`CONFIG_HEAP_MEM_POOL_SIZE`** etc. in **`prj.conf`**.
+- **`conf/profiles/balanced.conf`** is **illustrative** fragment (comments), usable with **`prj.conf`**; **heap size** etc. still configured by **`CONFIG_HEAP_MEM_POOL_SIZE`** etc. in **`prj.conf`**.
 
 ---
 
@@ -205,11 +205,11 @@ Zephyr 4.x requires **`CONFIG_HAVE_CUSTOM_LINKER_SCRIPT=y`**, and script must co
 
 All example paths below use **application root** (directory with `CMakeLists.txt`, `prj.conf`) as current directory; commands work in **PowerShell** or **bash**, adjust path separators per system.
 
-### 11.0 Example 0: 32KB SRAM Tiny Optimization (prj_tiny.conf)
+### 11.0 Example 0: 32KB SRAM Tiny Optimization (conf/profiles/tiny.conf)
 
 **Scenario**: MCU with only 32KB SRAM, needs to reserve 22KB for APP modules, framework must be controlled within 10KB.
 
-**`prj_tiny.conf`** (tiny config):
+**`conf/profiles/tiny.conf`** (tiny config):
 
 ```properties
 # =============================================================================
@@ -298,7 +298,7 @@ CONFIG_SIZE_OPTIMIZATIONS=y
 **Build**:
 
 ```bash
-west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;prj_tiny.conf" --pristine
+west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;conf/profiles/tiny.conf" --pristine
 ```
 
 **Verify memory usage**:
@@ -460,15 +460,15 @@ And tighten related items in **[Project Configuration Guide.md](42-config-option
 
 ---
 
-### 11.7 Example G: Using Illustrative Fragment `prj_sram.conf`
+### 11.7 Example G: Using Illustrative Fragment `conf/profiles/balanced.conf`
 
-This repository's **`prj_sram.conf`** is **comment-type** illustrative file, **not** auto-loaded by Zephyr. To apply its heap/stack suggestions to build:
+This repository's **`conf/profiles/balanced.conf`** is **comment-type** illustrative file, **not** auto-loaded by Zephyr. To apply its heap/stack suggestions to build:
 
 - **Copy** needed lines to **`prj.conf`**, or
 - **Merge build**:
 
 ```bash
-west build -b nucleo_l4r5zi . -- -DCONF_FILE="prj.conf;prj_sram.conf"
+west build -b nucleo_l4r5zi . -- -DCONF_FILE="prj.conf;conf/profiles/balanced.conf"
 ```
 
 (Permitted **`CONF_FILE`** multi-file merge syntax per Zephyr; if same key appears in multiple files, latter or merge rules prevail.)

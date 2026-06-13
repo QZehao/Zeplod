@@ -172,16 +172,16 @@ When **`CONFIG_EXAMPLE_MODULE_THREAD_IPC`** is enabled, the **`SYS_INIT`** in **
 
 ## 9. One-Click Verification Build
 
-Based on `prj.conf` with `CONFIG_THREAD_IPC_SERVICE=y` enabled, merge **`prj_example_module_ipc.conf`**:
+Based on `prj.conf` with `CONFIG_THREAD_IPC_SERVICE=y` enabled, merge **`conf/examples/module_ipc.conf`**:
 
 ```
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_example_module_ipc.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=conf/examples/module_ipc.conf'
 ```
 
 (Note quotes and absolute paths under PowerShell.)
 
 After successful build, running firmware should show `example_module_ipc` initialization, `Thread IPC demo: sync ok`, etc. in logs.
-**Note**: When merging `prj_example_module_ipc.conf`, it already sets **`CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n`**, avoiding RAM conflict with `example_module_ipc`.
+**Note**: When merging `conf/examples/module_ipc.conf`, it already sets **`CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n`**, avoiding RAM conflict with `example_module_ipc`.
 
 ---
 

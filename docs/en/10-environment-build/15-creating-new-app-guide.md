@@ -24,7 +24,7 @@ Typical APP layout:
 my_product/
 ├── CMakeLists.txt
 ├── my_product_prj.conf
-├── my_product_prj_qemu.conf    # optional but recommended
+├── my_product_conf/targets/qemu.conf    # optional but recommended
 ├── src/
 ├── modules/my_product/
 └── framework/                  # zeplod submodule
@@ -98,14 +98,14 @@ CONFIG_MY_PRODUCT_BUSINESS=y
 CONFIG_EXAMPLE_MODULE_A_ENABLE=n
 ```
 
-### 2.5 `my_product_prj_qemu.conf` (strongly recommended)
+### 2.5 `my_product_conf/targets/qemu.conf` (strongly recommended)
 
 Disable hardware features QEMU lacks (network, CAN, flash, NVS, etc.).
 
 QEMU merge order (auto by scripts):
 
 ```text
-framework/prj.conf → <app>_prj.conf → <app>_prj_qemu.conf → framework/prj_qemu.conf
+framework/prj.conf → <app>_prj.conf → <app>_conf/targets/qemu.conf → framework/conf/targets/qemu.conf
 ```
 
 See [14-qemu-simulation-guide.md](14-qemu-simulation-guide.md).
@@ -129,8 +129,8 @@ Copy `zephyr_app.env.template` from the framework repo to the APP root to overri
 
 ```bash
 APP_PRJ_CONF=my_product_prj.conf
-APP_PRJ_QEMU_CONF=my_product_prj_qemu.conf
-QEMU_CONF=framework/prj.conf;my_product_prj.conf;my_product_prj_qemu.conf;framework/prj_qemu.conf
+APP_PRJ_QEMU_CONF=my_product_conf/targets/qemu.conf
+QEMU_CONF=framework/prj.conf;my_product_prj.conf;my_product_conf/targets/qemu.conf;framework/conf/targets/qemu.conf
 ```
 
 ### 2.8 First build
@@ -157,8 +157,8 @@ west build -b nucleo_l4r5zi -d build . -p always
 | `zephyr_app.env` | APP root | Optional script/CONF overrides |
 | `framework/prj.conf` | framework | Framework defaults |
 | `<app>_prj.conf` | APP root | Business Kconfig |
-| `<app>_prj_qemu.conf` | APP root | QEMU trim overlay |
-| `framework/prj_qemu.conf` | framework | Framework QEMU trim |
+| `<app>_conf/targets/qemu.conf` | APP root | QEMU trim overlay |
+| `framework/conf/targets/qemu.conf` | framework | Framework QEMU trim |
 | `APP_VERSION` | APP root | App semver (overrides framework) |
 
 ---
@@ -170,7 +170,7 @@ west build -b nucleo_l4r5zi -d build . -p always
 | Feature | framework mode | app mode |
 |---------|----------------|----------|
 | Config file | `./zephyr_config.env` | `./framework/zephyr_config.env` |
-| QEMU CONF | `prj.conf;prj_qemu.conf` | Auto-merge `framework/prj.conf` + `*_prj.conf` + `*_prj_qemu.conf` |
+| QEMU CONF | `prj.conf;conf/targets/qemu.conf` | Auto-merge `framework/prj.conf` + `*_prj.conf` + `*_conf/targets/qemu.conf` |
 | QEMU script | `.\scripts\run_qemu.ps1` | `.\framework\scripts\run_qemu.ps1` |
 
 Details: [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md).
@@ -190,7 +190,7 @@ Details: [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md).
 - [ ] `framework/` submodule initialized and pinned  
 - [ ] `framework/zephyr_config.env` configured, not committed  
 - [ ] Top `CMakeLists.txt` with overlays helper + `add_subdirectory(framework)`  
-- [ ] `<app>_prj.conf` and `<app>_prj_qemu.conf` present  
+- [ ] `<app>_prj.conf` and `<app>_conf/targets/qemu.conf` present  
 - [ ] `modules/<name>/` + `ZEPHYR_EXTRA_MODULES` aligned  
 - [ ] `west build -b qemu_riscv32 .` passes  
 - [ ] Target board build passes  
@@ -203,7 +203,7 @@ Details: [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md).
 | Symptom | Fix |
 |---------|-----|
 | `undefined node label 'sram0'` | Use `zeplod_app_overlays.cmake`; update framework submodule |
-| QEMU still builds networking | Add `*_prj_qemu.conf`; update `project_layout` scripts |
+| QEMU still builds networking | Add `*_conf/targets/qemu.conf`; update `project_layout` scripts |
 | Garbled Chinese on Windows | Updated `run_qemu.ps1` UTF-8 setup — [14-qemu §8.11](14-qemu-simulation-guide.md) |
 | Scripts use framework mode | Fix `add_subdirectory(framework)` in top CMakeLists |
 

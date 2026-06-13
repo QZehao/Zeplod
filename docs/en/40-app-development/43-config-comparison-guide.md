@@ -8,7 +8,7 @@ This document compares memory usage and applicable scenarios of four configurati
 
 ## 📊 Configuration Scheme Comparison Table
 
-| Config Item | **prj.conf** (Standard) | **prj_sram.conf** (Balanced) | **prj_min.conf** (Minimal) | **prj_tiny.conf** (Tiny) |
+| Config Item | **prj.conf** (Standard) | **conf/profiles/balanced.conf** (Balanced) | **conf/profiles/minimal.conf** (Minimal) | **conf/profiles/tiny.conf** (Tiny) |
 |-------------|-------------------------|------------------------------|---------------------------|--------------------------|
 | **Target SRAM** | ≥ 256KB | 64-128KB | 32-64KB | **≤ 32KB** |
 | **Framework Usage** | ~190KB | ~40KB | ~18KB | **< 10KB** |
@@ -21,8 +21,8 @@ This document compares memory usage and applicable scenarios of four configurati
 | Module | FLASH | RAM | Config File |
 |--------|-------|-----|-------------|
 | USB Host CDC ECM (5G/LTE) | +8KB | +6KB | `prj.conf` |
-| USB Host CDC ECM (SRAM optimized) | +6KB | +4KB | `prj.conf;prj_sram.conf` |
-| USB Host CDC ECM (minimal) | +4KB | +2KB | `prj.conf;prj_min.conf` |
+| USB Host CDC ECM (SRAM optimized) | +6KB | +4KB | `prj.conf;conf/profiles/balanced.conf` |
+| USB Host CDC ECM (minimal) | +4KB | +2KB | `prj.conf;conf/profiles/minimal.conf` |
 | Mesh communication module | +15KB | +8KB | `prj.conf` |
 | Module manager enhanced | +5KB | +3KB | `prj.conf` |
 | Event system enhanced | +8KB | +6KB | `prj.conf` |
@@ -182,19 +182,19 @@ west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf"
 ### Build Balanced
 
 ```bash
-west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;prj_sram.conf"
+west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;conf/profiles/balanced.conf"
 ```
 
 ### Build Minimal
 
 ```bash
-west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;prj_min.conf"
+west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;conf/profiles/minimal.conf"
 ```
 
 ### Build Tiny ⭐ 32KB SRAM systems
 
 ```bash
-west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;prj_tiny.conf" --pristine
+west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;conf/profiles/tiny.conf" --pristine
 ```
 
 > **Note**: Tiny version suitable for systems with only 32KB SRAM, framework usage < 10KB, reserving 22KB+ for APP modules.
@@ -216,9 +216,9 @@ cat build/zephyr/zephyr.map | grep "\.bss\." | grep -v "0x0"
 
 ## ⚠️ Feature Limitations
 
-### Tiny Version Limitations (prj_tiny.conf)
+### Tiny Version Limitations (conf/profiles/tiny.conf)
 
-When using `prj_tiny.conf`, the following features are **unavailable**:
+When using `conf/profiles/tiny.conf`, the following features are **unavailable**:
 
 | Feature | Status | Description |
 |---------|--------|-------------|
@@ -256,7 +256,7 @@ When using `prj_tiny.conf`, the following features are **unavailable**:
 
 ### Minimal Version Limitations
 
-When using `prj_min.conf`, the following features are **unavailable**:
+When using `conf/profiles/minimal.conf`, the following features are **unavailable**:
 
 - ❌ Shell interactive commands
 - ❌ Memory leak tracking
@@ -270,7 +270,7 @@ When using `prj_min.conf`, the following features are **unavailable**:
 
 ### Balanced Version Limitations
 
-When using `prj_sram.conf`, the following features are **limited**:
+When using `conf/profiles/balanced.conf`, the following features are **limited**:
 
 - ⚠️ Max 128 event types (Standard 256)
 - ⚠️ Max 8 subscribers per type (Standard 16)
@@ -328,13 +328,13 @@ For further adjustment, create your own overlay config file:
 
 ```bash
 # Copy template
-cp prj_tiny.conf prj_custom.conf
+cp conf/profiles/tiny.conf conf/profiles/custom.conf
 
 # Edit config
-vim prj_custom.conf
+vim conf/profiles/custom.conf
 
 # Build with it
-west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;prj_custom.conf"
+west build -b mimxrt1050_fire/mimxrt1052/qspi . -DCONF_FILE="prj.conf;conf/profiles/custom.conf"
 ```
 
 ### Key Config Items Quick Reference

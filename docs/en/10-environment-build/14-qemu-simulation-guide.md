@@ -109,20 +109,20 @@ See [63-scripts-and-tools.md](../60-debugging/63-scripts-and-tools.md) for scrip
 | **`qemu_cortex_m3`** / **`qemu_cortex_m0`** | ⚠️ | Builds; app may HardFault on ARM M QEMU — see §8.4 |
 | **`qemu_kvm_arm64`** | ❌ | Linux KVM only |
 
-Use overlay config **`prj_qemu.conf`** on top of **`prj.conf`** for simulation (reduced RAM/stacks, watchdog off).
+Use overlay config **`conf/targets/qemu.conf`** on top of **`prj.conf`** for simulation (reduced RAM/stacks, watchdog off).
 
 ### 3.2 Build
 
 ```powershell
 . .\scripts\setup_env.ps1
 west build -b qemu_riscv32 -d build_qemu . -p always `
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 ```
 
 ```bash
 source scripts/setup_env.sh
 west build -b qemu_riscv32 -d build_qemu . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 ```
 
 Expect in the log:
@@ -143,7 +143,7 @@ Change `-b` and use a separate build directory, e.g.:
 
 ```bash
 west build -b qemu_cortex_m3 -d build_qemu_m3 . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 west build -t run --build-dir build_qemu_m3
 ```
 
@@ -156,14 +156,14 @@ west build -t run --build-dir build_qemu_m3
 | File | Role |
 |------|------|
 | **`prj.conf`** | Main Kconfig |
-| **`prj_qemu.conf`** | QEMU overlay: smaller heaps/stacks, KV off, single example module, watchdog off |
+| **`conf/targets/qemu.conf`** | QEMU overlay: smaller heaps/stacks, KV off, single example module, watchdog off |
 | **`boards/qemu_*.overlay`** | Board Devicetree overlays (UART, SRAM on some ARM M boards) |
 
 ---
 
 ## 5. Multi-core (SMP) simulation
 
-For **dual-core SMP** smoke tests, use Zephyr **SMP board variants** (board defconfig sets `CONFIG_SMP=y`, `CONFIG_MP_MAX_NUM_CPUS=2`). This project's `prj.conf` / `prj_qemu.conf` do **not** disable SMP, so these boards enable multi-core automatically.
+For **dual-core SMP** smoke tests, use Zephyr **SMP board variants** (board defconfig sets `CONFIG_SMP=y`, `CONFIG_MP_MAX_NUM_CPUS=2`). This project's `prj.conf` / `conf/targets/qemu.conf` do **not** disable SMP, so these boards enable multi-core automatically.
 
 ### 5.1 SMP boards (Windows)
 
@@ -189,7 +189,7 @@ For **dual-core SMP** smoke tests, use Zephyr **SMP board variants** (board defc
 
 ```powershell
 west build -b qemu_riscv32/qemu_virt_riscv32/smp -d build_qemu_smp . -p always `
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 west build -t run --build-dir build_qemu_smp
 ```
 
@@ -298,14 +298,14 @@ west build -t run --build-dir build_tests_qemu
 | `prj.conf;prj_native_sim.conf;prj_ci_examples.conf` | `run_tests_full.ps1` / `run_tests_full.sh` | + example modules |
 | `prj.conf` | manual `-DCONF_FILE` | Minimal smoke (no extension overlay) |
 
-Tests use **`tests/prj.conf`**, not the main app's **`prj_qemu.conf`**. `tests/prj.conf` is already trimmed for simulation (smaller heaps, watchdog off).
+Tests use **`tests/prj.conf`**, not the main app's **`conf/targets/qemu.conf`**. `tests/prj.conf` is already trimmed for simulation (smaller heaps, watchdog off).
 
 ### 6.5 vs. main-app QEMU simulation
 
 | Item | Main app (`run_qemu.ps1`) | Unit tests (`run_tests.ps1` + QEMU board) |
 |------|---------------------------|-------------------------------------------|
 | Source dir | repo root `.` | `tests/` |
-| Default CONF | `prj.conf;prj_qemu.conf` | `tests/prj.conf` + overlays |
+| Default CONF | `prj.conf;conf/targets/qemu.conf` | `tests/prj.conf` + overlays |
 | Entry | `app_main` | ztest |
 | Devicetree overlay | root `boards/qemu_*.overlay` auto-merged | app root is `tests/` — root overlays **not** auto-merged; default `qemu_riscv32` RAM is usually enough |
 
@@ -363,9 +363,9 @@ Run in a real terminal with stdio attached.
 
 Upstream `hello_world` works; this app has known issues on ARM Cortex-M QEMU. Prefer **`qemu_riscv32`** on Windows.
 
-### 8.5 `undefined reference to sys_reboot` with `prj_sram.conf`
+### 8.5 `undefined reference to sys_reboot` with `conf/profiles/balanced.conf`
 
-Use **`prj_qemu.conf`** for QEMU (`CONFIG_SYS_WATCHDOG_ENABLE=n`).
+Use **`conf/targets/qemu.conf`** for QEMU (`CONFIG_SYS_WATCHDOG_ENABLE=n`).
 
 ### 8.6 SMP configure fails: `app.overlay` merged
 

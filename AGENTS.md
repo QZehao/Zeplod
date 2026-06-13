@@ -25,7 +25,7 @@ west build -b native_sim .
 # west build -b native_posix .
 
 # 使用自定义配置叠加文件构建
-west build -b <board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
+west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/module_ipc.conf
 
 # 清理并重新构建
 west build -t pristine
@@ -347,7 +347,7 @@ zeplod/
 ├── CMakeLists.txt              # 构建配置
 ├── Kconfig                     # 应用 Kconfig（含事件/模块/IPC 等）
 ├── prj.conf                    # 默认 Zephyr 配置（最小配置）
-├── prj_example_*.conf          # 叠加配置示例
+├── conf/                       # 叠加配置片段（profiles/targets/features/examples）
 ├── app.overlay                 # 通用设备树覆盖
 ├── west.yml                   # West 清单
 ├── zephyr_config.env           # 本地路径配置（勿提交）
@@ -453,7 +453,7 @@ typedef struct {
 ## 6. 配置（Kconfig）
 
 - **位置**：根目录 `Kconfig` + `src/modules/ipc_service/Kconfig`
-- **配置文件**：`prj.conf`、`prj_*.conf`（叠加配置）
+- **配置文件**：`prj.conf`（基线）、`conf/` 下叠加片段（见 `conf/README.md`）、`tests/prj_*.conf`（测试专用）
 - **设备树**：`boards/overlay.dts`、`boards/<board>.overlay`、`app.overlay`
 
 ### 常用 Kconfig 选项

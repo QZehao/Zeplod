@@ -172,16 +172,16 @@ int ipc_service_init(ipc_service_t *service, const char *name,
 
 ## 9. 一键验证构建
 
-在已启用 `CONFIG_THREAD_IPC_SERVICE=y` 的 `prj.conf` 基础上，合并 **`prj_example_module_ipc.conf`**：
+在已启用 `CONFIG_THREAD_IPC_SERVICE=y` 的 `prj.conf` 基础上，合并 **`conf/examples/module_ipc.conf`**：
 
 ```text
-west build -b <board> -- '-DEXTRA_CONF_FILE=D:/path/to/zeplod/prj_example_module_ipc.conf'
+west build -b <board> -- '-DEXTRA_CONF_FILE=conf/examples/module_ipc.conf'
 ```
 
 （PowerShell 下注意引号与绝对路径。）
 
 构建成功后运行固件，日志中应出现 `example_module_ipc` 初始化、`Thread IPC demo: sync ok` 等输出。  
-**注意**：合并 `prj_example_module_ipc.conf` 时，其中已将 **`CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n`**，避免与 `example_module_ipc` 重复占用 RAM。
+**注意**：合并 `conf/examples/module_ipc.conf` 时，其中已将 **`CONFIG_THREAD_IPC_SERVICE_EXAMPLE=n`**，避免与 `example_module_ipc` 重复占用 RAM。
 
 ---
 

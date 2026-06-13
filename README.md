@@ -140,7 +140,7 @@ This framework is **especially suitable** for projects with these characteristic
 - Thread-safe inter-module communication needed
 - Multiple product variants, feature trimming required
 - Team collaboration, unified standards needed
-- **32KB SRAM extreme scenarios** (use `prj_tiny.conf` extreme config)
+- **32KB SRAM extreme scenarios** (use `conf/profiles/tiny.conf` extreme config)
 
 This framework is **less suitable** for:
 
@@ -149,16 +149,16 @@ This framework is **less suitable** for:
 - Products extremely sensitive to Flash/RAM footprint
 - Standalone functional devices without inter-module communication
 
-> **32KB SRAM Solution**: Using `prj_tiny.conf` extreme config, framework footprint is **< 10KB**, leaving **> 22KB** for APP modules. See [Configuration Comparison Guide](docs/en/40-app-development/43-config-comparison-guide.md).
+> **32KB SRAM Solution**: Using `conf/profiles/tiny.conf` extreme config, framework footprint is **< 10KB**, leaving **> 22KB** for APP modules. See [Configuration Comparison Guide](docs/en/40-app-development/43-config-comparison-guide.md) and [conf/README.md](conf/README.md).
 
 ### Memory Configuration Options
 
 | Configuration | Target SRAM | Framework | APP Available | Config Files |
 |---------------|-------------|-----------|---------------|--------------|
-| Standard | >= 256KB | ~190KB | ~66KB+ | `prj.conf` |
-| Balanced | 64-128KB | ~40KB | ~24-88KB | `prj.conf;prj_sram.conf` |
-| Minimal | 32-64KB | ~18KB | ~14-46KB | `prj.conf;prj_min.conf` |
-| **Extreme** | **<= 32KB** | **< 10KB** | **> 22KB** | `prj.conf;prj_tiny.conf` |
+| Standard | >= 256KB | ~190KB | ~66KB+ | Default `west build` (CMake merges standard + features) |
+| Balanced | 64-128KB | ~40KB | ~24-88KB | `-DEXTRA_CONF_FILE=conf/profiles/balanced.conf` |
+| Minimal | 32-64KB | ~18KB | ~14-46KB | `-DEXTRA_CONF_FILE=conf/profiles/minimal.conf` |
+| **Extreme** | **<= 32KB** | **< 10KB** | **> 22KB** | `-DCONF_FILE="prj.conf;conf/profiles/tiny.conf"` |
 
 ## Project Structure
 
@@ -168,13 +168,12 @@ zeplod/
 ├── CMakeLists.txt                    # Build config (freestanding app needs ZEPHYR_BASE or zephyr_config.env)
 ├── Kconfig                           # Application Kconfig (events/modules/IPC etc.)
 ├── Kconfig.zephyr                    # Zephyr top-level Kconfig entry
-├── prj.conf                          # Default Zephyr config (minimal)
-├── prj_min.conf                      # Minimal config (32-64KB SRAM, framework ~18KB)
-├── prj_sram.conf                     # Balanced config (64-128KB SRAM, framework ~40KB)
-├── prj_tiny.conf                     # Extreme config (<= 32KB SRAM, framework < 10KB)
-├── prj_app_kv_persist.conf           # App KV persist-on-power-loss example
-├── prj_example_gpio_uart.conf        # GPIO/UART example overlay config
-├── prj_example_module_ipc.conf       # IPC example overlay config
+├── prj.conf                          # Common baseline (framework core switches)
+├── conf/                             # Overlay fragments (see conf/README.md)
+│   ├── profiles/                     # standard (default) / balanced / minimal / tiny
+│   ├── features/                     # data_bus, thread_ipc (default) + optional
+│   ├── targets/                      # qemu
+│   └── examples/                     # gpio_uart, module_ipc
 ├── app.overlay                       # Common device tree overlay
 ├── west.yml                          # West manifest (default 4.3.0-rc3)
 ├── zephyr_config.env                 # Local paths (copied from template, do NOT commit secrets)
@@ -375,10 +374,10 @@ west build -b <your_board> .
 west build -b native_sim .
 
 # Use specific config files (can merge multiple)
-west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_example_module_ipc.conf"
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;conf/examples/module_ipc.conf"
 
 # Extreme memory mode build (framework < 10KB)
-west build -b <your_board> . -- -DCONF_FILE="prj.conf;prj_tiny.conf"
+west build -b <your_board> . -- -DCONF_FILE="prj.conf;conf/profiles/tiny.conf"
 
 # Clean and rebuild
 west build -t pristine
@@ -566,7 +565,7 @@ app memory
 # Log dump
 app log [level]
 
-# Application key-value (string key/value; persist-on-power-loss: see prj_app_kv_persist.conf + boards/nucleo_l4r5zi.overlay)
+# Application key-value (string key/value; persist-on-power-loss: see conf/features/app_kv_persist.conf + boards/nucleo_l4r5zi.overlay)
 app kv list
 app kv set mykey hello world
 app kv get mykey

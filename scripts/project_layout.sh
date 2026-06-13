@@ -206,7 +206,7 @@ get_zephyr_qemu_conf_file() {
     fi
 
     if [ "$ZP_MODE" = "framework" ]; then
-        printf '%s' "prj.conf;prj_qemu.conf"
+        printf '%s' "prj.conf;conf/profiles/standard.conf;conf/features/data_bus.conf;conf/features/thread_ipc.conf;conf/targets/qemu.conf"
         return 0
     fi
 
@@ -216,8 +216,8 @@ get_zephyr_qemu_conf_file() {
     if app_prj_qemu="$(_zp_get_app_prj_qemu_conf "${ZP_APP_ROOT}" "$app_prj")"; then
         parts="${parts};${app_prj_qemu}"
     fi
-    if [ -f "${ZP_APP_ROOT}/framework/prj_qemu.conf" ]; then
-        parts="${parts};framework/prj_qemu.conf"
+    if [ -f "${ZP_APP_ROOT}/framework/conf/targets/qemu.conf" ]; then
+        parts="${parts};framework/conf/targets/qemu.conf"
     fi
     printf '%s' "$parts"
     return 0

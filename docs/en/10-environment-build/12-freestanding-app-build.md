@@ -106,7 +106,7 @@ After modifying **`prj.conf`**, **`app.overlay`**, etc., if behavior is abnormal
 On **Windows 11** and other hosts, Zephyr QEMU boards can replace `native_sim` for boot smoke tests (`native_sim` requires Linux/WSL). This repo provides:
 
 - **`boards/qemu_*.overlay`** — auto-merged for `west build -b qemu_<board>`
-- **`prj_qemu.conf`** — slim Kconfig overlay for simulation
+- **`conf/targets/qemu.conf`** — slim Kconfig overlay for simulation
 - **`scripts/run_qemu.ps1`** — one-shot build and run on Windows (default `qemu_riscv32`)
 
 Quick start:
@@ -120,7 +120,7 @@ Manual build:
 
 ```bash
 west build -b qemu_riscv32 -d build_qemu . -p always \
-  -- "-DCONF_FILE=prj.conf;prj_qemu.conf"
+  -- "-DCONF_FILE=prj.conf;conf/targets/qemu.conf"
 west build -t run --build-dir build_qemu
 ```
 

@@ -9,7 +9,7 @@
     python scripts/module_config.py enable <module_name>     # 启用指定模块
     python scripts/module_config.py disable <module_name>    # 禁用指定模块
     python scripts/module_config.py status                   # 显示当前模块状态
-    python scripts/module_config.py generate                 # 生成 prj_custom.conf
+    python scripts/module_config.py generate                 # 生成 conf/custom_modules.conf
 """
 
 import os
@@ -186,6 +186,7 @@ def generate_custom_conf(output_name="prj_custom.conf"):
     current_config = read_current_config()
     
     output_file = PROJECT_ROOT / output_name
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write("# 自定义模块配置文件\n")
@@ -224,7 +225,7 @@ def main():
     
     # generate 命令
     generate_parser = subparsers.add_parser("generate", help="生成自定义配置文件")
-    generate_parser.add_argument("--output", default="prj_custom.conf", help="输出文件名")
+    generate_parser.add_argument("--output", default="conf/custom_modules.conf", help="输出文件路径（相对仓库根）")
     
     args = parser.parse_args()
     
