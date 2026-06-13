@@ -168,15 +168,13 @@ zeplod/
 ├── CMakeLists.txt                    # Build config (freestanding app needs ZEPHYR_BASE or zephyr_config.env)
 ├── Kconfig                           # Application Kconfig (events/modules/IPC etc.)
 ├── Kconfig.zephyr                    # Zephyr top-level Kconfig entry
-├── Kconfig_proprietary               # Proprietary module Kconfig
-├── prj.conf                          # Default Zephyr config (minimal, proprietary modules disabled by default)
+├── prj.conf                          # Default Zephyr config (minimal)
 ├── prj_min.conf                      # Minimal config (32-64KB SRAM, framework ~18KB)
 ├── prj_sram.conf                     # Balanced config (64-128KB SRAM, framework ~40KB)
 ├── prj_tiny.conf                     # Extreme config (<= 32KB SRAM, framework < 10KB)
 ├── prj_app_kv_persist.conf           # App KV persist-on-power-loss example
 ├── prj_example_gpio_uart.conf        # GPIO/UART example overlay config
 ├── prj_example_module_ipc.conf       # IPC example overlay config
-├── proprietary_modules.conf          # Proprietary module default config
 ├── app.overlay                       # Common device tree overlay
 ├── west.yml                          # West manifest (default 4.3.0-rc3)
 ├── zephyr_config.env                 # Local paths (copied from template, do NOT commit secrets)

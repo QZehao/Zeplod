@@ -37,15 +37,6 @@ MODULES = {
     "APP_KV_PERSIST": {"name": "应用 KV 持久化", "default": False},
     "THREAD_IPC_SERVICE": {"name": "线程 IPC 服务", "default": False},
     "THREAD_IPC_SERVICE_EVENT_BRIDGE": {"name": "IPC 事件桥", "default": False},
-    
-    # 商业模块
-    "MODULE_MANAGER_PRO": {"name": "增强版模块管理器", "default": False, "proprietary": True},
-    "MESH_COMMUNICATION": {"name": "Mesh 通信模块", "default": False, "proprietary": True},
-    "SECURITY_CRYPTO": {"name": "加密安全套件", "default": False, "proprietary": True},
-    "OTA_MANAGER": {"name": "OTA 升级管理", "default": False, "proprietary": True},
-    "CELLULAR_USB_HOST_CDC_ECM": {"name": "USB Host CDC ECM", "default": False, "proprietary": True},
-    "USB_HOST_RNDIS": {"name": "USB Host RNDIS (5G 模块)", "default": False, "proprietary": True},
-    "CLOUD_CONNECTOR": {"name": "多云 IoT 平台连接器", "default": False, "proprietary": True},
 }
 
 
@@ -66,24 +57,20 @@ def read_current_config():
     return config
 
 
-def list_modules(show_proprietary_only=False):
+def list_modules():
     """列出所有可用模块"""
     print("\n" + "="*60)
     print("可用模块列表")
     print("="*60)
-    
+
     current_config = read_current_config()
-    
+
     for module_id, info in MODULES.items():
-        if show_proprietary_only and not info.get("proprietary", False):
-            continue
-        
         is_enabled = current_config.get(module_id, info.get("default", False))
         status = "[启用]" if is_enabled else "[禁用]"
-        prop_tag = " (商业)" if info.get("proprietary", False) else ""
-        
-        print(f"  {status:6} {module_id:40} {prop_tag} {info['name']}")
-    
+
+        print(f"  {status:6} {module_id:40} {info['name']}")
+
     print("\n" + "="*60)
 
 
@@ -92,29 +79,27 @@ def show_status():
     print("\n" + "="*60)
     print("当前模块状态")
     print("="*60)
-    
+
     current_config = read_current_config()
-    
+
     enabled = []
     disabled = []
-    
+
     for module_id, info in MODULES.items():
         is_enabled = current_config.get(module_id, info.get("default", False))
         if is_enabled:
             enabled.append((module_id, info))
         else:
             disabled.append((module_id, info))
-    
+
     print(f"\n已启用的模块 ({len(enabled)}):")
     for module_id, info in enabled:
-        prop_tag = " [商业]" if info.get("proprietary", False) else ""
-        print(f"  ✓ {module_id} - {info['name']}{prop_tag}")
-    
+        print(f"  ✓ {module_id} - {info['name']}")
+
     print(f"\n已禁用的模块 ({len(disabled)}):")
     for module_id, info in disabled:
-        prop_tag = " [商业]" if info.get("proprietary", False) else ""
-        print(f"  ✗ {module_id} - {info['name']}{prop_tag}")
-    
+        print(f"  ✗ {module_id} - {info['name']}")
+
     print("\n" + "="*60)
 
 
@@ -225,10 +210,7 @@ def main():
     
     # list 命令
     subparsers.add_parser("list", help="列出所有可用模块")
-    
-    # list-proprietary 命令
-    subparsers.add_parser("list-proprietary", help="列出商业模块")
-    
+
     # status 命令
     subparsers.add_parser("status", help="显示当前模块状态")
     
@@ -248,8 +230,6 @@ def main():
     
     if args.command == "list":
         list_modules()
-    elif args.command == "list-proprietary":
-        list_modules(show_proprietary_only=True)
     elif args.command == "status":
         show_status()
     elif args.command == "enable":

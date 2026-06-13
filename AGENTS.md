@@ -346,8 +346,7 @@ zeplod/
 ├── APP_VERSION                 # 应用语义化版本（X.Y.Z）
 ├── CMakeLists.txt              # 构建配置
 ├── Kconfig                     # 应用 Kconfig（含事件/模块/IPC 等）
-├── Kconfig_proprietary         # 商业模块 Kconfig
-├── prj.conf                    # 默认 Zephyr 配置（最小配置，商用模块默认禁用）
+├── prj.conf                    # 默认 Zephyr 配置（最小配置）
 ├── prj_example_*.conf          # 叠加配置示例
 ├── app.overlay                 # 通用设备树覆盖
 ├── west.yml                   # West 清单
@@ -388,7 +387,6 @@ zeplod/
 │   │   ├── app_main.c
 │   │   ├── app_version.c
 │   │   └── app_kv.c
-│   └── proprietary/           # 商业闭源模块
 ├── tests/                    # ztest 单元测试
 │   ├── CMakeLists.txt
 │   ├── Kconfig
@@ -454,7 +452,7 @@ typedef struct {
 
 ## 6. 配置（Kconfig）
 
-- **位置**：根目录 `Kconfig` + `src/modules/ipc_service/Kconfig` + `Kconfig_proprietary`
+- **位置**：根目录 `Kconfig` + `src/modules/ipc_service/Kconfig`
 - **配置文件**：`prj.conf`、`prj_*.conf`（叠加配置）
 - **设备树**：`boards/overlay.dts`、`boards/<board>.overlay`、`app.overlay`
 
@@ -480,11 +478,6 @@ CONFIG_SYS_WATCHDOG_TIMEOUT_MS=5000
 
 # 启动日志：默认仅 Banner（CONFIG_APP_ENABLE_BANNER）+ 少量 INF；详版版本块需打开：
 # CONFIG_APP_BOOT_VERBOSE=y
-
-# 商用模块默认禁用，按需在 prj_*.conf 中启用
-# CONFIG_THREAD_IPC_SERVICE=n
-# CONFIG_THREAD_IPC_SERVICE_EVENT_BRIDGE=n
-# CONFIG_APP_KV_PERSIST=n
 ```
 
 ---

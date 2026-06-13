@@ -169,15 +169,13 @@ zeplod/
 ├── CMakeLists.txt                    # 构建配置（独立应用需 ZEPHYR_BASE 或 zephyr_config.env）
 ├── Kconfig                           # 应用 Kconfig（含事件/模块/IPC 等）
 ├── Kconfig.zephyr                    # Zephyr 顶层 Kconfig 入口
-├── Kconfig_proprietary               # 商业模块 Kconfig
-├── prj.conf                          # 默认 Zephyr 配置（最小配置，商用模块默认禁用）
+├── prj.conf                          # 默认 Zephyr 配置（最小配置）
 ├── prj_min.conf                      # 极简版配置（32-64KB SRAM，框架占用 ~18KB）
 ├── prj_sram.conf                     # 平衡版配置（64-128KB SRAM，框架占用 ~40KB）
 ├── prj_tiny.conf                     # 极限版配置（≤ 32KB SRAM，框架占用 < 10KB）
 ├── prj_app_kv_persist.conf           # 应用 KV 掉电保存示例
 ├── prj_example_gpio_uart.conf        # GPIO/UART 示例叠加配置
 ├── prj_example_module_ipc.conf       # IPC 示例叠加配置
-├── proprietary_modules.conf          # 商业模块默认配置
 ├── app.overlay                       # 通用设备树覆盖
 ├── west.yml                          # West 清单（默认 4.3.0-rc3）
 ├── zephyr_config.env                 # 本地路径（由 template 复制生成，勿提交密钥）
