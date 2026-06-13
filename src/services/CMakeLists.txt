@@ -19,3 +19,7 @@ endif()
 if(CONFIG_SYS_TIMER_ENABLE)
     target_sources(app PRIVATE sys_timer.c)
 endif()
+
+if(CONFIG_SYS_DIAG_ENABLE)
+    target_sources(app PRIVATE sys_diag.c)
+endif()

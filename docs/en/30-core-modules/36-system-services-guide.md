@@ -2,7 +2,7 @@
 
 # System Services Usage Guide (sys_*)
 
-This document describes the four types of System Services under **`src/services/`**: **Logging** (`sys_log`), **Memory Pool** (`sys_memory`), **Software Timer** (`sys_timer`), **Watchdog** (`sys_watchdog`). They sit **between Zephyr kernel and business modules**, providing unified capabilities for the Event System, Module Manager, etc.
+This document describes the System Services under **`src/services/`**: **Logging** (`sys_log`), **Memory Pool** (`sys_memory`), **Software Timer** (`sys_timer`), **Watchdog** (`sys_watchdog`), and optional **Diagnostics** (`sys_diag`). They sit **between Zephyr kernel and business modules**, providing unified capabilities for the Event System, Module Manager, etc.
 
 **Related**: **[Zephyr Application Development and Services Guide.md](../40-app-development/41-zephyr-app-development.md)** (Zephyr general kernel and service patterns) · **[Project Configuration Options.md](../40-app-development/42-config-options.md)** §3 · **[Developer Getting Started Guide.md](../00-getting-started/04-developer-guide.md)** · Doxygen **`docs/api/html`** (generation method in **[Scripts and Tools Guide.md](../../zh-CN/60-调试与排错/63-脚本与工具说明.md)**)
 
@@ -16,6 +16,7 @@ This document describes the four types of System Services under **`src/services/
 | Memory | `sys_memory.h` / `sys_memory.c` | Multi-pool allocation, statistics, optional allocation tracking; works with **`CONFIG_SYS_MEMORY_POOL_SIZE`** etc. |
 | Timer | `sys_timer.h` / `sys_timer.c` | One-shot/periodic callback wrapper based on kernel timer |
 | Watchdog | `sys_watchdog.h` / `sys_watchdog.c` | Soft/hardware watchdog abstraction, feeding and pre-timeout callbacks |
+| Diagnostics | `sys_diag.h` / `sys_diag.c` | Optional (`CONFIG_SYS_DIAG_ENABLE`); health snapshot aggregation and `diag dump` Shell |
 
 **Initialization order**: In main firmware, each **`sys_*_init()`** is called before **`main()`** by multiple **`SYS_INIT(POST_KERNEL, APP_INIT_PRIO_*)`** in **`app_main.c`** (priority definitions in **`include/zeplod/app_config.h`**); **`app_start()`** in **`main()`** then starts threads and modules. If a service is not initialized, corresponding API behavior follows implementation (may return error or undefined).
 

@@ -136,6 +136,7 @@ extern "C" {
 #define APP_INIT_PRIO_APP_KV          11
 #define APP_INIT_PRIO_SYS_LOG         20
 #define APP_INIT_PRIO_SYS_MEM         30
+#define APP_INIT_PRIO_SYS_DIAG        31
 #define APP_INIT_PRIO_EVENT_SYS       40
 #define APP_INIT_PRIO_DISPATCHER      45
 #define APP_INIT_PRIO_DATA_BUS        46

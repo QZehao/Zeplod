@@ -209,6 +209,12 @@ jobs:
             -- -DCONF_FILE="prj.conf;prj_data_bus_optimized.conf"
           west build -t run --build-dir build_tests_data_bus_optimized
 
+      - name: Run sys_diag tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_diag -p always \
+            -- -DCONF_FILE="prj.conf;prj_sys_diag.conf"
+          west build -t run --build-dir build_tests_diag
+
       - name: Run IPC tests (prj.conf + prj_native_sim)
         run: |
           west build -b native_sim tests/ --build-dir build_tests_ipc -p always \

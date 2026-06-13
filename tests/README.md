@@ -13,6 +13,7 @@
 | `prj_ci_examples.conf` | 启用示例模块 A/B/GPIO/Multi（与上两文件联用） |
 | `prj_qemu_coverage.conf` | QEMU + gcov 叠加：加大堆/栈、开启 `EVENT_RUNTIME_STATUS` / `EVENT_DEBUG_MEM`；**须与 `prj.conf` 联用** |
 | `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 BLOCK 溢出用例（覆盖率构建默认叠加） |
+| `prj_sys_diag.conf` | `CONFIG_SYS_DIAG_ENABLE` 与 `test_sys_diag.c`（CI `build_tests_diag`） |
 
 默认 **`tests/prj.conf` 不开启 IPC**，不链接 `test_ipc_service.c`。需要 IPC 烟测时：
 
@@ -130,6 +131,7 @@ west build -t run --build-dir build_tests
 | `prj.conf;prj_test_extensions.conf;prj_qemu_coverage.conf;prj_block_overflow.conf` | **QEMU 覆盖率**（`run_qemu.ps1 -Tests -Coverage` 默认；目标 `src/core/` ≥95%） |
 | `prj_block_overflow.conf` | `CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK` 与 `test_block_publish_unblocks_on_stop`（CI `build_tests_block`） |
 | `prj.conf;prj_data_bus_optimized.conf` | Data Bus 64/128/512B slab + `NO_MALLOC` 固定池路径（CI `build_tests_data_bus_optimized`） |
+| `prj.conf;prj_sys_diag.conf` | `CONFIG_SYS_DIAG_ENABLE` 与 `test_sys_diag`（CI `build_tests_diag`） |
 | `prj_test_watchdog.conf` | 看门狗相关套件 |
 
 示例（BLOCK 溢出策略）：

@@ -70,6 +70,8 @@ build_tests:
     - west build -t run --build-dir build_tests_block
     - west build -b native_sim tests/ --build-dir build_tests_data_bus_optimized -p always -- -DCONF_FILE="prj.conf;prj_data_bus_optimized.conf"
     - west build -t run --build-dir build_tests_data_bus_optimized
+    - west build -b native_sim tests/ --build-dir build_tests_diag -p always -- -DCONF_FILE="prj.conf;prj_sys_diag.conf"
+    - west build -t run --build-dir build_tests_diag
     - west build -b native_sim tests/ --build-dir build_tests_ipc -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf"
     - west build -t run --build-dir build_tests_ipc
     - west build -b native_sim tests/ --build-dir build_tests_full -p always -- -DCONF_FILE="prj.conf;prj_native_sim.conf;prj_ci_examples.conf"

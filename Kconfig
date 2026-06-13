@@ -492,6 +492,13 @@ config WATCHDOG
 	  (e.g. &iwdg with aliases { watchdog0 = &iwdg; }).
 	  Software-only mode does not need this option.
 
+config SYS_DIAG_ENABLE
+	bool "Enable system diagnostics service"
+	default n
+	help
+	  Aggregate memory, event queue, and module health snapshots.
+	  Provides sys_diag_collect() and optional shell "diag dump".
+
 endmenu
 
 menu "Application Features Configuration"
