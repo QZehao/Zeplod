@@ -1,0 +1,43 @@
+menuconfig FACTORY_MODE_MODULE
+	bool "Enable factory mode module"
+	default n
+	depends on EVENT_MAX_TYPES > 70
+	help
+	  Production-line test mode: enter/exit, GPIO loopback stub,
+	  calibration staging and commit to app_kv.
+	  Requires CONFIG_EVENT_MAX_TYPES > 70 (event ID 70).
+
+if FACTORY_MODE_MODULE
+
+config FACTORY_MODE_MODULE_AUTOINIT
+	bool "Auto-register factory mode module at boot"
+	default y
+
+config FACTORY_MODE_SHELL
+	bool "Register factory shell commands"
+	default y
+	depends on SHELL
+
+config FACTORY_MODE_GPIO_STUB
+	bool "Use GPIO loopback stub (always pass)"
+	default y
+	help
+	  Phase 4: synchronous stub for ztest and boards without loopback wiring.
+	  Disable when adding real GPIO loopback backend.
+
+config FACTORY_MODE_CAL_MAX_ENTRIES
+	int "Max calibration entries in RAM staging"
+	default 8
+	range 1 32
+
+config FACTORY_MODE_CAL_KEY_MAX_LEN
+	int "Max calibration key length"
+	default 24
+	range 8 64
+
+config FACTORY_MODE_CAL_VALUE_MAX_LEN
+	int "Max calibration value length"
+	default 64
+	range 16 256
+
+endif

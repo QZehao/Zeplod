@@ -151,6 +151,7 @@ extern "C" {
 #define APP_INIT_PRIO_MODULE_PROVISIONING 56
 #define APP_INIT_PRIO_MODULE_RECOVERY 57
 #define APP_INIT_PRIO_MODULE_OTA      58
+#define APP_INIT_PRIO_MODULE_FACTORY  59
 #define APP_INIT_PRIO_MODULE_A        60
 #define APP_INIT_PRIO_MODULE_B        61
 #define APP_INIT_PRIO_MODULE_GPIO     62
@@ -216,6 +217,7 @@ extern "C" {
 #define APP_ERR_CONNECTIVITY          -30
 #define APP_ERR_PROVISIONING          -31
 #define APP_ERR_TIME                  -32
+#define APP_ERR_FACTORY               -40
 
 /* =============================================================================
  * 构建配置

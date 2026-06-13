@@ -182,6 +182,18 @@ if(CONFIG_PROVISIONING_MODULE)
 endif()
 
 # =============================================================================
+# Factory mode tests
+# =============================================================================
+if(CONFIG_FACTORY_MODE_MODULE)
+	add_subdirectory(${APP_SRC_DIR}/modules/factory ${CMAKE_CURRENT_BINARY_DIR}/factory)
+	if(CONFIG_APP_KV_ENABLE)
+		target_sources(app PRIVATE test_factory_mode.c)
+	else()
+		target_sources(app PRIVATE test_factory_mode_no_kv.c)
+	endif()
+endif()
+
+# =============================================================================
 # Fault dump tests
 # =============================================================================
 if(CONFIG_SYS_FAULT_DUMP_ENABLE)
@@ -210,6 +222,7 @@ target_include_directories(app PRIVATE
 	${APP_SRC_DIR}/modules/recovery
 	${APP_SRC_DIR}/modules/connectivity
 	${APP_SRC_DIR}/modules/provisioning
+	${APP_SRC_DIR}/modules/factory
 	${APP_SRC_DIR}/data_bus
 )
 

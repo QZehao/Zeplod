@@ -260,6 +260,30 @@ jobs:
             -- -DCONF_FILE="prj.conf;prj_provisioning.conf"
           west build -t run --build-dir build_tests_provisioning
 
+      - name: Run factory mode tests
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_factory -p always \
+            -- -DCONF_FILE="prj.conf;prj_factory.conf"
+          west build -t run --build-dir build_tests_factory
+
+      - name: Run factory mode tests (no app_kv)
+        run: |
+          west build -b native_sim tests/ --build-dir build_tests_factory_no_kv -p always \
+            -- -DCONF_FILE="prj.conf;prj_factory_no_kv.conf"
+          west build -t run --build-dir build_tests_factory_no_kv
+
+      - name: Build production config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_production -p always \
+            -- -DEXTRA_CONF_FILE=conf/targets/production.conf
+          echo "Production config build succeeded."
+
+      - name: Build production + MCUboot config (compile check)
+        run: |
+          west build -b native_sim . --build-dir build_production_mcuboot -p always \
+            -- -DEXTRA_CONF_FILE="conf/targets/production.conf;conf/targets/mcuboot.conf"
+          echo "Production + MCUboot config build succeeded."
+
       - name: Build MCUboot OTA config (compile check)
         run: |
           west build -b native_sim . --build-dir build_mcuboot -p always \

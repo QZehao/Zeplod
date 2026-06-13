@@ -188,6 +188,24 @@ For board-level peripherals, networking, filesystem etc. refer to corresponding 
 
 ---
 
+## 8. Optional productization modules (factory_mode)
+
+Defined in `src/modules/factory/Kconfig`. See **[46-Factory Mode Module Guide](../30-core-modules/46-factory-mode-module-guide.md)** (zh-CN source). Overlays: **`conf/features/factory_mode.conf`** (production line), **`conf/targets/production.conf`** (factory off by default).
+
+| Configuration Macro | Type | Default | Depends | Description |
+|--------------------|------|---------|---------|-------------|
+| `CONFIG_FACTORY_MODE_MODULE` | bool | n | `EVENT_MAX_TYPES > 70` | Factory test module; publishes event **70**. |
+| `CONFIG_FACTORY_MODE_MODULE_AUTOINIT` | bool | y | `FACTORY_MODE_MODULE` | Auto-register via `SYS_INIT`. |
+| `CONFIG_FACTORY_MODE_SHELL` | bool | y | `FACTORY_MODE_MODULE` + `SHELL` | Register `factory` shell commands. |
+| `CONFIG_FACTORY_MODE_GPIO_STUB` | bool | y | `FACTORY_MODE_MODULE` | GPIO loopback stub (always pass in Phase 4). |
+| `CONFIG_FACTORY_MODE_CAL_MAX_ENTRIES` | int | 8 | `FACTORY_MODE_MODULE` | Max staged calibration entries (1–32). |
+| `CONFIG_FACTORY_MODE_CAL_KEY_MAX_LEN` | int | 24 | `FACTORY_MODE_MODULE` | Max calibration key length (8–64). |
+| `CONFIG_FACTORY_MODE_CAL_VALUE_MAX_LEN` | int | 64 | `FACTORY_MODE_MODULE` | Max calibration value length (16–256). |
+
+**Note:** `finalize_pass` requires **`CONFIG_APP_KV_ENABLE=y`**; without app_kv it returns **`APP_ERR_DISABLED`**.
+
+---
+
 ## Document Maintenance
 
 - When Kconfig source changes, please sync update this page's tables.

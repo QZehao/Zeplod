@@ -720,3 +720,9 @@ rsource "src/modules/provisioning/Kconfig"
 
 endmenu
 
+menu "Factory Mode Module"
+
+rsource "src/modules/factory/Kconfig"
+
+endmenu
+

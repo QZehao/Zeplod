@@ -47,6 +47,8 @@ west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/recovery.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/secure_kv.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/sys_time.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/net_stub.conf
+west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/factory_mode.conf
+west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/targets/production.conf
 west build -b nucleo_l4r5zi . -- -DEXTRA_CONF_FILE=conf/features/app_kv_persist.conf
 west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/gpio_uart.conf
 ```
@@ -70,7 +72,9 @@ west build -b <board> . -- -DEXTRA_CONF_FILE=conf/examples/gpio_uart.conf
 | `features/connectivity.conf` | 连接管理模块（null 后端） |
 | `features/provisioning.conf` | 配网模块（stub） |
 | `features/net_stub.conf` | Phase 3 联网骨架三合一 |
+| `features/factory_mode.conf` | 工厂产测模块 |
 | `features/boot_fast.conf` | 快速/极限启动优化 |
+| `targets/production.conf` | 量产固件叠加（关闭 factory） |
 | `targets/qemu.conf` | QEMU 仿真裁剪 |
 | `targets/mcuboot.conf` | MCUboot OTA 传输叠加 |
 | `examples/gpio_uart.conf` | GPIO/UART 示例 |
