@@ -84,6 +84,43 @@ int app_kv_save(void);
  */
 int app_kv_load(void);
 
+/* =============================================================================
+ * Schema 版本与升级迁移（OTA / 配置结构变更）
+ * ============================================================================= */
+
+/** 单模块可注册的迁移步骤上限 */
+#ifndef APP_KV_MIGRATE_MAX_STEPS
+#define APP_KV_MIGRATE_MAX_STEPS 4
+#endif
+
+/**
+ * @brief KV schema 迁移回调
+ * @param from_ver 当前 schema 版本（步骤起点）
+ * @param to_ver 目标 schema 版本（步骤终点）
+ * @param user_data 注册时传入的用户数据
+ * @return 0 成功；负 errno 风格错误码中止迁移链
+ */
+typedef int (*app_kv_migrate_fn)(uint32_t from_ver, uint32_t to_ver, void* user_data);
+
+/**
+ * @brief 注册单步 schema 迁移（from_ver → to_ver）
+ * @return APP_OK；槽位满或参数无效时返回 APP_ERR_* 
+ * @note 须满足 from_ver < to_ver；同一步骤重复注册返回 APP_ERR_ALREADY_EXISTS
+ */
+int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_fn fn, void* user_data);
+
+/** 设置当前 schema 版本（RAM，不自动持久化） */
+int app_kv_set_schema_version(uint32_t version);
+
+/** 读取当前 schema 版本 */
+uint32_t app_kv_get_schema_version(void);
+
+/**
+ * @brief 按已注册步骤将 schema 从当前版本逐步迁移到可达的最高版本
+ * @return APP_OK；迁移回调失败时返回其错误码；检测到环时返回 APP_ERR_INVALID_PARAM
+ */
+int app_kv_run_migrations(void);
+
 #ifdef __cplusplus
 }
 #endif

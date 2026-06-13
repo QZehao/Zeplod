@@ -204,6 +204,7 @@ extern "C" {
 #define APP_ERR_DISABLED              -7
 #define APP_ERR_KV_FULL               -8
 #define APP_ERR_IO                    -9
+#define APP_ERR_ALREADY_EXISTS        -10
 #define APP_ERR_OTA_INVALID_STATE     -20
 #define APP_ERR_OTA_TRANSPORT         -21
 

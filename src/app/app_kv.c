@@ -43,6 +43,17 @@ typedef struct {
 static struct k_mutex g_kv_lock;
 static app_kv_slot_t  g_kv[APP_KV_MAX_ENTRIES];
 static bool           g_kv_ready;
+static uint32_t       g_kv_schema_version;
+
+typedef struct {
+    uint32_t          from_ver;
+    uint32_t          to_ver;
+    app_kv_migrate_fn fn;
+    void*             user_data;
+    bool              in_use;
+} app_kv_migrate_step_t;
+
+static app_kv_migrate_step_t g_kv_migrations[APP_KV_MIGRATE_MAX_STEPS];
 
 static int find_key_locked(const char* key) {
     for (int i = 0; i < APP_KV_MAX_ENTRIES; i++) {
@@ -238,6 +249,110 @@ void app_kv_init(void) {
 #endif
 
     g_kv_ready = true;
+}
+
+int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_fn fn, void* user_data) {
+    if (!g_kv_ready || fn == NULL || from_ver >= to_ver) {
+        return APP_ERR_INVALID_PARAM;
+    }
+
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    for (int i = 0; i < APP_KV_MIGRATE_MAX_STEPS; i++) {
+        if (g_kv_migrations[i].in_use && g_kv_migrations[i].from_ver == from_ver &&
+            g_kv_migrations[i].to_ver == to_ver) {
+            k_mutex_unlock(&g_kv_lock);
+            return APP_ERR_ALREADY_EXISTS;
+        }
+    }
+
+    int slot = -1;
+    for (int i = 0; i < APP_KV_MIGRATE_MAX_STEPS; i++) {
+        if (!g_kv_migrations[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        k_mutex_unlock(&g_kv_lock);
+        return APP_ERR_KV_FULL;
+    }
+
+    g_kv_migrations[slot].from_ver   = from_ver;
+    g_kv_migrations[slot].to_ver     = to_ver;
+    g_kv_migrations[slot].fn         = fn;
+    g_kv_migrations[slot].user_data = user_data;
+    g_kv_migrations[slot].in_use    = true;
+    k_mutex_unlock(&g_kv_lock);
+    return APP_OK;
+}
+
+int app_kv_set_schema_version(uint32_t version) {
+    if (!g_kv_ready) {
+        return APP_ERR_INIT;
+    }
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    g_kv_schema_version = version;
+    k_mutex_unlock(&g_kv_lock);
+    return APP_OK;
+}
+
+uint32_t app_kv_get_schema_version(void) {
+    uint32_t ver;
+
+    if (!g_kv_ready) {
+        return 0U;
+    }
+    k_mutex_lock(&g_kv_lock, K_FOREVER);
+    ver = g_kv_schema_version;
+    k_mutex_unlock(&g_kv_lock);
+    return ver;
+}
+
+int app_kv_run_migrations(void) {
+    if (!g_kv_ready) {
+        return APP_ERR_INIT;
+    }
+
+    for (unsigned pass = 0U; pass < APP_KV_MIGRATE_MAX_STEPS; pass++) {
+        app_kv_migrate_step_t step;
+        bool                  found = false;
+
+        k_mutex_lock(&g_kv_lock, K_FOREVER);
+        for (int i = 0; i < APP_KV_MIGRATE_MAX_STEPS; i++) {
+            if (!g_kv_migrations[i].in_use) {
+                continue;
+            }
+            if (g_kv_migrations[i].from_ver == g_kv_schema_version) {
+                step  = g_kv_migrations[i];
+                found = true;
+                break;
+            }
+        }
+        k_mutex_unlock(&g_kv_lock);
+
+        if (!found) {
+            return APP_OK;
+        }
+
+        if (step.fn == NULL) {
+            return APP_ERR_INVALID_PARAM;
+        }
+
+        int ret = step.fn(step.from_ver, step.to_ver, step.user_data);
+        if (ret != 0) {
+            return ret;
+        }
+
+        k_mutex_lock(&g_kv_lock, K_FOREVER);
+        if (g_kv_schema_version != step.from_ver) {
+            k_mutex_unlock(&g_kv_lock);
+            return APP_ERR_INVALID_PARAM;
+        }
+        g_kv_schema_version = step.to_ver;
+        k_mutex_unlock(&g_kv_lock);
+    }
+
+    return APP_ERR_INVALID_PARAM;
 }
 
 int app_kv_set(const char* key, const char* value) {
@@ -516,6 +631,27 @@ int app_kv_save(void) {
 }
 
 int app_kv_load(void) {
+    return APP_ERR_DISABLED;
+}
+
+int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_fn fn, void* user_data) {
+    ARG_UNUSED(from_ver);
+    ARG_UNUSED(to_ver);
+    ARG_UNUSED(fn);
+    ARG_UNUSED(user_data);
+    return APP_ERR_DISABLED;
+}
+
+int app_kv_set_schema_version(uint32_t version) {
+    ARG_UNUSED(version);
+    return APP_ERR_DISABLED;
+}
+
+uint32_t app_kv_get_schema_version(void) {
+    return 0U;
+}
+
+int app_kv_run_migrations(void) {
     return APP_ERR_DISABLED;
 }
 
