@@ -12,8 +12,8 @@
 
 #include <zephyr/logging/log.h>
 #include <zephyr/ztest.h>
-#include "event_memory.h"
 #include <zeplod/event_system.h>
+#include "event_memory.h"
 
 LOG_MODULE_REGISTER(test_event_memory);
 

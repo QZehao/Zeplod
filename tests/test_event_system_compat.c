@@ -3,9 +3,9 @@
  * @brief event_system_compat 应用适配层单元测试
  */
 
-#include <errno.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
+#include <errno.h>
 #include <zeplod/event_dispatcher.h>
 #include <zeplod/event_system.h>
 #include <zeplod/event_system_compat.h>
@@ -25,9 +25,9 @@ static void compat_suite_teardown(void* fixture) {
 }
 
 ZTEST(event_system_compat, test_compat_lifecycle_and_statistics) {
-    event_compat_stats_t stats;
+    event_compat_stats_t  stats;
     event_compat_config_t cfg = {0};
-    uint32_t             subscriber_id;
+    uint32_t              subscriber_id;
 
     atomic_set(&g_compat_stats_dispatched, 0);
 

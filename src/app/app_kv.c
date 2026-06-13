@@ -277,11 +277,11 @@ int app_kv_register_migrate(uint32_t from_ver, uint32_t to_ver, app_kv_migrate_f
         return APP_ERR_KV_FULL;
     }
 
-    g_kv_migrations[slot].from_ver   = from_ver;
-    g_kv_migrations[slot].to_ver     = to_ver;
-    g_kv_migrations[slot].fn         = fn;
+    g_kv_migrations[slot].from_ver = from_ver;
+    g_kv_migrations[slot].to_ver = to_ver;
+    g_kv_migrations[slot].fn = fn;
     g_kv_migrations[slot].user_data = user_data;
-    g_kv_migrations[slot].in_use    = true;
+    g_kv_migrations[slot].in_use = true;
     k_mutex_unlock(&g_kv_lock);
     return APP_OK;
 }
@@ -323,7 +323,7 @@ int app_kv_run_migrations(void) {
                 continue;
             }
             if (g_kv_migrations[i].from_ver == g_kv_schema_version) {
-                step  = g_kv_migrations[i];
+                step = g_kv_migrations[i];
                 found = true;
                 break;
             }

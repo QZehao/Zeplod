@@ -51,7 +51,7 @@ typedef struct {
  * ============================================================================= */
 
 static fault_dump_ring_t g_fault_ring __noinit;
-static bool              g_fault_ready;
+static bool                           g_fault_ready;
 
 /* =============================================================================
  * 内部辅助

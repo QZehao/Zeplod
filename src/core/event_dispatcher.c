@@ -22,10 +22,10 @@
  *
  */
 
-#include <zeplod/event_dispatcher.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/time_units.h>
+#include <zeplod/event_dispatcher.h>
 #include "event_queue.h"
 
 LOG_MODULE_REGISTER(event_dispatcher, CONFIG_SYS_LOG_LEVEL);

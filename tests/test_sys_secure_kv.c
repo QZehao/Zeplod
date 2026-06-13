@@ -29,8 +29,8 @@ ZTEST(sys_secure_kv_tests, test_init_idempotent) {
 
 ZTEST(sys_secure_kv_tests, test_set_get_roundtrip) {
     static const uint8_t secret[] = "zeplod_secret_token_v1";
-    uint8_t            out[32];
-    size_t             n = 0U;
+    uint8_t              out[32];
+    size_t               n = 0U;
 
     zassert_equal(sys_secure_kv_init(), 0, NULL);
     sys_secure_kv_clear();
@@ -69,7 +69,7 @@ ZTEST(sys_secure_kv_tests, test_clear_all) {
 
 ZTEST(sys_secure_kv_tests, test_get_buffer_too_small) {
     static const uint8_t secret[] = "long_secret_value_for_secure_kv";
-    uint8_t            out[4];
+    uint8_t              out[4];
 
     zassert_equal(sys_secure_kv_init(), 0, NULL);
     sys_secure_kv_clear();

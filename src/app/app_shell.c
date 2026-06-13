@@ -313,8 +313,8 @@ static void cmd_app_top_once(const struct shell* shell) {
     shell_print(shell, "  Events: total=%u queue=%u dropped=%u", (unsigned int) event_stats.total_events,
                 (unsigned int) event_stats.queue_depth, (unsigned int) event_stats.dropped_events);
 #if APP_CONFIG_ENABLE_MEMORY_MGR
-    shell_print(shell, "  Memory: free=%zu min_free=%zu heap=%zu", sys_mem_get_free_size(),
-                sys_mem_get_min_free_size(), sys_mem_get_heap_size());
+    shell_print(shell, "  Memory: free=%zu min_free=%zu heap=%zu", sys_mem_get_free_size(), sys_mem_get_min_free_size(),
+                sys_mem_get_heap_size());
 #else
     shell_print(shell, "  Memory: disabled");
 #endif

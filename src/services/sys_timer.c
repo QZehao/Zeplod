@@ -12,10 +12,10 @@
  *
  */
 
-#include <zeplod/sys_timer.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include <string.h>
+#include <zeplod/sys_timer.h>
 
 LOG_MODULE_REGISTER(sys_timer, CONFIG_SYS_LOG_LEVEL);
 
@@ -460,10 +460,10 @@ uint32_t sys_timer_get_time_until_expiry(sys_timer_handle_t timer) {
 
     if (timer->is_allocated && timer->magic == TIMER_MAGIC && timer->status == SYS_TIMER_RUNNING) {
         const uint32_t now = k_uptime_get_32();
-        int32_t        diff = (int32_t)(timer->next_fire_time - now);
+        int32_t        diff = (int32_t) (timer->next_fire_time - now);
 
         if (diff > 0) {
-            remaining = (uint32_t)diff;
+            remaining = (uint32_t) diff;
         }
     }
 
@@ -573,7 +573,7 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
 
     for (;;) {
         k_mutex_lock(&g_sys_timer.lock, K_FOREVER);
-        bool should_exit = !timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate;
+        bool               should_exit = !timer->is_allocated || timer->magic != TIMER_MAGIC || timer->terminate;
         sys_timer_status_t status = timer->status;
         k_mutex_unlock(&g_sys_timer.lock);
         if (should_exit) {
@@ -601,8 +601,8 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
         k_mutex_unlock(&g_sys_timer.lock);
 
         uint32_t now = k_uptime_get_32();
-        int32_t  diff = (int32_t)(next_fire - now);
-        uint32_t wait_time = (diff > 0) ? (uint32_t)diff : 0U;
+        int32_t  diff = (int32_t) (next_fire - now);
+        uint32_t wait_time = (diff > 0) ? (uint32_t) diff : 0U;
 
         if (wait_time > 0U) {
             (void) k_sem_take(&timer->sem, K_MSEC(wait_time));
@@ -627,14 +627,14 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
         next_fire = timer->next_fire_time;
         status = timer->status;
         sys_timer_callback_t cb = timer->config.callback;
-        void* ud = timer->config.user_data;
+        void*                ud = timer->config.user_data;
         k_mutex_unlock(&g_sys_timer.lock);
 
-        diff = (int32_t)(next_fire - now);
+        diff = (int32_t) (next_fire - now);
         if (diff <= 0 && status == SYS_TIMER_RUNNING) {
             /* k_uptime_get_32 为毫秒分辨率；以下为基于毫秒的粗粒度延迟估计 */
             uint32_t scheduled_time = next_fire;
-            uint32_t latency_us = (diff <= 0) ? ((uint32_t)(-diff) * 1000U) : 0U;
+            uint32_t latency_us = (diff <= 0) ? ((uint32_t) (-diff) * 1000U) : 0U;
 
             if (cb != NULL) {
                 cb(timer, ud);
@@ -661,10 +661,10 @@ static void timer_thread_func(void* p1, void* p2, void* p3) {
 
                     if (timer->config.mode == SYS_TIMER_PERIODIC) {
                         timer->next_fire_time = scheduled_time + timer->config.period_ms;
-                        int32_t nf_diff = (int32_t)(now - timer->next_fire_time);
+                        int32_t nf_diff = (int32_t) (now - timer->next_fire_time);
                         if (nf_diff >= 0) {
                             uint32_t periods_behind =
-                                (uint32_t)(nf_diff + timer->config.period_ms) / timer->config.period_ms;
+                                (uint32_t) (nf_diff + timer->config.period_ms) / timer->config.period_ms;
                             timer->next_fire_time = scheduled_time + ((periods_behind + 1U) * timer->config.period_ms);
                         }
                     } else {

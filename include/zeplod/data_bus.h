@@ -212,8 +212,7 @@ int data_bus_channel_create(const char* name, data_bus_channel_t** out_channel);
  * @param cfg flags 可含 DATA_BUS_CHANNEL_OVERWRITE（单槽覆盖，适合高频传感器）
  * @return 与 data_bus_channel_create 相同
  */
-int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg,
-                               data_bus_channel_t** out_channel);
+int data_bus_channel_create_ex(const char* name, const data_bus_channel_cfg_t* cfg, data_bus_channel_t** out_channel);
 
 /**
  * @brief 销毁通道

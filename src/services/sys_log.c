@@ -11,7 +11,6 @@
  * 2026-04-01       1.0            zeh            正式发布
  *
  */
-#include <zeplod/sys_log.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
@@ -19,6 +18,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <zeplod/sys_log.h>
 
 #if defined(CONFIG_SEGGER_RTT)
 #include <SEGGER_RTT.h>

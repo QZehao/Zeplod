@@ -30,12 +30,12 @@ LOG_MODULE_REGISTER(sys_time, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 typedef struct {
-    int64_t      unix_ms_base;
-    int64_t      uptime_ms_base;
-    bool         valid;
-    bool         ready;
+    int64_t        unix_ms_base;
+    int64_t        uptime_ms_base;
+    bool           valid;
+    bool           ready;
     struct k_mutex lock;
-    bool         lock_ready;
+    bool           lock_ready;
 } sys_time_cb_t;
 
 /* =============================================================================

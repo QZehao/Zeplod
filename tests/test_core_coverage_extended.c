@@ -3,15 +3,15 @@
  * @brief 补充 src/core 发布校验、队列策略、compat 错误路径与分发器边界
  */
 
-#include <errno.h>
-#include <string.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/ztest.h>
+#include <errno.h>
+#include <string.h>
 #include <zeplod/event_dispatcher.h>
-#include "event_memory.h"
-#include "event_queue.h"
 #include <zeplod/event_system.h>
 #include <zeplod/event_system_compat.h>
+#include "event_memory.h"
+#include "event_queue.h"
 #include "ztest_sync.h"
 
 static void ext_cov_teardown(void* fixture) {
@@ -36,9 +36,9 @@ ZTEST(core_coverage_ext, test_compat_error_returns) {
 }
 
 ZTEST(core_coverage_ext, test_event_queue_invalid_policy_and_timeout) {
-    struct k_msgq  queue;
-    char           buffer[2 * sizeof(event_t)];
-    event_t        event = {.type = 10, .priority = EVENT_PRIORITY_NORMAL};
+    struct k_msgq queue;
+    char          buffer[2 * sizeof(event_t)];
+    event_t       event = {.type = 10, .priority = EVENT_PRIORITY_NORMAL};
 
     zassert_equal(event_queue_init(&queue, buffer, 2), EVENT_OK, NULL);
     zassert_equal(event_queue_enqueue(&queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_NO_WAIT), EVENT_OK, NULL);
@@ -46,8 +46,7 @@ ZTEST(core_coverage_ext, test_event_queue_invalid_policy_and_timeout) {
 
     zassert_equal(event_queue_enqueue(&queue, &event, (queue_overflow_policy_t) 99, K_NO_WAIT), EVENT_ERR_INVALID_ARG,
                   NULL);
-    zassert_equal(event_queue_enqueue(&queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_MSEC(5)), EVENT_ERR_TIMEOUT,
-                  NULL);
+    zassert_equal(event_queue_enqueue(&queue, &event, QUEUE_OVERFLOW_DROP_NEWEST, K_MSEC(5)), EVENT_ERR_TIMEOUT, NULL);
 
 #if IS_ENABLED(CONFIG_EVENT_QUEUE_OVERFLOW_BLOCK)
     zassert_equal(event_queue_enqueue(&queue, &event, QUEUE_OVERFLOW_BLOCK, K_NO_WAIT), EVENT_ERR_QUEUE_FULL, NULL);

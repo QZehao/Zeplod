@@ -12,7 +12,6 @@
  *
  */
 
-#include <zeplod/example_module_a.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -20,6 +19,7 @@
 #include <string.h>
 #include <zeplod/app_config.h>
 #include <zeplod/event_system.h>
+#include <zeplod/example_module_a.h>
 #include <zeplod/module_manager.h>
 
 LOG_MODULE_REGISTER(example_module_a, CONFIG_SYS_LOG_LEVEL);

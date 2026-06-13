@@ -33,12 +33,12 @@ LOG_MODULE_REGISTER(connectivity_module, CONFIG_SYS_LOG_LEVEL);
  * ============================================================================= */
 
 typedef struct {
-    connectivity_status_t            status;
+    connectivity_status_t             status;
     const connectivity_backend_ops_t* backend;
-    module_status_t                  module_status;
-    struct k_mutex                   lock;
-    bool                             lock_ready;
-    bool                             events_registered;
+    module_status_t                   module_status;
+    struct k_mutex                    lock;
+    bool                              lock_ready;
+    bool                              events_registered;
 } connectivity_module_cb_t;
 
 /* =============================================================================
@@ -124,7 +124,7 @@ static bool conn_backend_link_up_locked(void) {
 
 int connectivity_module_connect(connectivity_link_type_t link_type) {
     connectivity_status_t snap;
-    int                     ret;
+    int                   ret;
 
     conn_lock();
 

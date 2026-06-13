@@ -23,8 +23,8 @@
 #include <string.h>
 #include <zeplod/app_config.h>
 #include <zeplod/data_bus.h>
-#include "data_bus_internal.h"
 #include <zeplod/event_system.h>
+#include "data_bus_internal.h"
 
 LOG_MODULE_REGISTER(data_bus_bridge, CONFIG_DATA_BUS_LOG_LEVEL);
 

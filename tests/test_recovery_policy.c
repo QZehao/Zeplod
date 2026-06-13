@@ -170,9 +170,9 @@ ZTEST(recovery_policy_tests, test_escalate_restart_all_after_max_retries) {
 }
 
 ZTEST(recovery_policy_tests, test_fault_dump_on_module_error) {
-    uint32_t      mod_id;
-    uint8_t       buf[512];
-    size_t        n = 0U;
+    uint32_t mod_id;
+    uint8_t  buf[512];
+    size_t   n = 0U;
 
     setup_recovery_policy();
     sys_fault_dump_clear();

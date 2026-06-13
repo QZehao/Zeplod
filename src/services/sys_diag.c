@@ -62,7 +62,7 @@ static uint32_t sys_diag_u32_from_size(size_t value) {
 #if defined(CONFIG_SYS_MEMORY_ENABLE)
 static void sys_diag_collect_heap(sys_diag_snapshot_t* out) {
     const size_t heap_total = sys_mem_get_heap_size();
-    const size_t heap_free  = sys_mem_get_free_size();
+    const size_t heap_free = sys_mem_get_free_size();
 
     out->heap_free_bytes = sys_diag_u32_from_size(heap_free);
     if (heap_total >= heap_free) {
@@ -74,14 +74,14 @@ static void sys_diag_collect_heap(sys_diag_snapshot_t* out) {
 #if defined(CONFIG_EVENT_SYSTEM)
 static void sys_diag_collect_event_queue(sys_diag_snapshot_t* out) {
     uint32_t total_events = 0U;
-    uint32_t queue_depth  = 0U;
-    uint32_t dropped      = 0U;
+    uint32_t queue_depth = 0U;
+    uint32_t dropped = 0U;
 
     event_get_statistics(&total_events, &queue_depth, &dropped);
-    (void)total_events;
-    out->event_queue_depth     = queue_depth;
-    out->event_queue_capacity  = (uint32_t)CONFIG_EVENT_QUEUE_SIZE;
-    out->event_dropped_count   = dropped;
+    (void) total_events;
+    out->event_queue_depth = queue_depth;
+    out->event_queue_capacity = (uint32_t) CONFIG_EVENT_QUEUE_SIZE;
+    out->event_dropped_count = dropped;
 }
 #endif
 
@@ -90,9 +90,9 @@ static void sys_diag_collect_modules(sys_diag_snapshot_t* out) {
     module_mgr_stats_t stats;
 
     module_manager_get_stats(&stats);
-    out->module_count         = stats.total_modules;
+    out->module_count = stats.total_modules;
     out->module_running_count = stats.active_modules;
-    out->module_error_count   = stats.error_modules;
+    out->module_error_count = stats.error_modules;
 }
 #endif
 
@@ -135,15 +135,14 @@ int sys_diag_format(const sys_diag_snapshot_t* snap, char* buf, size_t buf_len) 
         return -EINVAL;
     }
 
-    n = snprintf(buf, buf_len,
-                 "diag: heap free=%u used=%u evt=%u/%u drop=%u mod=%u run=%u err=%u up=%ums",
-                 snap->heap_free_bytes, snap->heap_used_bytes, snap->event_queue_depth,
-                 snap->event_queue_capacity, snap->event_dropped_count, snap->module_count,
-                 snap->module_running_count, snap->module_error_count, snap->uptime_ms);
+    n = snprintf(buf, buf_len, "diag: heap free=%u used=%u evt=%u/%u drop=%u mod=%u run=%u err=%u up=%ums",
+                 snap->heap_free_bytes, snap->heap_used_bytes, snap->event_queue_depth, snap->event_queue_capacity,
+                 snap->event_dropped_count, snap->module_count, snap->module_running_count, snap->module_error_count,
+                 snap->uptime_ms);
     if (n < 0) {
         return -EIO;
     }
-    if ((size_t)n >= buf_len) {
+    if ((size_t) n >= buf_len) {
         return -ENOSPC;
     }
     return 0;
@@ -167,13 +166,13 @@ int sys_diag_export_json(const sys_diag_snapshot_t* snap, char* buf, size_t buf_
     n = snprintf(buf, buf_len,
                  "{\"heap_free\":%u,\"heap_used\":%u,\"evt_depth\":%u,\"evt_cap\":%u,"
                  "\"evt_drop\":%u,\"mod_total\":%u,\"mod_run\":%u,\"mod_err\":%u,\"uptime_ms\":%u}",
-                 snap->heap_free_bytes, snap->heap_used_bytes, snap->event_queue_depth,
-                 snap->event_queue_capacity, snap->event_dropped_count, snap->module_count,
-                 snap->module_running_count, snap->module_error_count, snap->uptime_ms);
+                 snap->heap_free_bytes, snap->heap_used_bytes, snap->event_queue_depth, snap->event_queue_capacity,
+                 snap->event_dropped_count, snap->module_count, snap->module_running_count, snap->module_error_count,
+                 snap->uptime_ms);
     if (n < 0) {
         return -EIO;
     }
-    if ((size_t)n >= buf_len) {
+    if ((size_t) n >= buf_len) {
         return -ENOSPC;
     }
     return 0;

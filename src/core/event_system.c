@@ -14,8 +14,8 @@
  * @date 2026-04-01
  */
 
-#include <zeplod/event_system.h>
 #include <zephyr/logging/log.h>
+#include <zeplod/event_system.h>
 #include "event_system_internal.h"
 
 LOG_MODULE_REGISTER(event_system, CONFIG_SYS_LOG_LEVEL);

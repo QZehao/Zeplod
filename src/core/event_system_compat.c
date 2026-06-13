@@ -12,12 +12,12 @@
  * 2026-06-06       1.1            zeh            移除商业事件系统适配，仅保留标准实现
  */
 
-#include <zeplod/event_system_compat.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
 #include <string.h>
 #include <zeplod/app_config.h>
+#include <zeplod/event_system_compat.h>
 
 LOG_MODULE_REGISTER(event_system_compat, CONFIG_SYS_LOG_LEVEL);
 

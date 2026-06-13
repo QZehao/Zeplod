@@ -205,23 +205,23 @@ static inline uint32_t mm_generation_next(uint32_t cur) {
  * @param v 编码后的版本号
  * @return 主版本号
  */
-#define MODULE_VERSION_MAJOR(v)             (((v) >> 16) & 0xFF)
+#define MODULE_VERSION_MAJOR(v) (((v) >> 16) & 0xFF)
 
 /**
  * @brief 提取次版本号
  * @param v 编码后的版本号
  * @return 次版本号
  */
-#define MODULE_VERSION_MINOR(v)             (((v) >> 8) & 0xFF)
+#define MODULE_VERSION_MINOR(v) (((v) >> 8) & 0xFF)
 
 /**
  * @brief 提取补丁号
  * @param v 编码后的版本号
  * @return 补丁号
  */
-#define MODULE_VERSION_PATCH(v)             ((v) & 0xFF)
+#define MODULE_VERSION_PATCH(v) ((v) & 0xFF)
 
-#define MODULE_DEP_VERSION_ANY              0U
+#define MODULE_DEP_VERSION_ANY  0U
 
 /**
  * @brief 声明完整的模块接口（包含所有可选函数）

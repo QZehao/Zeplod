@@ -14,9 +14,9 @@
 #include <string.h>
 
 typedef struct {
-    char     buf[CONFIG_REMOTE_OPS_EXPORT_BUF_SIZE];
-    size_t   len;
-    bool     inited;
+    char   buf[CONFIG_REMOTE_OPS_EXPORT_BUF_SIZE];
+    size_t len;
+    bool   inited;
 } remote_ops_null_ctx_t;
 
 static remote_ops_null_ctx_t    g_null_ctx;

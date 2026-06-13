@@ -43,10 +43,10 @@ static atomic_t          g_call_count;
 static uint32_t          g_recv_seq = 0;
 static data_bus_block_t* g_retained_block = NULL;
 #if !IS_ENABLED(CONFIG_DATA_BUS_NO_MALLOC)
-static uint8_t           g_large_payload[4097];
+static uint8_t g_large_payload[4097];
 #endif
-static struct k_thread   g_unregister_thread;
-static struct k_thread   g_deinit_thread;
+static struct k_thread g_unregister_thread;
+static struct k_thread g_deinit_thread;
 static K_THREAD_STACK_DEFINE(g_unregister_stack, 1024);
 static K_THREAD_STACK_DEFINE(g_deinit_stack, 1024);
 static struct k_sem         g_concurrent_cb_entered;
@@ -1227,8 +1227,8 @@ static void overwrite_seq_consumer_cb(data_bus_channel_t* ch, data_bus_block_t* 
  * @brief OVERWRITE 通道：连续 publish 后消费者收到最新 seq
  */
 ZTEST(test_data_bus, test_overwrite_latest_seq) {
-    data_bus_channel_t*          ch = NULL;
-    data_bus_consumer_cfg_t      cfg = {
+    data_bus_channel_t*     ch = NULL;
+    data_bus_consumer_cfg_t cfg = {
         .name = "ow_cons",
         .manual_release = false,
         .callback = overwrite_seq_consumer_cb,
@@ -1504,8 +1504,8 @@ ZTEST(test_data_bus, test_benchmark_slow_consumer_queue_full) {
 
     data_bus_stats_t stats;
     data_bus_channel_get_stats(ch, &stats);
-    LOG_INF("benchmark slow consumer: publish=%u drop=%u queue_full=%u peak_q=%u",
-            stats.publish_count, stats.drop_count, stats.queue_full_count, stats.peak_queue_usage);
+    LOG_INF("benchmark slow consumer: publish=%u drop=%u queue_full=%u peak_q=%u", stats.publish_count,
+            stats.drop_count, stats.queue_full_count, stats.peak_queue_usage);
 
     data_bus_test_wait_channel_quiescent(ch);
     zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
@@ -1522,10 +1522,10 @@ ZTEST(test_data_bus, test_benchmark_imu_overwrite) {
     const data_bus_channel_cfg_t ch_cfg = {.flags = DATA_BUS_CHANNEL_OVERWRITE};
     data_bus_consumer_t*         cons = NULL;
     data_bus_consumer_cfg_t      cfg = {
-        .name = "imu_cons",
-        .manual_release = false,
-        .callback = auto_consumer_cb,
-        .user_data = NULL,
+             .name = "imu_cons",
+             .manual_release = false,
+             .callback = auto_consumer_cb,
+             .user_data = NULL,
     };
 
     data_bus_test_setup();
@@ -1543,8 +1543,8 @@ ZTEST(test_data_bus, test_benchmark_imu_overwrite) {
     data_bus_channel_get_stats(ch, &stats);
     zassert_true(stats.peak_queue_usage <= 1U, NULL);
     zassert_equal(stats.alloc_fail_count, 0U, NULL);
-    LOG_INF("benchmark IMU overwrite: publish=%u drop=%u peak_q=%u malloc_fb=%u",
-            stats.publish_count, stats.drop_count, stats.peak_queue_usage, stats.malloc_fallback_count);
+    LOG_INF("benchmark IMU overwrite: publish=%u drop=%u peak_q=%u malloc_fb=%u", stats.publish_count, stats.drop_count,
+            stats.peak_queue_usage, stats.malloc_fallback_count);
 
     data_bus_test_wait_channel_quiescent(ch);
     zassert_equal(data_bus_consumer_unregister(cons), 0, NULL);
